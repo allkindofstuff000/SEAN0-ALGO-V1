@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+    <h2>Live State</h2>
+    <table>
+        <tbody>
+        {% for key, value in state.items() %}
+            <tr>
+                <th>{{ key }}</th>
+                <td>{{ value }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section class="panel">
+    <h2>Bot Control</h2>
+    <p><strong>Enabled:</strong> {{ config.enabled }}</p>
+    <form method="post" action="/toggle">
+        <button type="submit" class="btn primary">Toggle Enable/Disable</button>
+    </form>
+</section>
+
+<section class="panel">
+    <h2>Config</h2>
+    <form method="post" action="/update-config" class="form-grid">
+        <label>
+            Max Signals Per Day
+            <input type="number" name="max_signals_per_day" min="1" value="{{ config.max_signals_per_day }}">
+        </label>
+        <label>
+            Cooldown Candles
+            <input type="number" name="cooldown_candles" min="1" value="{{ config.cooldown_candles }}">
+        </label>
+        <label>
+            Strict Mode
+            <select name="strict_mode">
+                <option value="true" {% if config.strict_mode %}selected{% endif %}>true</option>
+                <option value="false" {% if not config.strict_mode %}selected{% endif %}>false</option>
+            </select>
+        </label>
+        <button type="submit" class="btn">Update Config</button>
+    </form>
+</section>
+
+<section class="panel">
+    <h2>Loss Streak</h2>
+    <p><strong>Consecutive Losses:</strong> {{ loss.consecutive_losses }}</p>
+    <p><strong>Updated:</strong> {{ loss.updated_at_bdt }}</p>
+</section>
+{% endblock %}

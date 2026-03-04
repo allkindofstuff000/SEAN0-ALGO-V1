@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signal Bot Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+    <h1>Signal Bot Dashboard</h1>
+    <nav>
+        <a href="/">State</a>
+        <a href="/performance">Performance</a>
+        <a href="/signals">Signals</a>
+    </nav>
+</header>
+
+<main class="container">
+    {% if warnings %}
+        <section class="panel warn">
+            <h3>Warnings</h3>
+            <ul>
+                {% for w in warnings %}
+                    <li>{{ w }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">Last refresh: {{ timestamp }}</footer>
+</body>
+</html>
