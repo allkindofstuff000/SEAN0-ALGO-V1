@@ -14,6 +14,17 @@ from data_fetcher import DataFetcher
 from indicator_engine import IndicatorEngine
 from risk_manager import RiskManager
 from signal_logic import SignalLogic, TradeSignal
+from storage import (
+    LOSS_STREAK_PATH,
+    PERFORMANCE_PATH,
+    SIGNALS_PATH,
+    load_config,
+    now_bdt_string,
+    record_cycle,
+    record_last_signal_time,
+    set_state_status,
+    update_state,
+)
 from telegram_bot import TelegramSignalBot
 
 
@@ -94,6 +105,31 @@ def map_skip_label(reason: str) -> str:
     return f"[Skipped: {reason}]"
 
 
+def _safe_int(raw_value: object, fallback: int, minimum: int = 1) -> int:
+    try:
+        return max(minimum, int(raw_value))
+    except (TypeError, ValueError):
+        return max(minimum, int(fallback))
+
+
+def apply_runtime_config(risk_manager: RiskManager, config: dict[str, object]) -> None:
+    risk_manager.max_signals_per_day = _safe_int(
+        config.get("max_signals_per_day"),
+        getattr(risk_manager, "max_signals_per_day", 2),
+        minimum=1,
+    )
+    risk_manager.cooldown_candles = _safe_int(
+        config.get("cooldown_candles"),
+        getattr(risk_manager, "cooldown_candles", 5),
+        minimum=1,
+    )
+    setattr(
+        risk_manager,
+        "strict_mode",
+        bool(config.get("strict_mode", getattr(risk_manager, "strict_mode", True))),
+    )
+
+
 async def run_single_cycle(
     *,
     fetcher: DataFetcher,
@@ -106,16 +142,37 @@ async def run_single_cycle(
     enforce_new_candle: bool,
 ) -> CycleReport:
     report = CycleReport()
+    cycle_error: str | None = None
+    cycle_started_at = now_bdt_string()
+    config = load_config()
+    apply_runtime_config(risk_manager, config)
+
+    if not bool(config.get("enabled", True)):
+        print("[Skipped: bot disabled from dashboard config]")
+        report.skipped = True
+        report.cycle_ok = True
+        update_state(
+            {
+                "status": "stopped",
+                "last_cycle": cycle_started_at,
+                "last_error": None,
+            }
+        )
+        return report
+
+    set_state_status("running")
     try:
         candles_15m_raw, candles_1h_raw = await fetcher.fetch_dual_timeframes()
 
         if not REQUIRED_BASE_COLUMNS.issubset(candles_15m_raw.columns):
             print("[Skipped: missing OHLCV columns on 15M]")
             report.skipped = True
+            report.cycle_ok = True
             return report
         if not REQUIRED_BASE_COLUMNS.issubset(candles_1h_raw.columns):
             print("[Skipped: missing OHLCV columns on 1H]")
             report.skipped = True
+            report.cycle_ok = True
             return report
 
         candles_15m, had_nan_15m = sanitize_candles(candles_15m_raw)
@@ -126,6 +183,7 @@ async def run_single_cycle(
         if len(candles_15m) < 100 or len(candles_1h) < 100:
             print("[Skipped: insufficient cleaned candles]")
             report.skipped = True
+            report.cycle_ok = True
             return report
 
         candles_15m = indicators.add_indicators(candles_15m)
@@ -138,10 +196,12 @@ async def run_single_cycle(
         if not valid_15m:
             print(map_skip_label(reason_15m))
             report.skipped = True
+            report.cycle_ok = True
             return report
         if not valid_1h:
             print(map_skip_label(reason_1h))
             report.skipped = True
+            report.cycle_ok = True
             return report
 
         latest_15m = candles_15m.index[-1]
@@ -154,6 +214,7 @@ async def run_single_cycle(
         if enforce_new_candle and state.last_15m_close is not None and latest_15m <= state.last_15m_close:
             print("[Skipped: no new closed 15M candle yet]")
             report.skipped = True
+            report.cycle_ok = True
             return report
 
         state.last_15m_close = latest_15m
@@ -186,14 +247,25 @@ async def run_single_cycle(
         if not test_mode and telegram_bot is not None:
             await send_signal_with_retry(telegram_bot, signal)
             risk_manager.log_signal(signal)
+            record_last_signal_time(now_bdt_string())
+        else:
+            record_last_signal_time(now_bdt_string())
 
         report.cycle_ok = True
         print("[Cycle OK]")
         return report
     except Exception as error:
         report.error_handled = True
+        cycle_error = str(error)
         print(f"[Error handled safely] {error}")
         return report
+    finally:
+        record_cycle(
+            last_cycle=now_bdt_string(),
+            ok=report.cycle_ok,
+            skipped=report.skipped,
+            error=cycle_error,
+        )
 
 
 async def market_scan_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -228,6 +300,7 @@ def get_env(name: str, default: str | None = None) -> str:
 
 def main() -> None:
     load_dotenv()
+    update_state({"status": "starting", "last_error": None})
     test_mode = str(get_env("TEST_MODE", "False")).strip().lower() == "true"
 
     token = get_env("TELEGRAM_BOT_TOKEN")
@@ -254,9 +327,9 @@ def main() -> None:
         max_signals_per_day=int(get_env("MAX_SIGNALS_PER_DAY", "2")),
         cooldown_candles=int(get_env("COOLDOWN_CANDLES", "5")),
         candle_minutes=int(get_env("CANDLE_MINUTES", "15")),
-        loss_streak_path=get_env("LOSS_STREAK_PATH", "loss_streak.json"),
-        signals_path=get_env("SIGNALS_PATH", "signals.csv"),
-        performance_path=get_env("PERFORMANCE_PATH", "performance.csv"),
+        loss_streak_path=get_env("LOSS_STREAK_PATH", str(LOSS_STREAK_PATH)),
+        signals_path=get_env("SIGNALS_PATH", str(SIGNALS_PATH)),
+        performance_path=get_env("PERFORMANCE_PATH", str(PERFORMANCE_PATH)),
     )
     telegram_bot = TelegramSignalBot(
         token=token,

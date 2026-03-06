@@ -7,13 +7,24 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+{% set current_path = request.url.path %}
+{% set system_enabled = config.enabled if config is defined else false %}
 <header class="topbar">
-    <h1>Signal Bot Dashboard</h1>
-    <nav>
-        <a href="/">State</a>
-        <a href="/performance">Performance</a>
-        <a href="/signals">Signals</a>
-    </nav>
+    <div class="topbar-inner">
+        <div class="brand">
+            <span class="brand-mark"></span>
+            <h1>Signal Bot Admin</h1>
+        </div>
+        <nav class="topnav">
+            <a href="/" class="nav-link{% if current_path == '/' %} active{% endif %}">State</a>
+            <a href="/performance" class="nav-link{% if current_path.startswith('/performance') %} active{% endif %}">Performance</a>
+            <a href="/signals" class="nav-link{% if current_path.startswith('/signals') %} active{% endif %}">Signals</a>
+        </nav>
+        <div class="sys-indicator" aria-label="System status">
+            <span class="sys-dot{% if system_enabled %} is-online{% else %} is-offline{% endif %}"></span>
+            <span class="sys-label">System</span>
+        </div>
+    </div>
 </header>
 
 <main class="container">

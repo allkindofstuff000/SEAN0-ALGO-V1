@@ -1,67 +1,29 @@
 from __future__ import annotations
 
 import csv
-import json
-import os
-import time
-from datetime import datetime
-from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import Any
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-
-BASE_DIR = Path(__file__).resolve().parent
-STATE_PATH = BASE_DIR / "state.json"
-SIGNALS_PATH = BASE_DIR / "signals.csv"
-PERFORMANCE_PATH = BASE_DIR / "performance.csv"
-CONFIG_PATH = BASE_DIR / "config.json"
-LOSS_STREAK_PATH = BASE_DIR / "loss_streak.json"
-
-DEFAULT_STATE: dict[str, Any] = {
-    "status": "unknown",
-    "last_cycle": None,
-    "last_signal_time": None,
-}
-DEFAULT_CONFIG: dict[str, Any] = {
-    "enabled": True,
-    "max_signals_per_day": 2,
-    "cooldown_candles": 5,
-    "strict_mode": True,
-}
-DEFAULT_LOSS: dict[str, Any] = {"consecutive_losses": 0, "updated_at_bdt": None}
-
-
-class FileLock:
-    """Simple cross-process lock using lock files."""
-
-    def __init__(self, target: Path, timeout_seconds: float = 5.0, retry_seconds: float = 0.05) -> None:
-        self.lock_path = target.with_suffix(target.suffix + ".lock")
-        self.timeout_seconds = timeout_seconds
-        self.retry_seconds = retry_seconds
-        self._fd: int | None = None
-
-    def __enter__(self) -> "FileLock":
-        start = time.monotonic()
-        while True:
-            try:
-                self._fd = os.open(str(self.lock_path), os.O_CREAT | os.O_EXCL | os.O_RDWR)
-                return self
-            except FileExistsError:
-                if time.monotonic() - start >= self.timeout_seconds:
-                    raise TimeoutError(f"Timed out acquiring lock: {self.lock_path}")
-                time.sleep(self.retry_seconds)
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        if self._fd is not None:
-            os.close(self._fd)
-            self._fd = None
-        if self.lock_path.exists():
-            self.lock_path.unlink(missing_ok=True)
+from storage import (
+    BASE_DIR,
+    CONFIG_PATH,
+    DEFAULT_CONFIG,
+    DEFAULT_LOSS,
+    DEFAULT_STATE,
+    LOSS_STREAK_PATH,
+    PERFORMANCE_PATH,
+    SIGNALS_PATH,
+    STATE_PATH,
+    load_config,
+    now_bdt_string,
+    read_json_with_fallback,
+    save_config,
+    write_json_locked,
+)
 
 
 app = FastAPI(title="Trading Signal Dashboard", version="1.0.0")
@@ -69,40 +31,7 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
-def now_bdt_string() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def read_json_with_fallback(path: Path, default: dict[str, Any], warnings: list[str]) -> dict[str, Any]:
-    if not path.exists():
-        warnings.append(f"{path.name} missing. Using defaults.")
-        return dict(default)
-
-    try:
-        with FileLock(path):
-            with path.open("r", encoding="utf-8") as handle:
-                data = json.load(handle)
-        if not isinstance(data, dict):
-            warnings.append(f"{path.name} is not a JSON object. Using defaults.")
-            return dict(default)
-        merged = dict(default)
-        merged.update(data)
-        return merged
-    except Exception as error:
-        warnings.append(f"Failed reading {path.name}: {error}")
-        return dict(default)
-
-
-def write_json_locked(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with FileLock(path):
-        with NamedTemporaryFile("w", delete=False, dir=str(path.parent), encoding="utf-8") as tmp:
-            json.dump(payload, tmp, indent=2)
-            tmp_path = Path(tmp.name)
-        os.replace(tmp_path, path)
-
-
-def read_csv_rows(path: Path, limit: int | None = None) -> list[dict[str, str]]:
+def read_csv_rows(path, limit: int | None = None) -> list[dict[str, str]]:
     if not path.exists():
         return []
 
@@ -136,6 +65,27 @@ def read_overall_performance() -> dict[str, Any]:
     }
 
 
+def _toggle_enabled_config() -> dict[str, Any]:
+    config = load_config()
+    config["enabled"] = not bool(config.get("enabled", True))
+    save_config(config)
+    return config
+
+
+def _apply_config_updates(
+    *,
+    max_signals_per_day: int,
+    cooldown_candles: int,
+    strict_mode: str,
+) -> dict[str, Any]:
+    config = load_config()
+    config["max_signals_per_day"] = max(1, int(max_signals_per_day))
+    config["cooldown_candles"] = max(1, int(cooldown_candles))
+    config["strict_mode"] = strict_mode.strip().lower() == "true"
+    save_config(config)
+    return config
+
+
 @app.get("/")
 async def home(request: Request):
     warnings: list[str] = []
@@ -159,6 +109,7 @@ async def home(request: Request):
 async def performance(request: Request):
     warnings: list[str] = []
     perf = read_overall_performance()
+    config = read_json_with_fallback(CONFIG_PATH, DEFAULT_CONFIG, warnings)
     if not PERFORMANCE_PATH.exists():
         warnings.append("performance.csv missing. Showing defaults.")
     loss = read_json_with_fallback(LOSS_STREAK_PATH, DEFAULT_LOSS, warnings)
@@ -167,6 +118,7 @@ async def performance(request: Request):
         {
             "request": request,
             "perf": perf,
+            "config": config,
             "loss": loss,
             "warnings": warnings,
             "timestamp": now_bdt_string(),
@@ -178,20 +130,24 @@ async def performance(request: Request):
 async def signals(request: Request):
     warnings: list[str] = []
     rows = read_csv_rows(SIGNALS_PATH, limit=20)
+    config = read_json_with_fallback(CONFIG_PATH, DEFAULT_CONFIG, warnings)
     if not SIGNALS_PATH.exists():
         warnings.append("signals.csv missing. No signals to display.")
     return templates.TemplateResponse(
         "signals.html",
-        {"request": request, "signals": list(reversed(rows)), "warnings": warnings, "timestamp": now_bdt_string()},
+        {
+            "request": request,
+            "signals": list(reversed(rows)),
+            "config": config,
+            "warnings": warnings,
+            "timestamp": now_bdt_string(),
+        },
     )
 
 
 @app.post("/toggle")
 async def toggle_bot():
-    warnings: list[str] = []
-    config = read_json_with_fallback(CONFIG_PATH, DEFAULT_CONFIG, warnings)
-    config["enabled"] = not bool(config.get("enabled", True))
-    write_json_locked(CONFIG_PATH, config)
+    _toggle_enabled_config()
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -211,11 +167,62 @@ async def update_config(
     cooldown_candles: int = Form(...),
     strict_mode: str = Form(...),
 ):
-    warnings: list[str] = []
-    config = read_json_with_fallback(CONFIG_PATH, DEFAULT_CONFIG, warnings)
-
-    config["max_signals_per_day"] = max(1, int(max_signals_per_day))
-    config["cooldown_candles"] = max(1, int(cooldown_candles))
-    config["strict_mode"] = strict_mode.strip().lower() == "true"
-    write_json_locked(CONFIG_PATH, config)
+    _apply_config_updates(
+        max_signals_per_day=max_signals_per_day,
+        cooldown_candles=cooldown_candles,
+        strict_mode=strict_mode,
+    )
     return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/api/state")
+async def api_state():
+    warnings: list[str] = []
+    state = read_json_with_fallback(STATE_PATH, DEFAULT_STATE, warnings)
+    config = read_json_with_fallback(CONFIG_PATH, DEFAULT_CONFIG, warnings)
+    loss = read_json_with_fallback(LOSS_STREAK_PATH, DEFAULT_LOSS, warnings)
+    return {
+        "state": state,
+        "config": config,
+        "loss": loss,
+        "timestamp": now_bdt_string(),
+        "warnings": warnings,
+    }
+
+
+@app.get("/api/signals")
+async def api_signals(limit: int = Query(20, ge=1, le=200)):
+    rows = read_csv_rows(SIGNALS_PATH, limit=limit)
+    return {
+        "signals": list(reversed(rows)),
+        "limit": limit,
+        "timestamp": now_bdt_string(),
+    }
+
+
+@app.post("/api/toggle")
+async def api_toggle():
+    config = _toggle_enabled_config()
+    return {
+        "ok": True,
+        "config": config,
+        "timestamp": now_bdt_string(),
+    }
+
+
+@app.post("/api/update-config")
+async def api_update_config(
+    max_signals_per_day: int = Form(...),
+    cooldown_candles: int = Form(...),
+    strict_mode: str = Form(...),
+):
+    config = _apply_config_updates(
+        max_signals_per_day=max_signals_per_day,
+        cooldown_candles=cooldown_candles,
+        strict_mode=strict_mode,
+    )
+    return {
+        "ok": True,
+        "config": config,
+        "timestamp": now_bdt_string(),
+    }
