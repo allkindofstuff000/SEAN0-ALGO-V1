@@ -1,0 +1,17 @@
+.cache/
+.env
+.venv/
+__pycache__/
+*.log
+*.py[cod]
+
+bot_runtime/
+logs/
+
+data/backtests/
+data/wfo/
+data/trade_log.csv
+data/threshold_history.csv
+
+frontend/node_modules/
+frontend/dist/
