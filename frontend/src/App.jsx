@@ -220,10 +220,7 @@ export default function App() {
           <div className="flex min-w-0 flex-1 flex-col gap-4">
             <Navbar
               activeLabel={activeItem.label}
-              loading={loading}
               status={snapshot.status}
-              onRefresh={refreshSnapshot}
-              onLogout={() => {}}
             />
 
             {error ? (

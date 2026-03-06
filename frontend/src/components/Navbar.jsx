@@ -1,5 +1,4 @@
-import { motion } from "framer-motion";
-import { Activity, LogOut, RefreshCcw, ShieldCheck, UserRound } from "lucide-react";
+import { Activity } from "lucide-react";
 
 import { formatTimestamp } from "../services/formatters";
 
@@ -24,7 +23,7 @@ function StatusChip({ label, value }) {
   );
 }
 
-export default function Navbar({ activeLabel, loading, status, onRefresh, onLogout }) {
+export default function Navbar({ activeLabel, status }) {
   return (
     <header className="megaboost-panel sticky top-3 z-20 px-5 py-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -39,33 +38,7 @@ export default function Navbar({ activeLabel, loading, status, onRefresh, onLogo
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <StatusChip label="Bot Status" value={status?.botStatus || "UNKNOWN"} />
-          <StatusChip label="Connection" value={status?.connectionStatus || "UNKNOWN"} />
-
-          <div className="rounded-full border border-white/10 bg-black/25 px-4 py-3">
-            <div className="flex items-center gap-2 text-[0.68rem] uppercase tracking-[0.24em] text-zinc-500">
-              <ShieldCheck className="h-3.5 w-3.5 text-accent-orange" />
-              Active License
-            </div>
-            <div className="mt-1 text-sm font-semibold text-white">Valid</div>
-          </div>
-
-          <div className="rounded-full border border-white/10 bg-black/25 px-4 py-3">
-            <div className="flex items-center gap-2 text-[0.68rem] uppercase tracking-[0.24em] text-zinc-500">
-              <UserRound className="h-3.5 w-3.5 text-accent-orange" />
-              User
-            </div>
-            <div className="mt-1 text-sm font-semibold text-white">admin</div>
-          </div>
-
-          <motion.button type="button" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="megaboost-button-muted" onClick={() => onRefresh()}>
-            <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </motion.button>
-          <motion.button type="button" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="megaboost-button-muted" onClick={onLogout}>
-            <LogOut className="h-4 w-4" />
-            Logout
-          </motion.button>
+          <StatusChip label="Connection Status" value={status?.connectionStatus || "UNKNOWN"} />
         </div>
       </div>
 
