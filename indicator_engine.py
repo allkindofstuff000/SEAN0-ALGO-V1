@@ -1,82 +1,72 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
-import numpy as np
 import pandas as pd
-import pandas_ta as ta
+
+try:
+    import pandas_ta as ta
+except Exception:  # pragma: no cover - fallback path
+    ta = None
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
 class IndicatorEngine:
     """
-    Computes strategy indicators on CLOSED candles only.
-    Input DataFrame must use UTC datetime index and include OHLCV columns.
+    Minimal indicator pipeline for the XAUUSD MVP.
+
+    Indicators:
+    - EMA20
+    - EMA50
+    - ATR14
     """
 
-    atr_length: int = 10
-    supertrend_multiplier: float = 3.0
-    macd_fast: int = 12
-    macd_slow: int = 26
-    macd_signal: int = 9
-    atr_rolling_window: int = 20
-    bdt_timezone: str = "Asia/Dhaka"
+    ema_fast: int = 20
+    ema_slow: int = 50
+    atr_length: int = 14
+    atr_baseline_window: int = 20
 
     def add_indicators(self, candles: pd.DataFrame) -> pd.DataFrame:
-        if candles.empty:
+        if candles is None or candles.empty:
             return candles.copy()
 
-        df = candles.copy()
-        df["session_vwap"] = self._daily_session_vwap(df)
+        required = {"timestamp", "open", "high", "low", "close", "volume"}
+        missing = required - set(candles.columns)
+        if missing:
+            raise ValueError(f"Missing required candle columns: {sorted(missing)}")
 
-        df["atr_10"] = ta.atr(
-            high=df["high"],
-            low=df["low"],
-            close=df["close"],
-            length=self.atr_length,
-        )
-        df["atr_rolling_mean_20"] = df["atr_10"].rolling(self.atr_rolling_window).mean()
+        out = candles.copy()
+        out["ema20"] = out["close"].ewm(span=self.ema_fast, adjust=False).mean()
+        out["ema50"] = out["close"].ewm(span=self.ema_slow, adjust=False).mean()
 
-        macd = ta.macd(
-            close=df["close"],
-            fast=self.macd_fast,
-            slow=self.macd_slow,
-            signal=self.macd_signal,
-        )
-        if macd is None or macd.empty:
-            raise RuntimeError("MACD calculation failed. Check candle data integrity.")
+        if ta is not None:
+            out["atr14"] = ta.atr(
+                high=out["high"],
+                low=out["low"],
+                close=out["close"],
+                length=self.atr_length,
+            )
+        else:
+            LOGGER.info("pandas_ta_missing using_manual_atr")
+            out["atr14"] = self._manual_atr(out)
 
-        df["macd_line"] = macd.iloc[:, 0]
-        df["macd_hist"] = macd.iloc[:, 1]
-        df["macd_signal"] = macd.iloc[:, 2]
+        out["atr_baseline"] = out["atr14"].rolling(self.atr_baseline_window, min_periods=self.atr_baseline_window).mean()
+        out["atr_ratio"] = out["atr14"] / out["atr_baseline"]
+        out["atr_expanding"] = out["atr_ratio"] > 1.0
+        return out
 
-        supertrend = ta.supertrend(
-            high=df["high"],
-            low=df["low"],
-            close=df["close"],
-            length=self.atr_length,
-            multiplier=self.supertrend_multiplier,
-        )
-        if supertrend is None or supertrend.empty:
-            raise RuntimeError("Supertrend calculation failed. Check candle data integrity.")
-
-        direction_column = [col for col in supertrend.columns if col.startswith("SUPERTd_")]
-        trend_column = [col for col in supertrend.columns if col.startswith("SUPERT_")]
-        if not direction_column or not trend_column:
-            raise RuntimeError("Unexpected Supertrend output columns.")
-
-        # Early rows can be NaN while indicators warm up; keep nullable Int64 to avoid cast crashes.
-        df["supertrend_direction"] = pd.to_numeric(
-            supertrend[direction_column[0]], errors="coerce"
-        ).astype("Int64")
-        df["supertrend_value"] = supertrend[trend_column[0]]
-        return df
-
-    def _daily_session_vwap(self, df: pd.DataFrame) -> pd.Series:
-        # VWAP reset at 00:00 BDT, then cumulative within each local date.
-        local_dates = df.index.tz_convert(self.bdt_timezone).date
-        typical_price = (df["high"] + df["low"] + df["close"]) / 3.0
-        price_volume = typical_price * df["volume"]
-        cumulative_pv = price_volume.groupby(local_dates).cumsum()
-        cumulative_vol = df["volume"].groupby(local_dates).cumsum()
-        return cumulative_pv / cumulative_vol.replace(0, np.nan)
+    def _manual_atr(self, out: pd.DataFrame) -> pd.Series:
+        previous_close = out["close"].shift(1)
+        true_range = pd.concat(
+            [
+                out["high"] - out["low"],
+                (out["high"] - previous_close).abs(),
+                (out["low"] - previous_close).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
+        return true_range.rolling(self.atr_length, min_periods=self.atr_length).mean()

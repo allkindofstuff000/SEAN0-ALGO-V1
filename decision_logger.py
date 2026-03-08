@@ -12,7 +12,7 @@ from typing import Any
 
 
 LOGGER = logging.getLogger(__name__)
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_TRACE_PATH = ROOT_DIR / "logs" / "decision_trace.log"
 
 
@@ -124,4 +124,3 @@ def get_decision_logger() -> DecisionLogger:
         if _default_logger is None:
             _default_logger = DecisionLogger()
     return _default_logger
-

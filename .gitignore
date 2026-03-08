@@ -7,6 +7,11 @@ __pycache__/
 
 bot_runtime/
 logs/
+config.json
+loss_streak.json
+performance.csv
+signals.csv
+state.json
 
 data/backtests/
 data/wfo/
