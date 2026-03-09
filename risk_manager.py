@@ -11,6 +11,7 @@ import pandas as pd
 
 from signal_logic import TradeSignal
 
+
 SIGNAL_FIELDS = [
     "timestamp_utc",
     "symbol",
@@ -25,16 +26,16 @@ SIGNAL_FIELDS = [
 @dataclass
 class RiskManager:
     """
-    Minimal operational risk layer for the XAUUSD MVP.
+    Minimal operational risk layer for the XAU-only MVP.
 
     Controls:
-    - max signals per day
-    - cooldown between signals
+    - max setups per day
+    - cooldown in entry candles
     - max manual loss streak
     """
 
     max_signals_per_day: int = 3
-    cooldown_minutes: int = 5
+    cooldown_candles: int = 1
     max_loss_streak: int = 2
     state_path: Path = Path("risk_state.json")
     signals_path: Path = Path("signals.csv")
@@ -47,30 +48,32 @@ class RiskManager:
         self._ensure_signal_file()
         self.update_performance_csv()
 
-    def can_emit_signal(self, timestamp_utc: datetime) -> tuple[bool, str]:
-        timestamp_utc = self._coerce_datetime(timestamp_utc)
+    def can_emit_signal(self, signal: TradeSignal) -> tuple[bool, str]:
+        timestamp_utc = self._coerce_datetime(signal.timestamp_utc)
         if self.get_consecutive_losses() >= self.max_loss_streak:
             return False, "blocked_max_loss_streak"
 
         current_day = timestamp_utc.astimezone(timezone.utc).strftime("%Y-%m-%d")
-        sent_today = int(self._state.get("daily_counts", {}).get(current_day, 0))
+        daily_counts = self._state.get("daily_counts", {})
+        sent_today = int(daily_counts.get(current_day, 0))
         if sent_today >= self.max_signals_per_day:
             return False, "blocked_max_signals_per_day"
 
-        last_signal_iso = self._state.get("last_signal_utc")
+        last_signal_iso = str(self._state.get("last_signal_utc", "") or "")
         if last_signal_iso:
-            last_signal = datetime.fromisoformat(str(last_signal_iso))
-            if timestamp_utc - last_signal < timedelta(minutes=self.cooldown_minutes):
-                return False, "blocked_cooldown"
+            last_signal = datetime.fromisoformat(last_signal_iso)
+            cooldown_minutes = self.cooldown_candles * signal.entry_timeframe_minutes
+            if timestamp_utc - last_signal < timedelta(minutes=cooldown_minutes):
+                return False, "blocked_cooldown_candles"
 
         return True, "ok"
 
     def record_signal(self, signal: TradeSignal) -> None:
         timestamp_utc = self._coerce_datetime(signal.timestamp_utc)
         day_key = timestamp_utc.astimezone(timezone.utc).strftime("%Y-%m-%d")
-        counts = dict(self._state.get("daily_counts", {}))
-        counts[day_key] = int(counts.get(day_key, 0)) + 1
-        self._state["daily_counts"] = counts
+        daily_counts = {str(key): int(value) for key, value in self._state.get("daily_counts", {}).items()}
+        daily_counts[day_key] = int(daily_counts.get(day_key, 0)) + 1
+        self._state["daily_counts"] = daily_counts
         self._state["last_signal_utc"] = timestamp_utc.astimezone(timezone.utc).isoformat()
         self._save_state()
         self._append_signal(signal)
@@ -154,7 +157,7 @@ class RiskManager:
     def snapshot(self) -> dict[str, Any]:
         return {
             "max_signals_per_day": self.max_signals_per_day,
-            "cooldown_minutes": self.cooldown_minutes,
+            "cooldown_candles": self.cooldown_candles,
             "max_loss_streak": self.max_loss_streak,
             "loss_streak": self.get_consecutive_losses(),
             "last_signal_utc": self._state.get("last_signal_utc"),
@@ -162,15 +165,39 @@ class RiskManager:
         }
 
     def _load_state(self) -> dict[str, Any]:
+        default_state = {"loss_streak": 0, "daily_counts": {}, "last_signal_utc": None}
         if not self.state_path.exists():
-            return {"loss_streak": 0, "daily_counts": {}, "last_signal_utc": None}
+            return default_state
         try:
             payload = json.loads(self.state_path.read_text(encoding="utf-8"))
             if not isinstance(payload, dict):
                 raise ValueError("invalid_risk_state")
+
+            payload.setdefault("loss_streak", 0)
+            payload.setdefault("daily_counts", {})
+            payload.setdefault("last_signal_utc", None)
+
+            legacy_last_signal_by_symbol = payload.pop("last_signal_utc_by_symbol", None)
+            if not payload.get("last_signal_utc") and isinstance(legacy_last_signal_by_symbol, dict):
+                payload["last_signal_utc"] = (
+                    legacy_last_signal_by_symbol.get("XAUUSDT")
+                    or legacy_last_signal_by_symbol.get("XAUUSD")
+                )
+
+            legacy_daily_counts = payload.get("daily_counts", {})
+            normalized_daily_counts: dict[str, int] = {}
+            if isinstance(legacy_daily_counts, dict):
+                for day_key, day_value in legacy_daily_counts.items():
+                    if isinstance(day_value, dict):
+                        normalized_daily_counts[str(day_key)] = int(
+                            day_value.get("XAUUSDT", day_value.get("XAUUSD", 0))
+                        )
+                    else:
+                        normalized_daily_counts[str(day_key)] = int(day_value)
+            payload["daily_counts"] = normalized_daily_counts
             return payload
         except Exception:
-            return {"loss_streak": 0, "daily_counts": {}, "last_signal_utc": None}
+            return default_state
 
     def _save_state(self) -> None:
         self.state_path.write_text(json.dumps(self._state, indent=2), encoding="utf-8")
@@ -191,10 +218,7 @@ class RiskManager:
             self._write_signal_rows(rows)
             return
         with self.signals_path.open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(
-                handle,
-                fieldnames=SIGNAL_FIELDS,
-            )
+            writer = csv.DictWriter(handle, fieldnames=SIGNAL_FIELDS)
             writer.writeheader()
 
     def _append_signal(self, signal: TradeSignal) -> None:
@@ -217,16 +241,10 @@ class RiskManager:
             return []
         with self.signals_path.open("r", newline="", encoding="utf-8") as handle:
             rows = list(csv.DictReader(handle))
-        normalized: list[dict[str, str]] = []
-        for row in rows:
-            normalized.append({field: str(row.get(field, "") or "") for field in SIGNAL_FIELDS})
-        return normalized
+        return [{field: str(row.get(field, "") or "") for field in SIGNAL_FIELDS} for row in rows]
 
     def _write_signal_rows(self, rows: list[dict[str, str]]) -> None:
         with self.signals_path.open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(
-                handle,
-                fieldnames=SIGNAL_FIELDS,
-            )
+            writer = csv.DictWriter(handle, fieldnames=SIGNAL_FIELDS)
             writer.writeheader()
             writer.writerows(rows)

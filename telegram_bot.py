@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from telegram import Bot
+
+if TYPE_CHECKING:
+    from signal_logic import TradeSignal
 
 
 LOGGER = logging.getLogger(__name__)
@@ -12,7 +16,7 @@ LOGGER = logging.getLogger(__name__)
 @dataclass
 class TelegramNotifier:
     """
-    Minimal Telegram notifier for the backend-only MVP.
+    Minimal Telegram notifier for the XAU-only backend MVP.
     """
 
     token: str
@@ -23,6 +27,14 @@ class TelegramNotifier:
         self._bot = Bot(self.token) if self.enabled else None
         if not self.enabled:
             LOGGER.warning("[TELEGRAM] notifier disabled; missing token/chat_id")
+
+    def format_signal(self, signal: "TradeSignal") -> str:
+        if signal.message_format == "FOREX":
+            return signal.forex_message()
+        return signal.binary_message()
+
+    async def send_signal(self, signal: "TradeSignal") -> bool:
+        return await self.send_message(self.format_signal(signal))
 
     async def send_message(self, text: str) -> bool:
         if not self.enabled or self._bot is None:

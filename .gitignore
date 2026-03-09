@@ -9,6 +9,7 @@ bot_runtime/
 logs/
 config.json
 loss_streak.json
+risk_state.json
 performance.csv
 signals.csv
 state.json

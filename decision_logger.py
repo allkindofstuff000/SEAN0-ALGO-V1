@@ -37,12 +37,116 @@ class DecisionLogger:
         if self._closed:
             return
         self._ensure_worker()
+        record = dict(payload)
+        record.setdefault("symbol", "UNKNOWN")
+        record.setdefault("signal_modes", [])
+        record.setdefault("decision", "accepted" if record.get("signal_generated") else "rejected")
         try:
-            self._queue.put_nowait(self._normalize_value(payload))
+            self._queue.put_nowait(self._normalize_value(record))
         except Full:
             self._dropped += 1
             if self._dropped == 1 or self._dropped % 100 == 0:
                 LOGGER.warning("decision_logger_queue_full dropped=%s", self._dropped)
+
+    def log_skip(self, symbol: str, reason: str, payload: dict[str, Any] | None = None) -> None:
+        LOGGER.info("[SKIP] symbol=%s reason=%s", symbol, reason)
+        record = dict(payload or {})
+        record["symbol"] = symbol
+        record["reason"] = reason
+        record["signal_generated"] = False
+        record["decision"] = "skipped"
+        self.log_decision(record)
+
+    def log_filter(self, symbol: str, name: str, payload: dict[str, Any] | None = None) -> None:
+        details = dict(payload or {})
+        if name == "Weak trend":
+            LOGGER.info(
+                "[FILTER] Weak trend detected symbol=%s ema_distance=%s atr=%s",
+                symbol,
+                details.get("ema_distance"),
+                details.get("atr"),
+            )
+        else:
+            LOGGER.info("[FILTER] %s symbol=%s", name, symbol)
+
+    def log_trend(self, ema50: float, ema200: float) -> str:
+        if ema50 > ema200:
+            LOGGER.info("[TREND] EMA50 > EMA200 -> bullish bias (%.2f/%.2f)", ema50, ema200)
+            return "bull"
+        if ema50 < ema200:
+            LOGGER.info("[TREND] EMA50 < EMA200 -> bearish bias (%.2f/%.2f)", ema50, ema200)
+            return "bear"
+        LOGGER.info("[TREND] EMA50 = EMA200 -> no clear bias (%.2f/%.2f)", ema50, ema200)
+        return "flat"
+
+    def log_rsi(
+        self,
+        rsi_value: float,
+        trend: str,
+        *,
+        buy_threshold: float = 55.0,
+        sell_threshold: float = 45.0,
+    ) -> bool:
+        normalized = trend.strip().lower()
+        if normalized in {"bull", "buy"}:
+            if rsi_value > buy_threshold:
+                LOGGER.info("[MOMENTUM] RSI = %.2f -> buy momentum OK", rsi_value)
+                return True
+            LOGGER.info("[MOMENTUM] RSI = %.2f -> rejected (weak buy momentum)", rsi_value)
+            return False
+        if normalized in {"bear", "sell"}:
+            if rsi_value < sell_threshold:
+                LOGGER.info("[MOMENTUM] RSI = %.2f -> sell momentum OK", rsi_value)
+                return True
+            LOGGER.info("[MOMENTUM] RSI = %.2f -> rejected (weak sell momentum)", rsi_value)
+            return False
+        LOGGER.info("[MOMENTUM] RSI = %.2f -> skipped (no trend bias)", rsi_value)
+        return False
+
+    def log_volatility(self, atr: float, atr_avg: float) -> bool:
+        if atr_avg > 0 and atr > atr_avg:
+            LOGGER.info(
+                "[VOLATILITY] ATR > ATR_AVG -> volatility expansion (%.2f/%.2f)",
+                atr,
+                atr_avg,
+            )
+            return True
+        LOGGER.info("[VOLATILITY] ATR < ATR_AVG -> rejected (low volatility) (%.2f/%.2f)", atr, atr_avg)
+        return False
+
+    def log_session(self, session: str, allowed: bool) -> bool:
+        label = session.replace("_", " ").title()
+        if allowed:
+            LOGGER.info("[SESSION] %s session -> allowed", label)
+            return True
+        LOGGER.info("[SESSION] %s session -> rejected", label)
+        return False
+
+    def log_breakout(self, close: float, prev_high: float, prev_low: float, trend: str) -> bool:
+        normalized = trend.strip().lower()
+        if normalized in {"bull", "buy"}:
+            if close > prev_high:
+                LOGGER.info("[BREAKOUT] Previous candle high broken (%.2f > %.2f)", close, prev_high)
+                return True
+            LOGGER.info("[BREAKOUT] No bullish breakout (%.2f <= %.2f)", close, prev_high)
+            return False
+        if normalized in {"bear", "sell"}:
+            if close < prev_low:
+                LOGGER.info("[BREAKOUT] Previous candle low broken (%.2f < %.2f)", close, prev_low)
+                return True
+            LOGGER.info("[BREAKOUT] No bearish breakout (%.2f >= %.2f)", close, prev_low)
+            return False
+        LOGGER.info("[BREAKOUT] No breakout -> rejected (no trend bias)")
+        return False
+
+    def log_result(self, signal: str | None, reason: str = "") -> None:
+        if signal is not None and signal.strip().upper() in {"BUY", "SELL"}:
+            LOGGER.info("[RESULT] %s SIGNAL", signal.strip().upper())
+            return
+        if reason:
+            LOGGER.info("[RESULT] NO SIGNAL (%s)", reason)
+            return
+        LOGGER.info("[RESULT] NO SIGNAL")
 
     def close(self) -> None:
         if self._closed:
