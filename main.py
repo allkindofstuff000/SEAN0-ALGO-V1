@@ -170,6 +170,9 @@ async def run_loop() -> None:
     provider_summary = fetcher.provider_summary()
     runtime_state = RuntimeState()
     last_processed_entry_candle: pd.Timestamp | None = None
+    # CLEANER LOGS: only log DATA/INDICATOR on new candles
+    last_logged_entry_candle: pd.Timestamp | None = None
+    last_logged_trend_candle: pd.Timestamp | None = None
     last_skip_log: datetime.datetime | None = None
     max_cycles = max(0, int(os.getenv("MAX_CYCLES", str(DEFAULT_MAX_CYCLES)) or str(DEFAULT_MAX_CYCLES)))
     cycles_completed = 0
@@ -232,20 +235,14 @@ async def run_loop() -> None:
             entry_candle_time = pd.Timestamp(entry_indicators["timestamp"].iloc[-1])
             trend_last = trend_indicators.iloc[-1]
             entry_last = entry_indicators.iloc[-1]
-
-            LOGGER.info(
-                "[DATA] symbol=%s trend_tf=%s trend_candle=%s entry_tf=%s entry_candle=%s",
-                SYMBOL,
-                TREND_TIMEFRAME,
-                trend_candle_time.isoformat(),
-                ENTRY_TIMEFRAME,
-                entry_candle_time.isoformat(),
+            should_log_market_snapshot = bool(
+                trend_candle_time != last_logged_trend_candle
+                or entry_candle_time != last_logged_entry_candle
             )
 
             if last_processed_entry_candle is not None and entry_candle_time <= last_processed_entry_candle:
                 runtime_state.status = "waiting"
                 runtime_state.last_reason = "waiting_for_new_closed_entry_candle"
-                LOGGER.info("[DATA] symbol=%s waiting for new closed entry candle", SYMBOL)
                 _write_state(runtime_state)
                 cycles_completed += 1
                 if max_cycles and cycles_completed >= max_cycles:
@@ -255,14 +252,25 @@ async def run_loop() -> None:
                 continue
 
             last_processed_entry_candle = entry_candle_time
-            LOGGER.info(
-                "[INDICATOR] symbol=%s trend_ema50=%.4f trend_ema200=%.4f entry_rsi=%.2f entry_atr=%.4f",
-                SYMBOL,
-                float(trend_last["ema50"]),
-                float(trend_last["ema200"]),
-                float(entry_last["rsi14"]),
-                float(entry_last["atr14"]),
-            )
+            if should_log_market_snapshot:
+                LOGGER.info(
+                    "[DATA] symbol=%s trend_tf=%s trend_candle=%s entry_tf=%s entry_candle=%s",
+                    SYMBOL,
+                    TREND_TIMEFRAME,
+                    trend_candle_time.isoformat(),
+                    ENTRY_TIMEFRAME,
+                    entry_candle_time.isoformat(),
+                )
+                LOGGER.info(
+                    "[INDICATOR] symbol=%s trend_ema50=%.4f trend_ema200=%.4f entry_rsi=%.2f entry_atr=%.4f",
+                    SYMBOL,
+                    float(trend_last["ema50"]),
+                    float(trend_last["ema200"]),
+                    float(entry_last["rsi14"]),
+                    float(entry_last["atr14"]),
+                )
+                last_logged_trend_candle = trend_candle_time
+                last_logged_entry_candle = entry_candle_time
 
             decision = signal_engine.evaluate(trend_indicators, entry_indicators, now_utc=now_utc)
             runtime_state = _state_from_decision(

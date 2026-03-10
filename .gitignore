@@ -13,6 +13,7 @@ risk_state.json
 performance.csv
 signals.csv
 state.json
+trades.csv
 
 data/backtests/
 data/wfo/
