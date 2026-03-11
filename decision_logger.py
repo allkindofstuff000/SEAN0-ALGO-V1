@@ -79,6 +79,20 @@ class DecisionLogger:
         LOGGER.info("[TREND] EMA50 = EMA200 -> no clear bias (%.2f/%.2f)", ema50, ema200)
         return "flat"
 
+    def log_regime(self, regime: str, confidence: float) -> str:
+        normalized = str(regime).strip().lower()
+        if normalized == "trend":
+            LOGGER.info("[REGIME] trend detected confidence=%.2f", confidence)
+        elif normalized == "range":
+            LOGGER.info("[REGIME] ranging market detected confidence=%.2f", confidence)
+        elif normalized == "high_volatility":
+            LOGGER.info("[REGIME] high volatility detected confidence=%.2f", confidence)
+        elif normalized == "low_volatility":
+            LOGGER.info("[REGIME] low volatility detected confidence=%.2f", confidence)
+        else:
+            LOGGER.info("[REGIME] %s detected confidence=%.2f", regime, confidence)
+        return normalized
+
     def log_rsi(
         self,
         rsi_value: float,
@@ -103,15 +117,22 @@ class DecisionLogger:
         LOGGER.info("[MOMENTUM] RSI = %.2f -> skipped (no trend bias)", rsi_value)
         return False
 
-    def log_volatility(self, atr: float, atr_avg: float) -> bool:
-        if atr_avg > 0 and atr > atr_avg:
+    def log_volatility(self, atr: float, atr_avg: float, *, threshold_multiplier: float = 1.0) -> bool:
+        threshold = atr_avg * threshold_multiplier
+        if threshold > 0 and atr > threshold:
             LOGGER.info(
-                "[VOLATILITY] ATR > ATR_AVG -> volatility expansion (%.2f/%.2f)",
+                "[VOLATILITY] ATR > ATR_AVG*%.2f -> volatility expansion (%.2f/%.2f)",
+                threshold_multiplier,
                 atr,
-                atr_avg,
+                threshold,
             )
             return True
-        LOGGER.info("[VOLATILITY] ATR < ATR_AVG -> rejected (low volatility) (%.2f/%.2f)", atr, atr_avg)
+        LOGGER.info(
+            "[VOLATILITY] ATR < ATR_AVG*%.2f -> rejected (low volatility) (%.2f/%.2f)",
+            threshold_multiplier,
+            atr,
+            threshold,
+        )
         return False
 
     def log_session(self, session: str, allowed: bool) -> bool:
@@ -137,6 +158,33 @@ class DecisionLogger:
             LOGGER.info("[BREAKOUT] No bearish breakout (%.2f >= %.2f)", close, prev_low)
             return False
         LOGGER.info("[BREAKOUT] No breakout -> rejected (no trend bias)")
+        return False
+
+    def log_range_setup(self, direction: str | None, close: float, prev_high: float, prev_low: float, rsi_value: float) -> bool:
+        normalized = (direction or "").strip().upper()
+        if normalized == "BUY":
+            LOGGER.info(
+                "[RANGE] mean reversion BUY setup (close=%.2f prev_low=%.2f rsi=%.2f)",
+                close,
+                prev_low,
+                rsi_value,
+            )
+            return True
+        if normalized == "SELL":
+            LOGGER.info(
+                "[RANGE] mean reversion SELL setup (close=%.2f prev_high=%.2f rsi=%.2f)",
+                close,
+                prev_high,
+                rsi_value,
+            )
+            return True
+        LOGGER.info(
+            "[RANGE] no mean reversion setup (close=%.2f prev_high=%.2f prev_low=%.2f rsi=%.2f)",
+            close,
+            prev_high,
+            prev_low,
+            rsi_value,
+        )
         return False
 
     def log_result(self, signal: str | None, reason: str = "") -> None:

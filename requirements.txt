@@ -7,3 +7,5 @@ python-dotenv==1.2.2
 numpy==2.2.6
 pytz==2024.2
 requests>=2.32.0
+matplotlib>=3.9.0
+streamlit>=1.44.0

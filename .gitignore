@@ -14,6 +14,10 @@ performance.csv
 signals.csv
 state.json
 trades.csv
+evaluations.csv
+equity.png
+backtest_trades.csv
+equity_curve.png
 
 data/backtests/
 data/wfo/

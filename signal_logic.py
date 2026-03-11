@@ -8,6 +8,7 @@ import pandas as pd
 import pytz
 
 from decision_logger import DecisionLogger, get_decision_logger
+from market_regime_engine import detect_market_regime
 from trade_filters import run_trade_filters
 
 
@@ -97,6 +98,10 @@ class SignalDecision:
     score: int
     score_threshold: int
     direction: str
+    market_regime: str
+    regime_confidence: float
+    volatility_regime: str
+    strategy_behavior: str
     trend_alignment: bool
     price_trigger: bool
     rsi_filter: bool
@@ -105,6 +110,7 @@ class SignalDecision:
     signal_generated: bool
     reason: str
     breakdown: dict[str, int]
+    regime_details: dict[str, Any] = field(default_factory=dict)
     signal: TradeSignal | None = None
     signals: list[TradeSignal] = field(default_factory=list)
 
@@ -152,13 +158,19 @@ class SignalLogic:
         entry_prev = entry_candles.iloc[-2]
         candle_time = self._as_timestamp(entry_last["timestamp"])
         session = self._detect_session(now_utc)
+        regime_details = detect_market_regime(trend_candles, entry_candles)
+        market_regime = str(regime_details["regime"])
+        regime_confidence = float(regime_details["confidence"])
+        trend_regime = str(regime_details.get("trend_regime", "range"))
+        volatility_regime = str(regime_details.get("volatility_regime", "normal_volatility"))
+        strategy_behavior = str(regime_details.get("strategy_behavior", "breakout"))
+        self.decision_logger.log_regime(market_regime, regime_confidence)
         trend_bias = self.decision_logger.log_trend(
             float(trend_last["ema50"]),
             float(trend_last["ema200"]),
         )
         bullish_trend = trend_bias == "bull"
         bearish_trend = trend_bias == "bear"
-        trend_alignment = bullish_trend or bearish_trend
         session_filter = self.decision_logger.log_session(
             session,
             session in {"LONDON", "OVERLAP", "NEW_YORK"},
@@ -170,6 +182,7 @@ class SignalLogic:
             direction = "SELL"
         else:
             direction = "NONE"
+        trend_alignment = (bullish_trend or bearish_trend) and trend_regime == "trend"
         price_trigger = self.decision_logger.log_breakout(
             float(entry_last["close"]),
             float(entry_prev["high"]),
@@ -182,9 +195,15 @@ class SignalLogic:
             buy_threshold=55.0,
             sell_threshold=45.0,
         )
+
+        atr_threshold_multiplier = self._atr_threshold_multiplier(
+            market_regime=market_regime,
+            volatility_regime=volatility_regime,
+        )
         atr_expansion = self.decision_logger.log_volatility(
             float(entry_last["atr14"]),
             float(entry_last.get("atr20_avg", 0.0) or 0.0),
+            threshold_multiplier=atr_threshold_multiplier,
         )
         breakdown = self._score_breakdown(
             trend_alignment=trend_alignment,
@@ -200,11 +219,14 @@ class SignalLogic:
             and price_trigger
             and rsi_filter
             and atr_expansion
+            and market_regime not in {"range", "low_volatility"}
             and score >= self.threshold
         )
 
         reason = self._build_reason(
             direction=direction,
+            market_regime=market_regime,
+            volatility_regime=volatility_regime,
             checks={
                 "session_filter": session_filter,
                 "trend_alignment": trend_alignment,
@@ -224,10 +246,14 @@ class SignalLogic:
             if not filter_result["allowed"]:
                 return self._build_filter_skip_decision(
                     candle_time=candle_time,
-                    strategy="xau_4_rule_breakout_strategy",
+                    strategy="xau_regime_adaptive_strategy",
                     session=session,
                     score=score,
                     direction=direction,
+                    market_regime=market_regime,
+                    regime_confidence=regime_confidence,
+                    volatility_regime=volatility_regime,
+                    strategy_behavior=strategy_behavior,
                     trend_alignment=trend_alignment,
                     price_trigger=price_trigger,
                     rsi_filter=rsi_filter,
@@ -236,6 +262,7 @@ class SignalLogic:
                     breakdown=breakdown,
                     filter_reason=str(filter_result["reason"]),
                     filter_details=filter_result,
+                    regime_details=regime_details,
                 )
 
         signals: list[TradeSignal] = []
@@ -248,6 +275,8 @@ class SignalLogic:
                 entry_price=float(entry_last["close"]),
                 atr_value=float(entry_last["atr14"]),
                 session=session,
+                strategy_behavior=strategy_behavior,
+                market_regime=market_regime,
             )
             if signals:
                 primary_signal = signals[0]
@@ -255,11 +284,15 @@ class SignalLogic:
         decision = SignalDecision(
             candle_time_utc=candle_time,
             symbol=self._normalize_symbol(self.symbol),
-            strategy="xau_4_rule_breakout_strategy",
+            strategy="xau_regime_adaptive_strategy",
             session=session,
             score=score,
             score_threshold=self.threshold,
             direction=direction,
+            market_regime=market_regime,
+            regime_confidence=regime_confidence,
+            volatility_regime=volatility_regime,
+            strategy_behavior=strategy_behavior,
             trend_alignment=trend_alignment,
             price_trigger=price_trigger,
             rsi_filter=rsi_filter,
@@ -268,6 +301,7 @@ class SignalLogic:
             signal_generated=bool(signals),
             reason=reason,
             breakdown=breakdown,
+            regime_details=regime_details,
             signal=primary_signal,
             signals=signals,
         )
@@ -283,6 +317,8 @@ class SignalLogic:
         entry_price: float,
         atr_value: float,
         session: str,
+        strategy_behavior: str,
+        market_regime: str,
     ) -> list[TradeSignal]:
         normalized_modes = []
         for mode in self.signal_modes:
@@ -308,7 +344,7 @@ class SignalLogic:
                         entry_timeframe="5m",
                         atr=atr_value,
                         expiry_minutes=5,
-                        reason_summary="15m EMA trend + 5m breakout + RSI + ATR",
+                        reason_summary=self._signal_summary(strategy_behavior, market_regime),
                         session=session,
                     )
                 )
@@ -330,7 +366,7 @@ class SignalLogic:
                     entry_timeframe="5m",
                     atr=atr_value,
                     expiry_minutes=None,
-                    reason_summary="15m EMA trend + 5m breakout + RSI + ATR",
+                    reason_summary=self._signal_summary(strategy_behavior, market_regime),
                     session=session,
                 )
             )
@@ -346,6 +382,10 @@ class SignalLogic:
                 "symbol": decision.symbol,
                 "strategy": decision.strategy,
                 "session": decision.session,
+                "market_regime": decision.market_regime,
+                "regime_confidence": decision.regime_confidence,
+                "volatility_regime": decision.volatility_regime,
+                "strategy_behavior": decision.strategy_behavior,
                 "trend_alignment": decision.trend_alignment,
                 "price_trigger": decision.price_trigger,
                 "rsi_filter": decision.rsi_filter,
@@ -357,6 +397,7 @@ class SignalLogic:
                 "reason": decision.reason,
                 "direction": decision.direction,
                 "breakdown": decision.breakdown,
+                "regime_details": decision.regime_details,
                 "signal_modes": [signal.signal_kind for signal in decision.signals],
             }
         )
@@ -369,6 +410,10 @@ class SignalLogic:
         session: str,
         score: int,
         direction: str,
+        market_regime: str,
+        regime_confidence: float,
+        volatility_regime: str,
+        strategy_behavior: str,
         trend_alignment: bool,
         price_trigger: bool,
         rsi_filter: bool,
@@ -377,6 +422,7 @@ class SignalLogic:
         breakdown: dict[str, int],
         filter_reason: str,
         filter_details: dict[str, Any] | None = None,
+        regime_details: dict[str, Any] | None = None,
     ) -> SignalDecision:
         reason = f"skipped:{filter_reason}"
         decision = SignalDecision(
@@ -387,6 +433,10 @@ class SignalLogic:
             score=score,
             score_threshold=self.threshold,
             direction=direction,
+            market_regime=market_regime,
+            regime_confidence=regime_confidence,
+            volatility_regime=volatility_regime,
+            strategy_behavior=strategy_behavior,
             trend_alignment=trend_alignment,
             price_trigger=price_trigger,
             rsi_filter=rsi_filter,
@@ -395,6 +445,7 @@ class SignalLogic:
             signal_generated=False,
             reason=reason,
             breakdown=breakdown,
+            regime_details=regime_details or {},
             signal=None,
             signals=[],
         )
@@ -406,6 +457,10 @@ class SignalLogic:
                 "timestamp": decision.candle_time_utc,
                 "strategy": decision.strategy,
                 "session": decision.session,
+                "market_regime": decision.market_regime,
+                "regime_confidence": decision.regime_confidence,
+                "volatility_regime": decision.volatility_regime,
+                "strategy_behavior": decision.strategy_behavior,
                 "trend_alignment": decision.trend_alignment,
                 "price_trigger": decision.price_trigger,
                 "rsi_filter": decision.rsi_filter,
@@ -415,6 +470,7 @@ class SignalLogic:
                 "score_threshold": decision.score_threshold,
                 "direction": decision.direction,
                 "breakdown": decision.breakdown,
+                "regime_details": decision.regime_details,
                 "signal_modes": list(self.signal_modes),
                 "filter_details": filter_details or {},
             },
@@ -437,13 +493,38 @@ class SignalLogic:
             "atr_expansion": self.rule_weight if atr_expansion else 0,
         }
 
-    def _build_reason(self, *, direction: str, checks: dict[str, bool]) -> str:
+    def _build_reason(
+        self,
+        *,
+        direction: str,
+        market_regime: str,
+        volatility_regime: str,
+        checks: dict[str, bool],
+    ) -> str:
+        if market_regime == "range":
+            return "rejected:ranging_market"
+        if volatility_regime == "low_volatility":
+            return "rejected:low_volatility_regime"
         if direction == "NONE":
             return "rejected:no_trend_alignment"
         failed = [name for name, passed in checks.items() if not passed]
         if not failed:
             return "accepted"
         return f"rejected:{','.join(failed)}"
+
+    @staticmethod
+    def _atr_threshold_multiplier(*, market_regime: str, volatility_regime: str) -> float:
+        if market_regime == "high_volatility" or volatility_regime == "high_volatility":
+            return 1.45
+        return 1.0
+
+    @staticmethod
+    def _signal_summary(strategy_behavior: str, market_regime: str) -> str:
+        if strategy_behavior == "standby":
+            return f"standby due to {market_regime}"
+        if strategy_behavior == "breakout_cautious":
+            return f"cautious breakout active ({market_regime})"
+        return f"trend breakout active ({market_regime})"
 
     @staticmethod
     def _ensure_minimum_rows(trend_candles: pd.DataFrame, entry_candles: pd.DataFrame) -> None:
