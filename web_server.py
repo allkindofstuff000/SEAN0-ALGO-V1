@@ -152,9 +152,13 @@ def run_backtest_endpoint(req: BacktestRequest) -> dict[str, Any]:
         )
 
         # ── Resolve date range ────────────────────────────────────────────────
-        today = pd.Timestamp.now(tz="UTC").normalize()
+        now_utc = pd.Timestamp.now(tz="UTC")
+        today   = now_utc.normalize()
         start_utc = engine.parse_date_utc(req.start_date) if req.start_date else (today - pd.Timedelta(days=180))
-        end_utc = engine.parse_date_utc(req.end_date, inclusive_end=True) if req.end_date else today
+        end_utc   = engine.parse_date_utc(req.end_date, inclusive_end=True) if req.end_date else today
+        # Cap end_utc to the current moment — OANDA rejects requests with a
+        # "to" timestamp that lies in the future (returns HTTP 400).
+        end_utc = min(end_utc, now_utc)
 
         if end_utc <= start_utc:
             return {"error": "End date must be after start date.", "metrics": {}, "trades": [], "equity_curve": []}
