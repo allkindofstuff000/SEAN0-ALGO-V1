@@ -25,7 +25,7 @@ def prepare_regime_history(
     """
     Merge 15m EMA state with 5m ADX/ATR state so each 5m row has a regime label.
 
-    The resulting frame is used by the live signal engine, the OpenClaw tool surface,
+    The resulting frame is used by the live signal engine and the backtest tool,
     and the Streamlit dashboard.
     """
 

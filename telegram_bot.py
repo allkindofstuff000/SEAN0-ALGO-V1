@@ -29,9 +29,7 @@ class TelegramNotifier:
             LOGGER.warning("[TELEGRAM] notifier disabled; missing token/chat_id")
 
     def format_signal(self, signal: "TradeSignal") -> str:
-        if signal.message_format == "FOREX":
-            return signal.forex_message()
-        return signal.binary_message()
+        return signal.forex_message()
 
     async def send_signal(self, signal: "TradeSignal") -> bool:
         return await self.send_message(self.format_signal(signal))

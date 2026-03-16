@@ -9,13 +9,21 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import certifi
 import pandas as pd
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - optional dependency guard
+    load_dotenv = None
+
 
 LOGGER = logging.getLogger(__name__)
+ROOT = Path(__file__).resolve().parent
+ENV_PATH = ROOT / ".env"
 XAU_SYMBOLS = {"XAUUSD", "XAUUSDT"}
 OANDA_INSTRUMENT = "XAU_USD"
 OANDA_GRANULARITY = {
@@ -32,6 +40,15 @@ OANDA_BASE_URLS = {
 }
 
 
+def _load_env_file() -> None:
+    # NEW: Corporate OANDA API key update
+    if load_dotenv is not None and ENV_PATH.exists():
+        load_dotenv(ENV_PATH, override=False)
+
+
+_load_env_file()
+
+
 @dataclass
 class DataFetcher:
     """
@@ -46,15 +63,30 @@ class DataFetcher:
     request_limit: int = 350
     max_retries: int = 5
     retry_base_seconds: float = 12.0
-    oanda_api_key: str = field(default_factory=lambda: os.getenv("OANDA_API_KEY", "").strip())
+    oanda_api_key: str = field(default_factory=lambda: os.environ.get("OANDA_API_KEY", "").strip())
     oanda_environment: str = field(default_factory=lambda: os.getenv("OANDA_ENV", "practice").strip().lower())
+    oanda_api_url: str = field(default_factory=lambda: os.environ.get("OANDA_API_URL", "").strip())
     oanda_price_component: str = field(default_factory=lambda: os.getenv("OANDA_PRICE_COMPONENT", "M").strip().upper())
 
     def __post_init__(self) -> None:
+        _load_env_file()
+        env_api_key = os.environ.get("OANDA_API_KEY", "").strip()
+        env_api_url = os.environ.get("OANDA_API_URL", "").strip()
+        env_environment = os.environ.get("OANDA_ENV", "practice").strip().lower()
+        env_price_component = os.environ.get("OANDA_PRICE_COMPONENT", "M").strip().upper()
+
+        if env_api_key and not self.oanda_api_key:
+            self.oanda_api_key = env_api_key
+        if env_api_url and not self.oanda_api_url:
+            self.oanda_api_url = env_api_url
+        if env_environment and (not self.oanda_environment or self.oanda_environment == "practice"):
+            self.oanda_environment = env_environment
+        if env_price_component and (not self.oanda_price_component or self.oanda_price_component == "M"):
+            self.oanda_price_component = env_price_component
         if not self.oanda_api_key:
-            raise RuntimeError("OANDA_API_KEY is required for true XAUUSD intraday data.")
+            raise RuntimeError("OANDA_API_KEY is missing. Add it to .env or export it in the environment.")
         self._ssl_context = ssl.create_default_context(cafile=certifi.where())
-        self._oanda_base_url = OANDA_BASE_URLS.get(self.oanda_environment, OANDA_BASE_URLS["practice"])
+        self._oanda_base_url = self._resolve_oanda_base_url()
 
     def fetch_market_data(
         self,
@@ -136,6 +168,7 @@ class DataFetcher:
             "provider": "oanda",
             "instrument": OANDA_INSTRUMENT,
             "environment": self.oanda_environment,
+            "api_url": self._oanda_base_url,
             "price_component": self.oanda_price_component,
             "mode": "true_xauusd_intraday",
             "note": "Using OANDA XAU_USD intraday candles for real spot-gold data",
@@ -172,7 +205,10 @@ class DataFetcher:
                 body = error.read().decode("utf-8", errors="ignore")
                 wait_seconds = self.retry_base_seconds
                 if error.code in {401, 403}:
-                    raise RuntimeError("OANDA authorization failed. Set a valid OANDA_API_KEY and OANDA_ENV.") from error
+                    raise RuntimeError(
+                        "OANDA authorization failed. Verify OANDA_API_KEY and the live/practice endpoint settings "
+                        "(OANDA_API_URL or OANDA_ENV)."
+                    ) from error
                 LOGGER.warning(
                     "oanda_fetch_failed status=%s attempt=%s/%s error=%s retry_in=%.2fs",
                     error.code,
@@ -203,9 +239,29 @@ class DataFetcher:
     def _normalize_symbol(value: str) -> str:
         return value.replace("/", "").replace(":", "").replace("-", "").replace(" ", "").upper()
 
+    def _resolve_oanda_base_url(self) -> str:
+        # NEW: Corporate OANDA API key update
+        if self.oanda_api_url:
+            normalized = self.oanda_api_url.strip().rstrip("/")
+            if normalized.endswith("/v3"):
+                normalized = normalized[: -len("/v3")]
+            return normalized
+        return OANDA_BASE_URLS.get(self.oanda_environment, OANDA_BASE_URLS["practice"])
+
     @staticmethod
     def _oanda_granularity(timeframe: str) -> str:
         normalized = timeframe.strip().lower()
         if normalized not in OANDA_GRANULARITY:
             raise ValueError(f"Unsupported OANDA timeframe: {timeframe}")
         return OANDA_GRANULARITY[normalized]
+
+
+if __name__ == "__main__":
+    try:
+        fetcher = DataFetcher(min_candles=5, request_limit=5)
+        candles = fetcher.fetch_market_data("XAUUSDT", "5m", 5)
+        last_close = float(candles["close"].iloc[-1])
+        print(f"Fetched 5m candle: {last_close}")
+    except Exception as error:  # pragma: no cover - smoke test helper
+        print(f"OANDA fetch test failed: {error}")
+        raise

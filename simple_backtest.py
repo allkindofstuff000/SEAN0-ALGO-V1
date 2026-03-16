@@ -8,7 +8,7 @@ import ccxt
 import pandas as pd
 
 from indicator_engine import IndicatorEngine
-from signal_logic import BTC_SYMBOLS, TradeSignal, XAU_SYMBOLS, SignalLogic
+from signal_logic import TradeSignal, XAU_SYMBOLS, SignalLogic
 
 
 LOGGER = logging.getLogger("simple_backtest")
@@ -348,7 +348,7 @@ def main() -> None:
     configure_logging()
     args = parse_args()
     normalized_symbol = normalize_symbol(args.symbol)
-    if normalized_symbol not in XAU_SYMBOLS | BTC_SYMBOLS:
+    if normalized_symbol not in XAU_SYMBOLS:
         raise ValueError(f"Unsupported symbol: {args.symbol}")
 
     trend_candles, entry_candles = fetch_strategy_candles(normalized_symbol, args.limit)

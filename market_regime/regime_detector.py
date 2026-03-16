@@ -20,7 +20,7 @@ def build_regime_input_frame(
     Build a regime-ready snapshot by combining 15m trend EMA values with 5m ATR/RSI values.
 
     The detector only needs the latest aligned state, so a single-row DataFrame keeps the
-    integration simple for both live evaluation and OpenClaw tools.
+    integration simple for both live evaluation and backtest tools.
     """
 
     if trend_candles is None or trend_candles.empty:

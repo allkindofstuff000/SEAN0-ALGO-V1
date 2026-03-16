@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SEAN0-ALGO · Dashboard</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #212121;
+      --surface:      #2f2f2f;
+      --surface-alt:  #383838;
+      --border:       #424242;
+      --text:         #ececec;
+      --muted:        #8e8ea0;
+      --accent:       #10a37f;
+      --accent-dim:   rgba(16,163,127,.12);
+      --win:          #10a37f;
+      --win-dim:      rgba(16,163,127,.12);
+      --loss:         #ef4444;
+      --loss-dim:     rgba(239,68,68,.12);
+      --warn:         #f59e0b;
+      --radius:       10px;
+      --font:         -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    html, body          { height:100%; background:var(--bg); color:var(--text); font-family:var(--font); font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+    #root               { min-height:100vh; display:flex; flex-direction:column; }
+    a                   { color:var(--accent); text-decoration:none; }
+
+    /* ── Header ─────────────────────────────────── */
+    .hdr                { display:flex; align-items:center; justify-content:space-between; padding:13px 24px; border-bottom:1px solid var(--border); background:var(--bg); position:sticky; top:0; z-index:100; backdrop-filter:blur(8px); }
+    .hdr-brand          { display:flex; align-items:center; gap:9px; font-weight:600; font-size:15px; letter-spacing:-.01em; }
+    .hdr-dot            { width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 6px var(--accent); animation:pulse 2.5s infinite; }
+    .hdr-meta           { display:flex; align-items:center; gap:10px; font-size:12px; color:var(--muted); }
+
+    /* ── Badges ─────────────────────────────────── */
+    .badge              { padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; white-space:nowrap; }
+    .badge-green        { background:var(--accent-dim); color:var(--accent); }
+    .badge-gray         { background:rgba(255,255,255,.07); color:var(--muted); }
+    .badge-red          { background:var(--loss-dim); color:var(--loss); }
+
+    /* ── Layout ──────────────────────────────────── */
+    .main               { flex:1; padding:22px 24px 40px; max-width:1440px; margin:0 auto; width:100%; display:flex; flex-direction:column; gap:18px; }
+    .grid2              { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+    @media(max-width:900px){ .grid2{ grid-template-columns:1fr; } }
+
+    /* ── Card ────────────────────────────────────── */
+    .card               { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+    .card-hd            { display:flex; align-items:center; justify-content:space-between; padding:12px 18px; border-bottom:1px solid var(--border); }
+    .card-title         { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); }
+    .card-body          { padding:18px; }
+
+    /* ── Metrics grid ────────────────────────────── */
+    .metrics-grid       { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+    @media(max-width:700px){ .metrics-grid{ grid-template-columns:repeat(2,1fr); } }
+    .mc                 { background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:8px; padding:13px 14px; }
+    .mc-label           { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:5px; }
+    .mc-value           { font-size:20px; font-weight:700; color:var(--text); line-height:1.2; }
+    .mc-value.g         { color:var(--win); }
+    .mc-value.r         { color:var(--loss); }
+    .mc-sub             { font-size:11px; color:var(--muted); margin-top:3px; }
+
+    /* ── Form ────────────────────────────────────── */
+    .form-grid          { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px; }
+    @media(max-width:580px){ .form-grid{ grid-template-columns:1fr; } }
+    .fg                 { display:flex; flex-direction:column; gap:6px; }
+    .fg-label           { font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.05em; display:flex; align-items:center; gap:6px; }
+    .fg-accent          { color:var(--accent); font-weight:700; text-transform:none; letter-spacing:0; }
+    .input              { background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:6px; color:var(--text); padding:8px 11px; font-size:13px; outline:none; transition:border-color .15s; width:100%; }
+    .input:focus        { border-color:var(--accent); }
+    input[type=range]   { -webkit-appearance:none; appearance:none; height:4px; background:var(--border); border-radius:2px; outline:none; cursor:pointer; accent-color:var(--accent); padding:0; border:none; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--accent); cursor:pointer; }
+    .slider-row         { display:flex; align-items:center; gap:10px; }
+    .slider-val         { font-size:14px; font-weight:700; color:var(--accent); min-width:28px; text-align:right; }
+
+    /* ── Button ──────────────────────────────────── */
+    .btn                { display:inline-flex; align-items:center; gap:8px; padding:9px 20px; border-radius:7px; border:none; cursor:pointer; font-size:13px; font-weight:600; font-family:var(--font); transition:all .15s; }
+    .btn-primary        { background:var(--accent); color:#fff; }
+    .btn-primary:hover  { background:#0d9272; }
+    .btn-primary:disabled{ opacity:.4; cursor:not-allowed; }
+    .btn-ghost          { background:transparent; color:var(--muted); border:1px solid var(--border); }
+    .btn-ghost:hover    { background:var(--surface-alt); color:var(--text); }
+    .btn-sm             { padding:5px 11px; font-size:12px; }
+
+    /* ── Spinner ─────────────────────────────────── */
+    .spin               { width:13px; height:13px; border:2px solid rgba(255,255,255,.25); border-top-color:#fff; border-radius:50%; animation:spin .65s linear infinite; display:inline-block; }
+    @keyframes spin     { to{ transform:rotate(360deg); } }
+    @keyframes pulse    { 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+
+    /* ── Divider ─────────────────────────────────── */
+    .divider            { border:none; border-top:1px solid var(--border); margin:18px 0; }
+
+    /* ── Equity chart ────────────────────────────── */
+    .chart-wrap         { background:rgba(0,0,0,.25); border-radius:7px; overflow:hidden; }
+    .chart-empty        { height:150px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; }
+
+    /* ── Error / Info box ────────────────────────── */
+    .err-box            { background:var(--loss-dim); border:1px solid rgba(239,68,68,.3); border-radius:6px; padding:10px 14px; color:var(--loss); font-size:12px; margin-top:12px; }
+    .info-box           { padding:36px; text-align:center; color:var(--muted); font-size:13px; }
+
+    /* ── Live logs ───────────────────────────────── */
+    .log-list           { max-height:340px; overflow-y:auto; display:flex; flex-direction:column; gap:1px; }
+    .log-list::-webkit-scrollbar{ width:4px; }
+    .log-list::-webkit-scrollbar-thumb{ background:var(--border); border-radius:2px; }
+    .log-row            { display:grid; grid-template-columns:148px 52px 1fr; gap:8px; align-items:baseline; padding:7px 12px; border-radius:6px; transition:background .1s; }
+    .log-row:hover      { background:rgba(255,255,255,.03); }
+    .log-ts             { color:var(--muted); font-family:monospace; font-size:11px; }
+    .log-lvl            { font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px; text-align:center; }
+    .lvl-INFO           { background:rgba(255,255,255,.07); color:var(--muted); }
+    .lvl-WARN           { background:rgba(245,158,11,.15); color:var(--warn); }
+    .lvl-ERROR,.lvl-CRITICAL{ background:var(--loss-dim); color:var(--loss); }
+    .log-msg            { color:var(--text); word-break:break-word; font-size:12.5px; }
+    .log-msg.signal     { color:var(--win); font-weight:600; }
+    .log-msg.err-txt    { color:var(--loss); }
+
+    /* ── Live indicator ─────────────────────────── */
+    .live-row           { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--muted); }
+    .dot-live           { width:6px; height:6px; border-radius:50%; background:var(--win); animation:pulse 2s infinite; }
+
+    /* ── Table ───────────────────────────────────── */
+    .tbl-wrap           { overflow-x:auto; max-height:380px; overflow-y:auto; }
+    .tbl-wrap::-webkit-scrollbar{ width:4px; height:4px; }
+    .tbl-wrap::-webkit-scrollbar-thumb{ background:var(--border); border-radius:2px; }
+    table               { width:100%; border-collapse:collapse; font-size:12.5px; }
+    thead th            { padding:9px 12px; text-align:left; font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); z-index:1; white-space:nowrap; }
+    tbody tr            { border-bottom:1px solid rgba(255,255,255,.04); transition:background .1s; }
+    tbody tr:hover      { background:rgba(255,255,255,.03); }
+    tbody td            { padding:8px 12px; white-space:nowrap; }
+    .td-win             { color:var(--win); font-weight:600; }
+    .td-loss            { color:var(--loss); font-weight:600; }
+    .td-buy             { color:var(--win); font-weight:600; }
+    .td-sell            { color:var(--loss); font-weight:600; }
+    .td-mono            { font-family:monospace; font-size:12px; }
+    .td-muted           { color:var(--muted); font-size:11px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+/* ─────────────────────────────────────────────────────────────────────────────
+   Utilities
+───────────────────────────────────────────────────────────────────────────── */
+const { useState, useEffect, useCallback, useRef } = React;
+
+function fmt(n, dec = 2) {
+  if (n === null || n === undefined || n === '' || isNaN(+n)) return '—';
+  return (+n).toFixed(dec);
+}
+function fmtPct(n) { return fmt(n, 1) + '%'; }
+
+function isoShort(ts) {
+  if (!ts) return '—';
+  return String(ts).replace('T', ' ').slice(0, 16);
+}
+
+function defaultRange() {
+  const end = new Date();
+  const start = new Date();
+  start.setMonth(start.getMonth() - 6);
+  return {
+    start: start.toISOString().slice(0, 10),
+    end:   end.toISOString().slice(0, 10),
+  };
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SVG Equity Curve
+───────────────────────────────────────────────────────────────────────────── */
+function EquityChart({ data }) {
+  if (!data || data.length < 2) {
+    return <div className="chart-empty">Run a backtest to see the equity curve</div>;
+  }
+
+  const W = 800, H = 155, PX = 42, PY = 18;
+  const vals = data.map(d => d.equity);
+  const minV = Math.min(...vals, 0);
+  const maxV = Math.max(...vals, 0.01);
+  const span = maxV - minV || 1;
+  const lastV = vals[vals.length - 1];
+  const lineColor = lastV >= 0 ? '#10a37f' : '#ef4444';
+
+  const px = i => PX + (i / (data.length - 1)) * (W - PX * 2);
+  const py = v => H - PY - ((v - minV) / span) * (H - PY * 2);
+
+  const polyPts = data.map((d, i) => `${px(i)},${py(d.equity)}`).join(' ');
+  const areaD =
+    `M${px(0)},${py(data[0].equity)}` +
+    data.slice(1).map((d, i) => ` L${px(i + 1)},${py(d.equity)}`).join('') +
+    ` L${px(data.length - 1)},${H - PY} L${px(0)},${H - PY} Z`;
+
+  const zeroLine = minV < 0 && maxV > 0;
+
+  /* Y-axis grid labels */
+  const steps = 3;
+  const yLabels = Array.from({ length: steps + 1 }, (_, i) => {
+    const v = minV + (span / steps) * i;
+    return { y: py(v), label: `${v >= 0 ? '+' : ''}${v.toFixed(1)}R` };
+  }).reverse();
+
+  return (
+    <div className="chart-wrap">
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: '155px', display: 'block' }}>
+        <defs>
+          <linearGradient id="gFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={lineColor} stopOpacity=".22" />
+            <stop offset="100%" stopColor={lineColor} stopOpacity=".01" />
+          </linearGradient>
+        </defs>
+
+        {/* Grid lines */}
+        {yLabels.map((l, i) => (
+          <line key={i} x1={PX} y1={l.y} x2={W - PX} y2={l.y}
+            stroke="#333" strokeWidth="1" strokeDasharray="3,4" />
+        ))}
+        {yLabels.map((l, i) => (
+          <text key={i} x={PX - 4} y={l.y + 4} fill="#666" fontSize="9" textAnchor="end">{l.label}</text>
+        ))}
+
+        {/* Zero baseline */}
+        {zeroLine && (
+          <line x1={PX} y1={py(0)} x2={W - PX} y2={py(0)}
+            stroke="#555" strokeWidth="1" strokeDasharray="4,3" />
+        )}
+
+        {/* Area fill */}
+        <path d={areaD} fill="url(#gFill)" />
+
+        {/* Line */}
+        <polyline points={polyPts} fill="none" stroke={lineColor}
+          strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+
+        {/* Last-point dot */}
+        <circle cx={px(data.length - 1)} cy={py(lastV)} r="3.5" fill={lineColor} />
+
+        {/* X axis labels */}
+        <text x={PX}         y={H - 3} fill="#555" fontSize="9" textAnchor="start">Trade 1</text>
+        <text x={W - PX}     y={H - 3} fill="#555" fontSize="9" textAnchor="end">Trade {data.length}</text>
+
+        {/* Final PnL label */}
+        <text x={px(data.length - 1) + 6} y={py(lastV) + 4}
+          fill={lineColor} fontSize="10" fontWeight="700">
+          {lastV >= 0 ? '+' : ''}{lastV.toFixed(2)}R
+        </text>
+      </svg>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Metric Card
+───────────────────────────────────────────────────────────────────────────── */
+function MetricCard({ label, value, sub, color }) {
+  return (
+    <div className="mc">
+      <div className="mc-label">{label}</div>
+      <div className={`mc-value${color ? ' ' + color : ''}`}>{value}</div>
+      {sub && <div className="mc-sub">{sub}</div>}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Backtest Panel
+───────────────────────────────────────────────────────────────────────────── */
+function BacktestPanel() {
+  const range = defaultRange();
+  const [startDate, setStartDate] = useState(range.start);
+  const [endDate,   setEndDate]   = useState(range.end);
+  const [slC, setSlC] = useState(5);
+  const [tpC, setTpC] = useState(10);
+  const [loading, setLoading]   = useState(false);
+  const [result,  setResult]    = useState(null);
+  const [error,   setError]     = useState('');
+
+  const run = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    setResult(null);
+    try {
+      const res  = await fetch('/backtest', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ start_date: startDate, end_date: endDate, sl_candles: slC, tp_candles: tpC }),
+      });
+      const data = await res.json();
+      if (!res.ok)  throw new Error(data.detail || 'Backtest request failed');
+      if (data.error) throw new Error(data.error);
+      setResult(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [startDate, endDate, slC, tpC]);
+
+  const m = result?.metrics || {};
+  const netPnl = result?.equity_curve?.slice(-1)[0]?.equity ?? null;
+
+  return (
+    <div className="card">
+      <div className="card-hd">
+        <span className="card-title">Backtest · XAUUSD 5m / 15m</span>
+        {result && <span className="badge badge-green">✓ Complete</span>}
+      </div>
+      <div className="card-body">
+
+        {/* ── Controls ── */}
+        <div className="form-grid">
+          <div className="fg">
+            <label className="fg-label">Start Date</label>
+            <input type="date" className="input" value={startDate}
+              onChange={e => setStartDate(e.target.value)} />
+          </div>
+          <div className="fg">
+            <label className="fg-label">End Date</label>
+            <input type="date" className="input" value={endDate}
+              onChange={e => setEndDate(e.target.value)} />
+          </div>
+          <div className="fg">
+            <label className="fg-label">
+              Stop-Loss Candles
+              <span className="fg-accent">({slC} candles = {(slC * 0.3).toFixed(1)}× ATR)</span>
+            </label>
+            <div className="slider-row">
+              <input type="range" min="5" max="20" value={slC}
+                style={{ flex: 1 }}
+                onChange={e => setSlC(+e.target.value)} />
+              <span className="slider-val">{slC}</span>
+            </div>
+          </div>
+          <div className="fg">
+            <label className="fg-label">
+              Take-Profit Candles
+              <span className="fg-accent">({tpC} candles = {(tpC * 0.3).toFixed(1)}× ATR)</span>
+            </label>
+            <div className="slider-row">
+              <input type="range" min="5" max="20" value={tpC}
+                style={{ flex: 1 }}
+                onChange={e => setTpC(+e.target.value)} />
+              <span className="slider-val">{tpC}</span>
+            </div>
+          </div>
+        </div>
+
+        <button className="btn btn-primary" onClick={run} disabled={loading}>
+          {loading ? <><span className="spin" /> Running backtest…</> : '▶  Run Backtest'}
+        </button>
+
+        {error && <div className="err-box">⚠ {error}</div>}
+
+        {/* ── Results ── */}
+        {result && (
+          <>
+            <hr className="divider" />
+            <div className="metrics-grid" style={{ marginBottom: 14 }}>
+              <MetricCard
+                label="Total Trades"
+                value={m.total_trades ?? '—'}
+                sub={`${m.wins ?? 0}W  /  ${m.losses ?? 0}L`}
+              />
+              <MetricCard
+                label="Win Rate"
+                value={fmtPct(m.win_rate)}
+                color={m.win_rate >= 50 ? 'g' : 'r'}
+                sub="of all closed trades"
+              />
+              <MetricCard
+                label="Profit Factor"
+                value={
+                  m.profit_factor == null ? '—'
+                  : m.profit_factor > 999  ? '∞'
+                  : fmt(m.profit_factor)
+                }
+                color={m.profit_factor >= 1.5 ? 'g' : 'r'}
+              />
+              <MetricCard
+                label="Avg R"
+                value={fmt(m.avg_R_multiple, 3) + 'R'}
+                color={m.avg_R_multiple > 0 ? 'g' : 'r'}
+                sub="per trade"
+              />
+              <MetricCard
+                label="Max Drawdown"
+                value={`${fmt(m.max_drawdown, 2)}R`}
+                color="r"
+              />
+              <MetricCard
+                label="Net PnL"
+                value={netPnl != null ? `${netPnl >= 0 ? '+' : ''}${netPnl.toFixed(2)}R` : '—'}
+                color={netPnl != null && netPnl >= 0 ? 'g' : 'r'}
+                sub="cumulative R"
+              />
+            </div>
+
+            <EquityChart data={result.equity_curve} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Live Logs Panel
+───────────────────────────────────────────────────────────────────────────── */
+function LogsPanel() {
+  const [logs,    setLogs]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [updated, setUpdated] = useState('');
+  const listRef = useRef(null);
+
+  const fetchLogs = useCallback(async () => {
+    try {
+      const res  = await fetch('/logs?limit=20');
+      const data = await res.json();
+      setLogs(data.logs || []);
+      setUpdated(new Date().toLocaleTimeString());
+    } catch (_) {}
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    fetchLogs();
+    const id = setInterval(fetchLogs, 5000);
+    return () => clearInterval(id);
+  }, [fetchLogs]);
+
+  function msgCls(log) {
+    const txt = (log.message + log.raw).toLowerCase();
+    if (txt.includes('[signal]') || txt.includes('signal_sent') || txt.includes('signal allowed') || txt.includes('signal dispatched'))
+      return 'signal';
+    if (log.level === 'ERROR' || log.level === 'CRITICAL' || txt.includes('failed') || txt.includes('error'))
+      return 'err-txt';
+    return '';
+  }
+
+  function lvlNorm(l) {
+    const u = (l || 'INFO').toUpperCase();
+    return u === 'WARNING' ? 'WARN' : u;
+  }
+
+  return (
+    <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className="card-hd">
+        <span className="card-title">Live Logs <span style={{ fontWeight: 400, textTransform: 'none' }}>(last 20)</span></span>
+        <div className="live-row">
+          <div className="dot-live" />
+          <span>Auto-refresh 5s</span>
+          {updated && <span>{updated}</span>}
+          <button className="btn btn-ghost btn-sm" onClick={fetchLogs}>↻</button>
+        </div>
+      </div>
+      <div className="card-body" style={{ padding: '10px', flex: 1 }}>
+        {loading ? (
+          <div className="info-box">Loading…</div>
+        ) : logs.length === 0 ? (
+          <div className="info-box">No logs found. Start the bot (<code>python main.py</code>) to see activity.</div>
+        ) : (
+          <div className="log-list" ref={listRef}>
+            {logs.map((log, i) => (
+              <div key={i} className="log-row">
+                <span className="log-ts">{(log.timestamp || '').slice(0, 19)}</span>
+                <span className={`log-lvl lvl-${lvlNorm(log.level)}`}>{lvlNorm(log.level)}</span>
+                <span className={`log-msg ${msgCls(log)}`}>{log.message || log.raw}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Trade History Panel
+───────────────────────────────────────────────────────────────────────────── */
+function TradeHistoryPanel() {
+  const [trades,  setTrades]  = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [count,   setCount]   = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res  = await fetch('/trades');
+        const data = await res.json();
+        setTrades(data.trades || []);
+        setCount(data.count || 0);
+      } catch (_) {}
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  return (
+    <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className="card-hd">
+        <span className="card-title">Trade History</span>
+        {count > 0 && <span className="badge badge-gray">{count} trades</span>}
+      </div>
+
+      {loading ? (
+        <div className="info-box">Loading…</div>
+      ) : trades.length === 0 ? (
+        <div className="info-box">No trades yet — run a backtest to populate history.</div>
+      ) : (
+        <div className="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Entry Time</th>
+                <th>Exit Time</th>
+                <th>Dir</th>
+                <th>Entry</th>
+                <th>SL</th>
+                <th>TP</th>
+                <th>Exit</th>
+                <th>Result</th>
+                <th>R</th>
+                <th>Bars</th>
+                <th>Exit Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trades.map((t, i) => {
+                const win  = String(t.result).toUpperCase() === 'WIN';
+                const buy  = String(t.direction).toUpperCase() === 'BUY';
+                const r    = parseFloat(t.R_multiple);
+                return (
+                  <tr key={i}>
+                    <td className="td-mono">{isoShort(t.timestamp)}</td>
+                    <td className="td-mono">{isoShort(t.exit_timestamp)}</td>
+                    <td className={buy ? 'td-buy' : 'td-sell'}>{t.direction}</td>
+                    <td className="td-mono">{fmt(t.entry)}</td>
+                    <td className="td-mono td-muted">{fmt(t.sl)}</td>
+                    <td className="td-mono td-muted">{fmt(t.tp)}</td>
+                    <td className="td-mono">{fmt(t.exit)}</td>
+                    <td className={win ? 'td-win' : 'td-loss'}>{t.result}</td>
+                    <td className={r >= 0 ? 'td-win' : 'td-loss'}>{fmt(r, 3)}R</td>
+                    <td className="td-muted">{t.bars_held}</td>
+                    <td className="td-muted">{t.exit_reason}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   App Shell
+───────────────────────────────────────────────────────────────────────────── */
+function App() {
+  const [clock, setClock] = useState('');
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setClock(
+        now.toUTCString().slice(5, 22) + ' UTC'
+      );
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div>
+      {/* ── Header ── */}
+      <header className="hdr">
+        <div className="hdr-brand">
+          <div className="hdr-dot" />
+          SEAN0-ALGO
+          <span style={{ color: 'var(--muted)', fontWeight: 400 }}>· XAUUSD</span>
+        </div>
+        <div className="hdr-meta">
+          <span className="badge badge-gray">5m / 15m</span>
+          <span className="badge badge-green">OANDA</span>
+          <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{clock}</span>
+        </div>
+      </header>
+
+      {/* ── Content ── */}
+      <main className="main">
+        <BacktestPanel />
+        <div className="grid2">
+          <LogsPanel />
+          <TradeHistoryPanel />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

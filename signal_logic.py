@@ -17,7 +17,7 @@ XAU_SYMBOLS = {"XAUUSD", "XAUUSDT"}
 
 @dataclass
 class TradeSignal:
-    """Standardized XAU signal object used by the simplified MVP engine."""
+    """Standardized forex signal object used by the simplified XAU engine."""
 
     timestamp_utc: pd.Timestamp
     symbol: str
@@ -45,8 +45,6 @@ class TradeSignal:
 
     @property
     def signal_type(self) -> str:
-        if self.signal_kind == "binary":
-            return "CALL" if self.direction == "BUY" else "PUT"
         return self.direction
 
     @property
@@ -59,15 +57,6 @@ class TradeSignal:
             return value * 60
         raise ValueError(f"Unsupported timeframe: {self.entry_timeframe}")
 
-    def binary_message(self) -> str:
-        binary_direction = "UP" if self.direction == "BUY" else "DOWN"
-        expiry = self.expiry_minutes if self.expiry_minutes is not None else self.entry_timeframe_minutes
-        return (
-            f"{self.display_symbol} Binary {binary_direction}\n"
-            f"Expiry: {expiry}m\n"
-            f"Score: {self.score}"
-        )
-
     def forex_message(self) -> str:
         stop_loss = "-" if self.stop_loss is None else self._format_price(self.stop_loss)
         take_profit = "-" if self.take_profit is None else self._format_price(self.take_profit)
@@ -79,8 +68,6 @@ class TradeSignal:
         )
 
     def message(self) -> str:
-        if self.signal_kind == "binary":
-            return self.binary_message()
         return self.forex_message()
 
     @staticmethod
@@ -117,12 +104,12 @@ class SignalDecision:
 
 @dataclass
 class SignalLogic:
-    """Single-strategy XAUUSD signal engine with binary and forex outputs."""
+    """Single-strategy XAUUSD signal engine with forex outputs only."""
 
     symbol: str = "XAUUSDT"
     threshold: int = 80
     rule_weight: int = 20
-    signal_modes: tuple[str, ...] = ("binary", "forex")
+    signal_modes: tuple[str, ...] = ("forex",)
     forex_sl_atr_multiplier: float = 1.5
     forex_tp_atr_multiplier: float = 3.0
     decision_logger: DecisionLogger = field(default_factory=get_decision_logger)
@@ -173,7 +160,7 @@ class SignalLogic:
         bearish_trend = trend_bias == "bear"
         session_filter = self.decision_logger.log_session(
             session,
-            session in {"LONDON", "OVERLAP", "NEW_YORK"},
+            session in {"OVERLAP", "NEW_YORK"},  # pure LONDON (7-12 UTC) excluded — low edge
         )
 
         if bullish_trend:
@@ -196,15 +183,26 @@ class SignalLogic:
             sell_threshold=45.0,
         )
 
-        atr_threshold_multiplier = self._atr_threshold_multiplier(
-            market_regime=market_regime,
-            volatility_regime=volatility_regime,
-        )
         atr_expansion = self.decision_logger.log_volatility(
             float(entry_last["atr14"]),
             float(entry_last.get("atr20_avg", 0.0) or 0.0),
-            threshold_multiplier=atr_threshold_multiplier,
+            threshold_multiplier=1.1,  # ATR must exceed 1.1× its 20-period average
         )
+
+        # Filter: Trend strength — EMA gap must exceed trend ATR
+        trend_atr = float(trend_last["atr14"])
+        trend_strength_ok = abs(float(trend_last["ema50"]) - float(trend_last["ema200"])) > trend_atr
+
+        # Filter: Range avoidance — last 20 entry candles must span at least 3× ATR
+        atr_value = float(entry_last["atr14"])
+        lookback = entry_candles.iloc[-20:]
+        range_20 = float(lookback["high"].max()) - float(lookback["low"].min())
+        range_ok = range_20 >= atr_value * 3.0
+
+        # Filter: Weak candle — candle body (high-low) must be at least 0.5× ATR
+        candle_range = float(entry_last["high"]) - float(entry_last["low"])
+        strong_candle = candle_range >= atr_value * 0.5
+
         breakdown = self._score_breakdown(
             trend_alignment=trend_alignment,
             price_trigger=price_trigger,
@@ -219,6 +217,9 @@ class SignalLogic:
             and price_trigger
             and rsi_filter
             and atr_expansion
+            and trend_strength_ok
+            and range_ok
+            and strong_candle
             and market_regime not in {"range", "low_volatility"}
             and score >= self.threshold
         )
@@ -233,6 +234,9 @@ class SignalLogic:
                 "price_break": price_trigger,
                 "rsi_filter": rsi_filter,
                 "atr_expansion": atr_expansion,
+                "trend_strength": trend_strength_ok,
+                "range_avoidance": range_ok,
+                "strong_candle": strong_candle,
             },
         )
 
@@ -323,33 +327,14 @@ class SignalLogic:
         normalized_modes = []
         for mode in self.signal_modes:
             normalized_mode = str(mode).strip().lower()
-            if normalized_mode in {"binary", "forex"} and normalized_mode not in normalized_modes:
+            if normalized_mode == "forex" and normalized_mode not in normalized_modes:
                 normalized_modes.append(normalized_mode)
+
+        if not normalized_modes:
+            normalized_modes = ["forex"]
 
         signals: list[TradeSignal] = []
         for mode in normalized_modes:
-            if mode == "binary":
-                signals.append(
-                    TradeSignal(
-                        timestamp_utc=timestamp,
-                        symbol=self._normalize_symbol(self.symbol),
-                        direction=direction,
-                        score=score,
-                        score_threshold=self.threshold,
-                        entry_price=entry_price,
-                        stop_loss=None,
-                        take_profit=None,
-                        signal_kind="binary",
-                        trend_timeframe="15m",
-                        entry_timeframe="5m",
-                        atr=atr_value,
-                        expiry_minutes=5,
-                        reason_summary=self._signal_summary(strategy_behavior, market_regime),
-                        session=session,
-                    )
-                )
-                continue
-
             stop_loss, take_profit = self._forex_targets(direction, entry_price, atr_value)
             signals.append(
                 TradeSignal(
@@ -365,7 +350,6 @@ class SignalLogic:
                     trend_timeframe="15m",
                     entry_timeframe="5m",
                     atr=atr_value,
-                    expiry_minutes=None,
                     reason_summary=self._signal_summary(strategy_behavior, market_regime),
                     session=session,
                 )
@@ -391,6 +375,9 @@ class SignalLogic:
                 "rsi_filter": decision.rsi_filter,
                 "atr_expansion": decision.atr_expansion,
                 "session_filter": decision.session_filter,
+                "trend_strength": decision.regime_details.get("trend_strength_ok"),
+                "range_avoidance": decision.regime_details.get("range_ok"),
+                "strong_candle": decision.regime_details.get("strong_candle"),
                 "signal_score": decision.score,
                 "score_threshold": decision.score_threshold,
                 "signal_generated": decision.signal_generated,
@@ -511,12 +498,6 @@ class SignalLogic:
         if not failed:
             return "accepted"
         return f"rejected:{','.join(failed)}"
-
-    @staticmethod
-    def _atr_threshold_multiplier(*, market_regime: str, volatility_regime: str) -> float:
-        if market_regime == "high_volatility" or volatility_regime == "high_volatility":
-            return 1.45
-        return 1.0
 
     @staticmethod
     def _signal_summary(strategy_behavior: str, market_regime: str) -> str:
