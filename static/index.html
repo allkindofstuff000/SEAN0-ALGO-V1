@@ -137,6 +137,26 @@
     .td-sell            { color:var(--loss); font-weight:600; }
     .td-mono            { font-family:monospace; font-size:12px; }
     .td-muted           { color:var(--muted); font-size:11px; }
+    .td-pnl-pos         { color:var(--win); font-weight:700; font-family:monospace; font-size:12px; }
+    .td-pnl-neg         { color:var(--loss); font-weight:700; font-family:monospace; font-size:12px; }
+
+    /* ── Structured JSON log rows ──────────────────── */
+    .log-json-row       { display:flex; align-items:center; flex-wrap:wrap; gap:6px; padding:7px 12px; border-radius:6px; font-size:12px; transition:background .1s; }
+    .log-json-row:hover { background:rgba(255,255,255,.03); }
+    .log-jts            { font-family:monospace; font-size:11px; color:var(--muted); min-width:90px; }
+    .log-jdir           { font-size:11px; font-weight:700; padding:1px 8px; border-radius:4px; min-width:42px; text-align:center; }
+    .log-jdir-buy       { background:var(--win-dim); color:var(--win); }
+    .log-jdir-sell      { background:var(--loss-dim); color:var(--loss); }
+    .log-jdir-none      { background:rgba(255,255,255,.07); color:var(--muted); }
+    .log-chip           { font-size:10px; padding:1px 7px; border-radius:3px; font-weight:600; }
+    .chip-session       { background:rgba(255,255,255,.07); color:var(--muted); }
+    .chip-regime        { background:rgba(245,158,11,.12); color:var(--warn); }
+    .chip-score         { background:rgba(255,255,255,.06); color:var(--muted); }
+    .log-reason         { font-size:11px; flex:1; min-width:140px; }
+    .log-reason-ok      { color:var(--win); font-weight:700; }
+    .log-reason-rej     { color:var(--loss); }
+    .log-reason-idle    { color:var(--muted); }
+    .log-signal-row     { background:var(--win-dim) !important; border-left:2px solid var(--win); }
   </style>
 </head>
 <body>
@@ -170,82 +190,142 @@ function defaultRange() {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   SVG Equity Curve
+   SVG 3-D Equity Curve
 ───────────────────────────────────────────────────────────────────────────── */
-function EquityChart({ data }) {
+function EquityChart({ data, startBalance = 5000 }) {
   if (!data || data.length < 2) {
     return <div className="chart-empty">Run a backtest to see the equity curve</div>;
   }
 
-  const W = 800, H = 155, PX = 42, PY = 18;
-  const vals = data.map(d => d.equity);
-  const minV = Math.min(...vals, 0);
-  const maxV = Math.max(...vals, 0.01);
-  const span = maxV - minV || 1;
+  const W = 800, H = 210, PX = 58, PY = 24;
+  const DX = 22, DY = 13; // 3-D depth offset (right, up)
+
+  const vals  = data.map(d => d.equity);
+  const minV  = Math.min(...vals);
+  const maxV  = Math.max(...vals);
+  const span  = maxV - minV || 1;
   const lastV = vals[vals.length - 1];
-  const lineColor = lastV >= 0 ? '#10a37f' : '#ef4444';
+  const lineColor = lastV >= startBalance ? '#10a37f' : '#ef4444';
+  const darkColor = lastV >= startBalance ? '#0a6b52' : '#7f1d1d';
 
-  const px = i => PX + (i / (data.length - 1)) * (W - PX * 2);
-  const py = v => H - PY - ((v - minV) / span) * (H - PY * 2);
+  const innerW = W - PX * 2 - DX;
+  const innerH = H - PY * 2 - DY;
+  const px = i => PX + (i / (data.length - 1)) * innerW;
+  const py = v => H - PY - ((v - minV) / span) * innerH;
 
-  const polyPts = data.map((d, i) => `${px(i)},${py(d.equity)}`).join(' ');
+  const pts  = data.map((d, i) => [px(i), py(d.equity)]);
+  const bpts = pts.map(([x, y]) => [x + DX, y - DY]);
+
+  const frontBottom = H - PY;
+  const backBottom  = frontBottom - DY;
+  const rP = pts[pts.length - 1];
+  const rB = bpts[bpts.length - 1];
+
+  const floorD =
+    `M${pts[0][0]},${frontBottom} L${bpts[0][0]},${backBottom}` +
+    ` L${rB[0]},${backBottom} L${rP[0]},${frontBottom} Z`;
+
+  const leftWallD =
+    `M${pts[0][0]},${pts[0][1]} L${bpts[0][0]},${bpts[0][1]}` +
+    ` L${bpts[0][0]},${backBottom} L${pts[0][0]},${frontBottom} Z`;
+
+  const rightWallD =
+    `M${rP[0]},${rP[1]} L${rB[0]},${rB[1]}` +
+    ` L${rB[0]},${backBottom} L${rP[0]},${frontBottom} Z`;
+
   const areaD =
-    `M${px(0)},${py(data[0].equity)}` +
-    data.slice(1).map((d, i) => ` L${px(i + 1)},${py(d.equity)}`).join('') +
-    ` L${px(data.length - 1)},${H - PY} L${px(0)},${H - PY} Z`;
+    `M${pts[0][0]},${pts[0][1]}` +
+    pts.slice(1).map(([x, y]) => `L${x},${y}`).join('') +
+    ` L${rP[0]},${frontBottom} L${pts[0][0]},${frontBottom} Z`;
 
-  const zeroLine = minV < 0 && maxV > 0;
+  const polyPts  = pts.map(([x, y])  => `${x},${y}`).join(' ');
+  const bPolyPts = bpts.map(([x, y]) => `${x},${y}`).join(' ');
 
-  /* Y-axis grid labels */
-  const steps = 3;
+  /* Rib lines every ~12 trades */
+  const ribStep = Math.max(1, Math.floor(data.length / 12));
+  const ribIdx  = [];
+  for (let i = 0; i < pts.length; i += ribStep) ribIdx.push(i);
+  if (ribIdx[ribIdx.length - 1] !== pts.length - 1) ribIdx.push(pts.length - 1);
+
+  /* Y grid labels */
+  const steps   = 3;
   const yLabels = Array.from({ length: steps + 1 }, (_, i) => {
     const v = minV + (span / steps) * i;
-    return { y: py(v), label: `${v >= 0 ? '+' : ''}${v.toFixed(1)}R` };
+    return { y: py(v), label: `$${Math.round(v).toLocaleString()}` };
   }).reverse();
+
+  /* Starting-balance baseline */
+  const baseLine = startBalance >= minV && startBalance <= maxV;
 
   return (
     <div className="chart-wrap">
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: '155px', display: 'block' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: '210px', display: 'block' }}>
         <defs>
-          <linearGradient id="gFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={lineColor} stopOpacity=".22" />
-            <stop offset="100%" stopColor={lineColor} stopOpacity=".01" />
+          <linearGradient id="gFill3d" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={lineColor} stopOpacity=".28" />
+            <stop offset="100%" stopColor={lineColor} stopOpacity=".02" />
           </linearGradient>
+          <filter id="dotGlow" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="3.5" result="blur" />
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
         </defs>
 
         {/* Grid lines */}
         {yLabels.map((l, i) => (
           <line key={i} x1={PX} y1={l.y} x2={W - PX} y2={l.y}
-            stroke="#333" strokeWidth="1" strokeDasharray="3,4" />
+            stroke="#2c2c2c" strokeWidth="1" strokeDasharray="3,5" />
         ))}
         {yLabels.map((l, i) => (
-          <text key={i} x={PX - 4} y={l.y + 4} fill="#666" fontSize="9" textAnchor="end">{l.label}</text>
+          <text key={`lbl${i}`} x={PX - 5} y={l.y + 4} fill="#555" fontSize="9" textAnchor="end">{l.label}</text>
         ))}
 
-        {/* Zero baseline */}
-        {zeroLine && (
-          <line x1={PX} y1={py(0)} x2={W - PX} y2={py(0)}
-            stroke="#555" strokeWidth="1" strokeDasharray="4,3" />
+        {/* Starting-balance dashed baseline */}
+        {baseLine && (
+          <line x1={PX} y1={py(startBalance)} x2={W - PX - DX} y2={py(startBalance)}
+            stroke="#555" strokeWidth="1" strokeDasharray="5,4" />
         )}
 
-        {/* Area fill */}
-        <path d={areaD} fill="url(#gFill)" />
+        {/* Back polyline (depth layer) */}
+        <polyline points={bPolyPts} fill="none" stroke={darkColor} strokeWidth="1.2" strokeOpacity=".5" />
 
-        {/* Line */}
+        {/* Floor */}
+        <path d={floorD} fill={lineColor} fillOpacity=".07" stroke={darkColor} strokeWidth=".6" strokeOpacity=".4" />
+
+        {/* Left wall */}
+        <path d={leftWallD} fill={lineColor} fillOpacity=".10" stroke={darkColor} strokeWidth=".6" strokeOpacity=".4" />
+
+        {/* Right wall */}
+        <path d={rightWallD} fill={lineColor} fillOpacity=".10" stroke={darkColor} strokeWidth=".6" strokeOpacity=".4" />
+
+        {/* Vertical ribs */}
+        {ribIdx.map(idx => (
+          <line key={idx}
+            x1={pts[idx][0]} y1={pts[idx][1]}
+            x2={bpts[idx][0]} y2={bpts[idx][1]}
+            stroke={lineColor} strokeWidth=".8" strokeOpacity=".2" />
+        ))}
+
+        {/* Front area fill */}
+        <path d={areaD} fill="url(#gFill3d)" />
+
+        {/* Front polyline */}
         <polyline points={polyPts} fill="none" stroke={lineColor}
-          strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+          strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" />
 
-        {/* Last-point dot */}
-        <circle cx={px(data.length - 1)} cy={py(lastV)} r="3.5" fill={lineColor} />
+        {/* Last-point dot with glow */}
+        <circle cx={rP[0]} cy={rP[1]} r="5" fill={lineColor} filter="url(#dotGlow)" />
 
-        {/* X axis labels */}
-        <text x={PX}         y={H - 3} fill="#555" fontSize="9" textAnchor="start">Trade 1</text>
-        <text x={W - PX}     y={H - 3} fill="#555" fontSize="9" textAnchor="end">Trade {data.length}</text>
+        {/* X-axis labels */}
+        <text x={PX} y={H - 4} fill="#555" fontSize="9" textAnchor="start">Trade 1</text>
+        <text x={W - PX - DX} y={H - 4} fill="#555" fontSize="9" textAnchor="end">Trade {data.length}</text>
 
-        {/* Final PnL label */}
-        <text x={px(data.length - 1) + 6} y={py(lastV) + 4}
-          fill={lineColor} fontSize="10" fontWeight="700">
-          {lastV >= 0 ? '+' : ''}{lastV.toFixed(2)}R
+        {/* Final balance label */}
+        <text
+          x={Math.min(rP[0] + 9, W - PX - DX - 72)}
+          y={rP[1] - 9}
+          fill={lineColor} fontSize="11" fontWeight="700">
+          ${Math.round(lastV).toLocaleString()}
         </text>
       </svg>
     </div>
@@ -272,11 +352,12 @@ function BacktestPanel() {
   const range = defaultRange();
   const [startDate, setStartDate] = useState(range.start);
   const [endDate,   setEndDate]   = useState(range.end);
-  const [slC, setSlC] = useState(5);
-  const [tpC, setTpC] = useState(10);
-  const [loading, setLoading]   = useState(false);
-  const [result,  setResult]    = useState(null);
-  const [error,   setError]     = useState('');
+  const [slC,       setSlC]       = useState(5);
+  const [tpC,       setTpC]       = useState(10);
+  const [balance,   setBalance]   = useState(5000);
+  const [loading,   setLoading]   = useState(false);
+  const [result,    setResult]    = useState(null);
+  const [error,     setError]     = useState('');
 
   const run = useCallback(async () => {
     setLoading(true);
@@ -286,7 +367,13 @@ function BacktestPanel() {
       const res  = await fetch('/backtest', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ start_date: startDate, end_date: endDate, sl_candles: slC, tp_candles: tpC }),
+        body:    JSON.stringify({
+          start_date:       startDate,
+          end_date:         endDate,
+          sl_candles:       slC,
+          tp_candles:       tpC,
+          starting_balance: +balance || 5000,
+        }),
       });
       const data = await res.json();
       if (!res.ok)  throw new Error(data.detail || 'Backtest request failed');
@@ -297,7 +384,7 @@ function BacktestPanel() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, slC, tpC]);
+  }, [startDate, endDate, slC, tpC, balance]);
 
   const m = result?.metrics || {};
   const netPnl = result?.equity_curve?.slice(-1)[0]?.equity ?? null;
@@ -346,6 +433,11 @@ function BacktestPanel() {
               <span className="slider-val">{tpC}</span>
             </div>
           </div>
+          <div className="fg">
+            <label className="fg-label">Starting Balance <span className="fg-accent">(USD)</span></label>
+            <input type="number" className="input" value={balance} min="100" step="100"
+              onChange={e => setBalance(+e.target.value)} />
+          </div>
         </div>
 
         <button className="btn btn-primary" onClick={run} disabled={loading}>
@@ -381,24 +473,24 @@ function BacktestPanel() {
               />
               <MetricCard
                 label="Avg R"
-                value={fmt(m.avg_R_multiple, 3) + 'R'}
-                color={m.avg_R_multiple > 0 ? 'g' : 'r'}
+                value={fmt(m.average_r, 3) + 'R'}
+                color={m.average_r > 0 ? 'g' : 'r'}
                 sub="per trade"
               />
               <MetricCard
                 label="Max Drawdown"
-                value={`${fmt(m.max_drawdown, 2)}R`}
+                value={`${fmt(m.max_drawdown_r, 2)}R`}
                 color="r"
               />
               <MetricCard
-                label="Net PnL"
-                value={netPnl != null ? `${netPnl >= 0 ? '+' : ''}${netPnl.toFixed(2)}R` : '—'}
-                color={netPnl != null && netPnl >= 0 ? 'g' : 'r'}
-                sub="cumulative R"
+                label="Ending Balance"
+                value={m.ending_balance != null ? `$${(+m.ending_balance).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—'}
+                color={m.ending_balance != null && m.ending_balance >= balance ? 'g' : 'r'}
+                sub={`started at $${(+balance).toLocaleString()}`}
               />
             </div>
 
-            <EquityChart data={result.equity_curve} />
+            <EquityChart data={result.equity_curve} startBalance={+balance || 5000} />
           </>
         )}
       </div>
@@ -409,6 +501,79 @@ function BacktestPanel() {
 /* ─────────────────────────────────────────────────────────────────────────────
    Live Logs Panel
 ───────────────────────────────────────────────────────────────────────────── */
+function lvlNorm(l) {
+  const u = (l || 'INFO').toUpperCase();
+  return u === 'WARNING' ? 'WARN' : u;
+}
+
+function tryParseJson(msg) {
+  /* Extract the first {...} blob from a log message */
+  if (!msg) return null;
+  const start = msg.indexOf('{');
+  if (start === -1) return null;
+  try { return JSON.parse(msg.slice(start)); } catch (_) { return null; }
+}
+
+function renderLogEntry(log, i) {
+  const msg    = log.message || log.raw || '';
+  const parsed = tryParseJson(msg);
+
+  /* Render structured row when the JSON has signal/decision fields */
+  if (
+    parsed &&
+    (parsed.direction || parsed.signal || parsed.session ||
+     parsed.regime || parsed.reason || parsed.decision || parsed.action)
+  ) {
+    const dir      = (parsed.direction || parsed.signal || '').toUpperCase();
+    const dirCls   = dir === 'BUY' ? 'log-jdir-buy' : dir === 'SELL' ? 'log-jdir-sell' : 'log-jdir-none';
+    const ts       = (parsed.timestamp || log.timestamp || '').slice(0, 16);
+    const isSignal = dir === 'BUY' || dir === 'SELL';
+    const reason   = parsed.reason || parsed.action || parsed.decision || '';
+    const okReg    = /allowed|passed|signal|entry|opened|sent|trade/i;
+    const rejReg   = /reject|skip|block|deny|no trade|idle|wait|filter/i;
+    const reasonCls = okReg.test(reason) ? 'log-reason-ok'
+                    : rejReg.test(reason) ? 'log-reason-rej'
+                    : 'log-reason-idle';
+
+    return (
+      <div key={i} className={`log-json-row${isSignal ? ' log-signal-row' : ''}`}>
+        <span className="log-jts">{ts}</span>
+        {dir && <span className={`log-jdir ${dirCls}`}>{dir}</span>}
+        {parsed.session  && <span className="log-chip chip-session">{parsed.session}</span>}
+        {parsed.regime   && <span className="log-chip chip-regime">{parsed.regime}</span>}
+        {(parsed.score != null || parsed.threshold != null) && (
+          <span className="log-chip chip-score">
+            score {parsed.score ?? '?'}/{parsed.threshold ?? '?'}
+          </span>
+        )}
+        {parsed.rsi != null && (
+          <span className="log-chip chip-score">RSI {(+parsed.rsi).toFixed(1)}</span>
+        )}
+        {parsed.atr != null && (
+          <span className="log-chip chip-score">ATR {(+parsed.atr).toFixed(2)}</span>
+        )}
+        {reason && <span className={`log-reason ${reasonCls}`}>{reason}</span>}
+      </div>
+    );
+  }
+
+  /* Fallback: plain log row */
+  const txt    = msg.toLowerCase();
+  const msgCls = txt.includes('[signal]') || txt.includes('signal_sent') || txt.includes('signal dispatched')
+    ? 'signal'
+    : (log.level === 'ERROR' || log.level === 'CRITICAL' || txt.includes('failed') || txt.includes('error'))
+    ? 'err-txt'
+    : '';
+
+  return (
+    <div key={i} className="log-row">
+      <span className="log-ts">{(log.timestamp || '').slice(0, 19)}</span>
+      <span className={`log-lvl lvl-${lvlNorm(log.level)}`}>{lvlNorm(log.level)}</span>
+      <span className={`log-msg ${msgCls}`}>{msg}</span>
+    </div>
+  );
+}
+
 function LogsPanel() {
   const [logs,    setLogs]    = useState([]);
   const [loading, setLoading] = useState(true);
@@ -431,20 +596,6 @@ function LogsPanel() {
     return () => clearInterval(id);
   }, [fetchLogs]);
 
-  function msgCls(log) {
-    const txt = (log.message + log.raw).toLowerCase();
-    if (txt.includes('[signal]') || txt.includes('signal_sent') || txt.includes('signal allowed') || txt.includes('signal dispatched'))
-      return 'signal';
-    if (log.level === 'ERROR' || log.level === 'CRITICAL' || txt.includes('failed') || txt.includes('error'))
-      return 'err-txt';
-    return '';
-  }
-
-  function lvlNorm(l) {
-    const u = (l || 'INFO').toUpperCase();
-    return u === 'WARNING' ? 'WARN' : u;
-  }
-
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="card-hd">
@@ -463,13 +614,7 @@ function LogsPanel() {
           <div className="info-box">No logs found. Start the bot (<code>python main.py</code>) to see activity.</div>
         ) : (
           <div className="log-list" ref={listRef}>
-            {logs.map((log, i) => (
-              <div key={i} className="log-row">
-                <span className="log-ts">{(log.timestamp || '').slice(0, 19)}</span>
-                <span className={`log-lvl lvl-${lvlNorm(log.level)}`}>{lvlNorm(log.level)}</span>
-                <span className={`log-msg ${msgCls(log)}`}>{log.message || log.raw}</span>
-              </div>
-            ))}
+            {logs.map((log, i) => renderLogEntry(log, i))}
           </div>
         )}
       </div>
@@ -522,6 +667,8 @@ function TradeHistoryPanel() {
                 <th>Exit</th>
                 <th>Result</th>
                 <th>R</th>
+                <th>PnL</th>
+                <th>Balance</th>
                 <th>Bars</th>
                 <th>Exit Reason</th>
               </tr>
@@ -531,17 +678,25 @@ function TradeHistoryPanel() {
                 const win  = String(t.result).toUpperCase() === 'WIN';
                 const buy  = String(t.direction).toUpperCase() === 'BUY';
                 const r    = parseFloat(t.R_multiple);
+                const pnl  = t.pnl !== undefined && t.pnl !== '' ? parseFloat(t.pnl) : null;
+                const bal  = t.equity_after !== undefined && t.equity_after !== '' ? parseFloat(t.equity_after) : null;
                 return (
                   <tr key={i}>
-                    <td className="td-mono">{isoShort(t.timestamp)}</td>
+                    <td className="td-mono">{isoShort(t.entry_timestamp || t.timestamp)}</td>
                     <td className="td-mono">{isoShort(t.exit_timestamp)}</td>
                     <td className={buy ? 'td-buy' : 'td-sell'}>{t.direction}</td>
-                    <td className="td-mono">{fmt(t.entry)}</td>
+                    <td className="td-mono">{fmt(t.entry_price ?? t.entry)}</td>
                     <td className="td-mono td-muted">{fmt(t.sl)}</td>
                     <td className="td-mono td-muted">{fmt(t.tp)}</td>
-                    <td className="td-mono">{fmt(t.exit)}</td>
+                    <td className="td-mono">{fmt(t.exit_price ?? t.exit)}</td>
                     <td className={win ? 'td-win' : 'td-loss'}>{t.result}</td>
                     <td className={r >= 0 ? 'td-win' : 'td-loss'}>{fmt(r, 3)}R</td>
+                    <td className={pnl === null ? '' : pnl >= 0 ? 'td-pnl-pos' : 'td-pnl-neg'}>
+                      {pnl === null ? '—' : `${pnl >= 0 ? '+' : ''}$${fmt(pnl)}`}
+                    </td>
+                    <td className="td-mono td-muted">
+                      {bal === null ? '—' : `$${bal.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`}
+                    </td>
                     <td className="td-muted">{t.bars_held}</td>
                     <td className="td-muted">{t.exit_reason}</td>
                   </tr>
