@@ -63,6 +63,8 @@ class BacktestRequest(BaseModel):
     sl_candles: int = 5
     tp_candles: int = 10
     starting_balance: float = 5000.0
+    # 1-10 (%) → fraction sent to engine: 0.01–0.10
+    risk_per_trade_pct: float = 5.0
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -169,11 +171,14 @@ def run_backtest_endpoint(req: BacktestRequest) -> dict[str, Any]:
         engine.STOP_LOSS_ATR_MULTIPLIER = sl_mult
         engine.TAKE_PROFIT_ATR_MULTIPLIER = tp_mult
 
+        risk_fraction = max(0.01, min(0.10, req.risk_per_trade_pct / 100.0))
+
         try:
             trades_df, metrics = engine.run_backtest(
                 start_utc=start_utc,
                 end_utc=end_utc,
                 starting_balance=req.starting_balance,
+                risk_per_trade=risk_fraction,
             )
         finally:
             # Always restore originals even if backtest throws

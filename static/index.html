@@ -355,6 +355,7 @@ function BacktestPanel() {
   const [slC,       setSlC]       = useState(5);
   const [tpC,       setTpC]       = useState(10);
   const [balance,   setBalance]   = useState(5000);
+  const [riskPct,   setRiskPct]   = useState(5);
   const [loading,   setLoading]   = useState(false);
   const [result,    setResult]    = useState(null);
   const [error,     setError]     = useState('');
@@ -368,11 +369,12 @@ function BacktestPanel() {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          start_date:       startDate,
-          end_date:         endDate,
-          sl_candles:       slC,
-          tp_candles:       tpC,
-          starting_balance: +balance || 5000,
+          start_date:          startDate,
+          end_date:            endDate,
+          sl_candles:          slC,
+          tp_candles:          tpC,
+          starting_balance:    +balance || 5000,
+          risk_per_trade_pct:  +riskPct || 5,
         }),
       });
       const data = await res.json();
@@ -384,7 +386,7 @@ function BacktestPanel() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, slC, tpC, balance]);
+  }, [startDate, endDate, slC, tpC, balance, riskPct]);
 
   const m = result?.metrics || {};
   const netPnl = result?.equity_curve?.slice(-1)[0]?.equity ?? null;
@@ -437,6 +439,20 @@ function BacktestPanel() {
             <label className="fg-label">Starting Balance <span className="fg-accent">(USD)</span></label>
             <input type="number" className="input" value={balance} min="100" step="100"
               onChange={e => setBalance(+e.target.value)} />
+          </div>
+          <div className="fg">
+            <label className="fg-label">
+              Risk per Trade
+              <span className="fg-accent">
+                ({riskPct}% = ${((+balance || 5000) * riskPct / 100).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})} / trade)
+              </span>
+            </label>
+            <div className="slider-row">
+              <input type="range" min="1" max="10" step="1" value={riskPct}
+                style={{ flex: 1 }}
+                onChange={e => setRiskPct(+e.target.value)} />
+              <span className="slider-val">{riskPct}%</span>
+            </div>
           </div>
         </div>
 
