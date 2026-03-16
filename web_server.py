@@ -8,9 +8,15 @@ Then open:  http://localhost:8000
 """
 from __future__ import annotations
 
+import asyncio
+import json as _json
 import logging
+import os
+import signal
+import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +25,7 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -42,6 +49,11 @@ LOGGER = logging.getLogger("dashboard")
 
 # Prevent two backtest runs overlapping
 _backtest_lock = threading.Lock()
+
+# ── Bot process management ────────────────────────────────────────────────────
+_bot_process: subprocess.Popen | None = None
+_bot_lock = threading.Lock()
+_bot_start_time: float | None = None
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="SEAN0-ALGO Dashboard API", docs_url="/api/docs")
@@ -105,9 +117,51 @@ def get_logs(limit: int = 20) -> dict[str, Any]:
             if ln.strip()
         ]
         recent = list(reversed(lines[-limit:]))
-        return {"logs": [_parse_log_line(ln) for ln in recent]}
+        mtime  = os.path.getmtime(LOG_PATH)
+        return {
+            "logs":        [_parse_log_line(ln) for ln in recent],
+            "total_lines": len(lines),
+            "file_mtime":  mtime,           # Unix timestamp of last bot write
+        }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/logs/stream")
+async def stream_logs():
+    """SSE endpoint — pushes new log lines to the browser the instant they appear.
+    The frontend connects once; new lines are streamed with zero polling delay.
+    """
+    async def generator():
+        # ── send keepalive so browser knows we're alive ──
+        yield "retry: 3000\n\n"          # tell browser: reconnect after 3s on drop
+
+        if not LOG_PATH.exists():
+            yield f"data: {_json.dumps({'status': 'no_file'})}\n\n"
+            return
+
+        # Seek to END of file — we only push NEW lines from here on
+        with open(LOG_PATH, "r", encoding="utf-8", errors="replace") as fh:
+            fh.seek(0, 2)
+            while True:
+                line = fh.readline()
+                if line and line.strip():
+                    parsed = _parse_log_line(line.strip())
+                    yield f"data: {_json.dumps(parsed)}\n\n"
+                else:
+                    # No new line yet — yield a comment ping and wait
+                    yield ": ping\n\n"
+                    await asyncio.sleep(0.5)   # check file twice per second
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":    "no-cache",
+            "X-Accel-Buffering": "no",    # disable nginx buffering if proxied
+            "Connection":       "keep-alive",
+        },
+    )
 
 
 @app.get("/trades")
@@ -158,9 +212,13 @@ def run_backtest_endpoint(req: BacktestRequest) -> dict[str, Any]:
         today   = now_utc.normalize()
         start_utc = engine.parse_date_utc(req.start_date) if req.start_date else (today - pd.Timedelta(days=180))
         end_utc   = engine.parse_date_utc(req.end_date, inclusive_end=True) if req.end_date else today
-        # Cap end_utc to the current moment — OANDA rejects requests with a
-        # "to" timestamp that lies in the future (returns HTTP 400).
-        end_utc = min(end_utc, now_utc)
+        # Cap end_utc to yesterday 23:59:59 UTC.
+        # OANDA rejects any "to" timestamp that falls on today's date (even
+        # midnight-of-today) because the current trading day is still open.
+        # Using yesterday's final second guarantees every requested window
+        # contains only fully-closed candles and the API never returns 400.
+        yesterday_end = today.normalize() - pd.Timedelta(seconds=1)
+        end_utc = min(end_utc, yesterday_end)
 
         if end_utc <= start_utc:
             return {"error": "End date must be after start date.", "metrics": {}, "trades": [], "equity_curve": []}
@@ -223,7 +281,105 @@ def run_backtest_endpoint(req: BacktestRequest) -> dict[str, Any]:
         _backtest_lock.release()
 
 
+# ── Bot Control Endpoints ─────────────────────────────────────────────────────
+@app.post("/bot/start")
+def bot_start() -> dict[str, Any]:
+    """Launch main.py as a subprocess. Idempotent — does nothing if already running."""
+    global _bot_process, _bot_start_time
+    with _bot_lock:
+        # Check if already alive
+        if _bot_process is not None and _bot_process.poll() is None:
+            return {"status": "already_running", "pid": _bot_process.pid}
+        main_py = ROOT / "main.py"
+        if not main_py.exists():
+            raise HTTPException(status_code=500, detail="main.py not found in bot directory.")
+        try:
+            _bot_process = subprocess.Popen(
+                [sys.executable, str(main_py)],
+                cwd=str(ROOT),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            _bot_start_time = time.time()
+            LOGGER.info("[BOT] started pid=%s", _bot_process.pid)
+            return {"status": "started", "pid": _bot_process.pid}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to start bot: {exc}") from exc
+
+
+@app.post("/bot/stop")
+def bot_stop() -> dict[str, Any]:
+    """Gracefully terminate the bot subprocess."""
+    global _bot_process, _bot_start_time
+    with _bot_lock:
+        if _bot_process is None or _bot_process.poll() is not None:
+            _bot_process = None
+            _bot_start_time = None
+            return {"status": "not_running"}
+        pid = _bot_process.pid
+        try:
+            _bot_process.terminate()
+            try:
+                _bot_process.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                _bot_process.kill()
+                _bot_process.wait(timeout=3)
+        except Exception as exc:
+            LOGGER.warning("[BOT] stop error pid=%s: %s", pid, exc)
+        _bot_process = None
+        _bot_start_time = None
+        LOGGER.info("[BOT] stopped pid=%s", pid)
+        return {"status": "stopped", "pid": pid}
+
+
+@app.get("/bot/status")
+def bot_status() -> dict[str, Any]:
+    """Return bot running state + log freshness for the dashboard indicator."""
+    global _bot_process, _bot_start_time
+    with _bot_lock:
+        running = _bot_process is not None and _bot_process.poll() is None
+        pid = _bot_process.pid if running else None
+        # If process was started but exited by itself, clean up
+        if _bot_process is not None and not running:
+            exit_code = _bot_process.poll()
+            _bot_process = None
+            _bot_start_time = None
+            LOGGER.info("[BOT] process exited exit_code=%s", exit_code)
+
+    log_age_seconds: float | None = None
+    log_mtime: float | None = None
+    if LOG_PATH.exists():
+        log_mtime = os.path.getmtime(LOG_PATH)
+        log_age_seconds = round(time.time() - log_mtime, 1)
+
+    uptime_seconds: float | None = None
+    if running and _bot_start_time is not None:
+        uptime_seconds = round(time.time() - _bot_start_time, 0)
+
+    return {
+        "running": running,
+        "pid": pid,
+        "uptime_seconds": uptime_seconds,
+        "log_age_seconds": log_age_seconds,
+        "log_mtime": log_mtime,
+    }
+
+
 # ── Static files (React SPA) ──────────────────────────────────────────────────
+# Serve index.html with no-cache headers so browser always gets the latest build
+from fastapi.responses import FileResponse
+
+@app.get("/", include_in_schema=False)
+def serve_index():
+    return FileResponse(
+        str(STATIC_DIR / "index.html"),
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+        },
+    )
+
 app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
 
 

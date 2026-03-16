@@ -173,6 +173,130 @@
     .log-reason-rej     { color:var(--loss); }
     .log-reason-idle    { color:var(--muted); }
     .log-signal-row     { background:var(--win-dim) !important; border-left:2px solid var(--win); }
+    .log-rej-row        { border-left:2px solid rgba(239,68,68,.4); }
+    /* Filter pass/fail chips */
+    .chip-filter-pass   { background:rgba(16,163,127,.13); color:var(--win); border:1px solid rgba(16,163,127,.25); font-size:10px; padding:2px 7px; border-radius:4px; font-weight:600; }
+    .chip-filter-fail   { background:rgba(239,68,68,.12); color:#f87171; border:1px solid rgba(239,68,68,.22); font-size:10px; padding:2px 7px; border-radius:4px; font-weight:600; }
+    /* Score pass/fail */
+    .chip-score-pass    { background:rgba(16,163,127,.13); color:var(--win); font-size:10px; padding:1px 7px; border-radius:3px; font-weight:700; }
+    .chip-score-fail    { background:rgba(239,68,68,.12); color:#f87171; font-size:10px; padding:1px 7px; border-radius:3px; font-weight:700; }
+    /* ATR / ADX number chips */
+    .chip-atr-val       { background:rgba(245,158,11,.13); color:var(--warn); font-size:10px; padding:1px 7px; border-radius:3px; font-weight:600; }
+    .chip-adx-val       { background:rgba(99,102,241,.14); color:#a5b4fc; font-size:10px; padding:1px 7px; border-radius:3px; font-weight:600; }
+    /* Bias chips */
+    .chip-bull          { background:rgba(16,163,127,.13); color:var(--win); font-size:10px; padding:1px 7px; border-radius:3px; font-weight:600; }
+    .chip-bear          { background:rgba(239,68,68,.12); color:#f87171; font-size:10px; padding:1px 7px; border-radius:3px; font-weight:600; }
+
+    /* ── Plain-text structured log rows ─────────────── */
+    .log-txt-row        { display:flex; align-items:center; flex-wrap:wrap; gap:5px; padding:7px 12px; border-radius:6px; font-size:12px; transition:background .1s; }
+    .log-txt-row:hover  { background:rgba(255,255,255,.03); }
+    .log-txt-row.row-rejected { border-left:2px solid var(--loss); }
+    .log-txt-row.row-signal   { background:var(--win-dim) !important; border-left:2px solid var(--win); }
+    .chip-status-ok     { background:var(--win-dim); color:var(--win); font-size:10px; padding:1px 7px; border-radius:3px; font-weight:700; }
+    .chip-status-rej    { background:var(--loss-dim); color:var(--loss); font-size:10px; padding:1px 7px; border-radius:3px; font-weight:700; }
+    .chip-status-idle   { background:rgba(255,255,255,.07); color:var(--muted); font-size:10px; padding:1px 7px; border-radius:3px; font-weight:600; }
+    /* Reason/filter chips – colour-coded by category */
+    .chip-reason        { font-size:10px; padding:2px 8px; border-radius:4px; font-weight:600; border:1px solid transparent; }
+    .chip-price         { background:rgba(239,68,68,.12); color:#f87171; border-color:rgba(239,68,68,.2); }
+    .chip-rsi           { background:rgba(99,102,241,.15); color:#a5b4fc; border-color:rgba(99,102,241,.25); }
+    .chip-atr           { background:rgba(245,158,11,.13); color:var(--warn); border-color:rgba(245,158,11,.25); }
+    .chip-volume        { background:rgba(16,163,127,.12); color:var(--win); border-color:rgba(16,163,127,.2); }
+    .chip-regime-tag    { background:rgba(245,158,11,.12); color:var(--warn); border-color:rgba(245,158,11,.2); }
+    .chip-session-tag   { background:rgba(255,255,255,.07); color:var(--muted); border-color:rgba(255,255,255,.1); }
+    .chip-generic       { background:rgba(255,255,255,.06); color:var(--muted); border-color:rgba(255,255,255,.1); }
+
+    /* ═══════════════════════════════════════════════
+       TERMINAL PANEL
+    ═══════════════════════════════════════════════ */
+    .term-panel         { border-radius:var(--radius); overflow:hidden; border:1px solid #1a1a1a; box-shadow:0 10px 40px rgba(0,0,0,.6); display:flex; flex-direction:column; }
+
+    /* title bar */
+    .term-titlebar      { display:flex; align-items:center; gap:10px; padding:8px 14px; background:#1c1c1e; border-bottom:1px solid #2a2a2a; min-height:36px; user-select:none; }
+    .term-dots          { display:flex; gap:6px; align-items:center; flex-shrink:0; }
+    .term-dot           { width:12px; height:12px; border-radius:50%; }
+    .term-dot-red       { background:#ff5f57; }
+    .term-dot-yellow    { background:#ffbd2e; }
+    .term-dot-green2    { background:#28ca41; }
+    .term-title-txt     { flex:1; font-family:'Courier New',monospace; font-size:11px; color:#5a5a6e; text-align:center; letter-spacing:.06em; }
+    .term-meta          { display:flex; align-items:center; gap:7px; font-size:11px; flex-shrink:0; }
+    .term-live-dot      { width:7px; height:7px; border-radius:50%; background:#28ca41; flex-shrink:0; }
+    .term-live-dot.live { animation:pulse 1.4s infinite; }
+    .term-live-dot.dead { background:#ef4444; animation:none; }
+    .term-live-lbl      { font-family:monospace; font-size:10px; letter-spacing:.08em; font-weight:700; }
+    .term-live-lbl.live { color:#28ca41; }
+    .term-live-lbl.dead { color:#ef4444; }
+    .term-cd            { font-family:monospace; font-size:10px; color:#3d4f3d; min-width:28px; }
+    .term-rbtn          { background:none; border:none; color:#4b5563; cursor:pointer; font-size:15px; line-height:1; padding:0 2px; transition:color .15s; }
+    .term-rbtn:hover    { color:#28ca41; }
+    .term-newbadge      { background:#28ca41; color:#000; font-size:9px; font-weight:800; padding:1px 5px; border-radius:20px; letter-spacing:.04em; }
+
+    /* body */
+    .term-body          { background:#0d1117; flex:1; overflow-y:auto; max-height:440px; padding:6px 0 4px; font-family:'Cascadia Code','JetBrains Mono','Fira Code','Consolas','Courier New',monospace; font-size:12px; scroll-behavior:smooth; }
+    .term-body::-webkit-scrollbar{ width:4px; }
+    .term-body::-webkit-scrollbar-thumb{ background:#1e2a1e; border-radius:2px; }
+    .term-body::-webkit-scrollbar-track{ background:transparent; }
+
+    /* rows */
+    .term-row           { display:flex; align-items:center; flex-wrap:wrap; gap:5px; padding:3px 12px; line-height:1.7; border-left:2px solid transparent; transition:background .1s; }
+    .term-row:hover     { background:rgba(255,255,255,.025); }
+    .term-row-new       { animation:termFlash .8s ease-out forwards; }
+    .term-row-signal    { border-left-color:#28ca41 !important; background:rgba(40,202,65,.04); }
+    .term-row-rej       { border-left-color:rgba(239,68,68,.5); }
+    @keyframes termFlash{ 0%{ background:rgba(16,163,127,.22); } 100%{ background:transparent; } }
+
+    /* row elements */
+    .term-prompt        { color:#28ca41; font-weight:700; font-size:12px; flex-shrink:0; margin-right:2px; }
+    .term-ts            { color:#3a6b3a; font-size:11px; min-width:90px; flex-shrink:0; }
+    .term-plain         { color:#8e8ea0; font-size:11px; word-break:break-all; }
+    .term-cursor-row    { display:flex; align-items:center; gap:4px; padding:5px 12px 8px; }
+    .term-cursor        { display:inline-block; width:7px; height:13px; background:#28ca41; animation:blink .8s step-end infinite; vertical-align:middle; }
+    @keyframes blink    { 0%,100%{ opacity:.9; } 50%{ opacity:0; } }
+    .term-empty         { padding:28px 16px; color:#2a4a2a; font-family:monospace; font-size:12px; }
+    .term-empty code    { color:#28ca41; }
+
+    /* override chip sizes inside terminal rows */
+    .term-row .log-jdir            { font-size:10px; padding:1px 6px; border-radius:3px; }
+    .term-row .log-jts             { font-size:11px; min-width:0; color:#3a6b3a; }
+    .term-row .log-chip            { font-size:10px; padding:1px 6px; border-radius:3px; }
+    .term-row .chip-reason         { font-size:10px; padding:1px 6px; border-radius:3px; }
+    .term-row .chip-status-ok,.term-row .chip-status-rej,.term-row .chip-status-idle { font-size:10px; padding:1px 6px; }
+    .term-row .chip-filter-pass    { background:rgba(40,202,65,.18); color:#4ade80; border:none; }
+    .term-row .chip-filter-fail    { background:rgba(239,68,68,.14); color:#f87171; border:none; }
+    .term-row .chip-atr-val        { background:rgba(245,158,11,.14); color:#fbbf24; border:none; }
+    .term-row .chip-adx-val        { background:rgba(139,92,246,.15); color:#a78bfa; border:none; }
+    .term-row .chip-bull           { background:rgba(40,202,65,.14); color:#4ade80; border:none; }
+    .term-row .chip-bear           { background:rgba(239,68,68,.12); color:#f87171; border:none; }
+
+    /* ── Nav Tabs ────────────────────────────────── */
+    .nav-tabs           { display:flex; align-items:center; gap:4px; padding:0 24px; border-bottom:1px solid var(--border); background:var(--bg); position:sticky; top:57px; z-index:99; }
+    .nav-tab            { padding:12px 18px; font-size:13px; font-weight:500; color:var(--muted); border:none; background:none; cursor:pointer; border-bottom:2px solid transparent; transition:color .15s, border-color .15s; white-space:nowrap; }
+    .nav-tab:hover      { color:var(--text); }
+    .nav-tab.active     { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+    .nav-tab-icon       { margin-right:6px; }
+
+    /* ── Bot Control Card ────────────────────────── */
+    .bot-ctrl           { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; padding:16px 20px; background:var(--surface); border-radius:var(--radius); border:1px solid var(--border); margin-bottom:2px; }
+    .bot-ctrl-left      { display:flex; align-items:center; gap:14px; }
+    .bot-status-dot     { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+    .bot-status-dot.on  { background:var(--win); box-shadow:0 0 8px rgba(16,163,127,.7); animation:pulse 2s infinite; }
+    .bot-status-dot.off { background:var(--muted); }
+    .bot-status-dot.starting { background:var(--warn); box-shadow:0 0 8px rgba(245,158,11,.7); animation:pulse 1s infinite; }
+    .bot-info           { display:flex; flex-direction:column; gap:2px; }
+    .bot-info-title     { font-weight:600; font-size:13px; }
+    .bot-info-meta      { font-size:11px; color:var(--muted); font-family:monospace; }
+    .btn-start          { padding:9px 22px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; transition:opacity .15s; display:flex; align-items:center; gap:7px; }
+    .btn-start:hover    { opacity:.88; }
+    .btn-start:disabled { opacity:.45; cursor:not-allowed; }
+    .btn-stop           { padding:9px 22px; background:var(--loss-dim); color:var(--loss); border:1px solid rgba(239,68,68,.3); border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; transition:opacity .15s; display:flex; align-items:center; gap:7px; }
+    .btn-stop:hover     { opacity:.82; }
+    .btn-stop:disabled  { opacity:.45; cursor:not-allowed; }
+    .bot-stat-chips     { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .bot-chip           { font-size:11px; padding:2px 9px; border-radius:4px; font-weight:600; }
+    .bot-chip-pid       { background:rgba(255,255,255,.06); color:var(--muted); }
+    .bot-chip-uptime    { background:rgba(16,163,127,.1); color:var(--win); }
+    .bot-chip-idle      { background:rgba(245,158,11,.1); color:var(--warn); }
+    .bot-chip-err       { background:var(--loss-dim); color:var(--loss); }
+
   </style>
 </head>
 <body>
@@ -364,7 +488,7 @@ function MetricCard({ label, value, sub, color }) {
 /* ─────────────────────────────────────────────────────────────────────────────
    Backtest Panel
 ───────────────────────────────────────────────────────────────────────────── */
-function BacktestPanel() {
+function BacktestPanel({ onBacktestComplete }) {
   const range = defaultRange();
   const [startDate, setStartDate] = useState(range.start);
   const [endDate,   setEndDate]   = useState(range.end);
@@ -394,9 +518,18 @@ function BacktestPanel() {
         }),
       });
       const data = await res.json();
-      if (!res.ok)  throw new Error(data.detail || 'Backtest request failed');
+      if (!res.ok) {
+        // Strip noisy OANDA URLs from error messages shown to the user
+        let msg = data.detail || 'Backtest request failed';
+        msg = msg.replace(/https?:\/\/[^\s]+/g, '').replace(/400 Client Error: Bad Request for url:\s*/i, '').trim();
+        if (/unable to fetch.*candles/i.test(msg)) {
+          msg = 'Some OANDA candle windows were unavailable (weekend / partial day). Try a different date range.';
+        }
+        throw new Error(msg);
+      }
       if (data.error) throw new Error(data.error);
       setResult(data);
+      if (onBacktestComplete) onBacktestComplete(data);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -564,116 +697,285 @@ function lvlNorm(l) {
 }
 
 function tryParseJson(msg) {
-  /* Extract the first {...} blob from a log message */
   if (!msg) return null;
   const start = msg.indexOf('{');
   if (start === -1) return null;
   try { return JSON.parse(msg.slice(start)); } catch (_) { return null; }
 }
 
-function renderLogEntry(log, i) {
-  const msg    = log.message || log.raw || '';
-  const parsed = tryParseJson(msg);
+/* ── Parse plain-text structured log lines ────────────────────────────────
+   Handles formats like:
+     "SELL LONDON rejected: price_break, rsi_filter, atr_expansion"
+     "BUY NY signal: score=7, rsi=44.2, atr=3.12, price_break"
+     "HOLD TOKYO idle: regime_filter, volume_filter"
+   Returns null if the message doesn't match.
+────────────────────────────────────────────────────────────────────────── */
+function tryParseStructured(msg) {
+  if (!msg) return null;
+  const RE = /^(BUY|SELL|LONG|SHORT|HOLD|FLAT)?\s*(LONDON|NEW[_\s]?YORK|NY|TOKYO|SYDNEY|ASIA|EUROPE|OVERLAP|KILLZONE|US|OPEN)?\s*(rejected|signal|allowed|passed|entry|opened|sent|idle|wait|skipped|blocked|no[\s_]trade|filter)[\s:,]+(.*)/i;
+  const m = RE.exec(msg.trim());
+  if (!m) return null;
+  const direction = (m[1] || '').toUpperCase();
+  const session   = (m[2] || '').toUpperCase().replace(/_/g,' ');
+  const status    = m[3].toLowerCase();
+  const rest      = m[4] || '';
+  /* Split rest into key=value pairs and bare tags */
+  const params = [];
+  rest.split(/[\s,]+/).forEach(tok => {
+    tok = tok.trim();
+    if (!tok) return;
+    params.push(tok);
+  });
+  return { direction, session, status, params };
+}
 
-  /* Render structured row when the JSON has signal/decision fields */
-  if (
-    parsed &&
-    (parsed.direction || parsed.signal || parsed.session ||
-     parsed.regime || parsed.reason || parsed.decision || parsed.action)
-  ) {
-    const dir      = (parsed.direction || parsed.signal || '').toUpperCase();
-    const dirCls   = dir === 'BUY' ? 'log-jdir-buy' : dir === 'SELL' ? 'log-jdir-sell' : 'log-jdir-none';
-    const ts       = (parsed.timestamp || log.timestamp || '').slice(0, 16);
-    const isSignal = dir === 'BUY' || dir === 'SELL';
-    const reason   = parsed.reason || parsed.action || parsed.decision || '';
-    const okReg    = /allowed|passed|signal|entry|opened|sent|trade/i;
-    const rejReg   = /reject|skip|block|deny|no trade|idle|wait|filter/i;
-    const reasonCls = okReg.test(reason) ? 'log-reason-ok'
-                    : rejReg.test(reason) ? 'log-reason-rej'
-                    : 'log-reason-idle';
+/* Map a param token to a CSS chip class */
+function reasonChipClass(tok) {
+  const t = tok.toLowerCase();
+  if (/price|break|close|candle|body|wick/.test(t)) return 'chip-reason chip-price';
+  if (/rsi|momentum|oversold|overbought/.test(t))    return 'chip-reason chip-rsi';
+  if (/atr|expansion|volatil|range/.test(t))         return 'chip-reason chip-atr';
+  if (/volume|vol/.test(t))                          return 'chip-reason chip-volume';
+  if (/regime|trend|direction/.test(t))              return 'chip-reason chip-regime-tag';
+  if (/session|london|ny|tokyo|sydney|asia|euro|kill/.test(t)) return 'chip-reason chip-session-tag';
+  if (/score|threshold/.test(t))                     return 'chip-reason chip-score';
+  return 'chip-reason chip-generic';
+}
+
+/* Parse key=value tokens like rsi=44.2 → label "RSI" value "44.2" */
+function parseKV(tok) {
+  const kv = tok.match(/^([a-z_]+)=(.+)$/i);
+  if (!kv) return null;
+  return { key: kv[1].toUpperCase(), val: kv[2] };
+}
+
+/* ── Filter label map ─── */
+const FILTER_LABELS = {
+  trend_alignment: 'Trend', price_trigger: 'Price Break',
+  rsi_filter: 'RSI', atr_expansion: 'ATR Expansion',
+  session_filter: 'Session', volume_filter: 'Volume',
+  regime_filter: 'Regime', score_threshold: 'Score',
+};
+
+function renderLogEntry(log, i, isNew = false) {
+  const msg = log.message || log.raw || '';
+
+  /* ── 1. Try JSON structured row (actual decision_trace.log format) ── */
+  const parsed = tryParseJson(msg);
+  if (parsed && (parsed.direction || parsed.session || parsed.decision)) {
+    const dir        = (parsed.direction || '').toUpperCase();
+    const dirCls     = dir === 'BUY' ? 'log-jdir-buy' : dir === 'SELL' ? 'log-jdir-sell' : 'log-jdir-none';
+    const ts         = (parsed.timestamp || log.timestamp || '').slice(0, 16).replace('T', ' ');
+    const decision   = (parsed.decision || '').toLowerCase();
+    const isSignal   = decision === 'signal' || parsed.signal_generated === true;
+    const isRejected = decision === 'rejected';
+
+    const regime  = parsed.market_regime || parsed.regime || '';
+    const regConf = parsed.regime_confidence != null ? (parsed.regime_confidence * 100).toFixed(1) : null;
+    const score   = parsed.signal_score ?? parsed.score;
+    const threshold = parsed.score_threshold ?? parsed.threshold;
+
+    const breakdown  = parsed.breakdown || {};
+    const filterChips = Object.entries(breakdown).map(([key, pts]) => {
+      const label  = FILTER_LABELS[key] || key.replace(/_/g, ' ');
+      const passed = pts > 0;
+      return <span key={key} className={`chip-reason ${passed ? 'chip-filter-pass' : 'chip-filter-fail'}`}>{passed ? '✓' : '✗'} {label}{pts > 0 ? ` +${pts}` : ''}</span>;
+    });
+
+    const rd   = parsed.regime_details || {};
+    const atr  = rd.atr14  != null ? (+rd.atr14).toFixed(2) : null;
+    const adx  = rd.adx14  != null ? (+rd.adx14).toFixed(1) : null;
+    const bias = rd.trend_bias || '';
+    const beh  = (parsed.strategy_behavior || rd.strategy_behavior || '').replace(/_/g, ' ');
+
+    const rowCls = ['term-row',
+      isNew     ? 'term-row-new'    : '',
+      isSignal  ? 'term-row-signal' : '',
+      isRejected? 'term-row-rej'    : '',
+    ].filter(Boolean).join(' ');
 
     return (
-      <div key={i} className={`log-json-row${isSignal ? ' log-signal-row' : ''}`}>
-        <span className="log-jts">{ts}</span>
-        {dir && <span className={`log-jdir ${dirCls}`}>{dir}</span>}
-        {parsed.session  && <span className="log-chip chip-session">{parsed.session}</span>}
-        {parsed.regime   && <span className="log-chip chip-regime">{parsed.regime}</span>}
-        {(parsed.score != null || parsed.threshold != null) && (
-          <span className="log-chip chip-score">
-            score {parsed.score ?? '?'}/{parsed.threshold ?? '?'}
-          </span>
-        )}
-        {parsed.rsi != null && (
-          <span className="log-chip chip-score">RSI {(+parsed.rsi).toFixed(1)}</span>
-        )}
-        {parsed.atr != null && (
-          <span className="log-chip chip-score">ATR {(+parsed.atr).toFixed(2)}</span>
-        )}
-        {reason && <span className={`log-reason ${reasonCls}`}>{reason}</span>}
+      <div key={i} className={rowCls}>
+        <span className="term-prompt">&gt;</span>
+        <span className="term-ts">{ts}</span>
+        {dir      && <span className={`log-jdir ${dirCls}`}>{dir}</span>}
+        {parsed.session && <span className="log-chip chip-session">{parsed.session}</span>}
+        {decision && <span className={isSignal ? 'chip-status-ok' : isRejected ? 'chip-status-rej' : 'chip-status-idle'}>{decision.toUpperCase()}</span>}
+        {regime   && <span className="log-chip chip-regime">{regime.replace(/_/g,' ')}{regConf ? ` ${regConf}%` : ''}</span>}
+        {beh      && <span className="log-chip chip-score">{beh}</span>}
+        {score != null && <span className={`log-chip ${score >= (threshold ?? 80) ? 'chip-score-pass' : 'chip-score-fail'}`}>score {score}/{threshold ?? '?'}</span>}
+        {filterChips}
+        {atr  && <span className="log-chip chip-atr-val">ATR {atr}</span>}
+        {adx  && <span className="log-chip chip-adx-val">ADX {adx}</span>}
+        {bias && <span className={`log-chip ${bias === 'bull' ? 'chip-bull' : 'chip-bear'}`}>{bias} bias</span>}
       </div>
     );
   }
 
-  /* Fallback: plain log row */
-  const txt    = msg.toLowerCase();
-  const msgCls = txt.includes('[signal]') || txt.includes('signal_sent') || txt.includes('signal dispatched')
-    ? 'signal'
-    : (log.level === 'ERROR' || log.level === 'CRITICAL' || txt.includes('failed') || txt.includes('error'))
-    ? 'err-txt'
-    : '';
+  /* ── 2. Try plain-text structured row ── */
+  const struct = tryParseStructured(msg);
+  if (struct) {
+    const { direction, session, status, params } = struct;
+    const isRej    = /reject|skip|block|deny|no.?trade|filter|idle|wait/.test(status);
+    const isSignal = /signal|allowed|passed|entry|opened|sent/.test(status);
+    const dirCls   = direction === 'BUY' ? 'log-jdir-buy' : direction === 'SELL' ? 'log-jdir-sell' : 'log-jdir-none';
+    const rowCls   = ['term-row',
+      isNew    ? 'term-row-new'    : '',
+      isSignal ? 'term-row-signal' : '',
+      isRej    ? 'term-row-rej'    : '',
+    ].filter(Boolean).join(' ');
+    return (
+      <div key={i} className={rowCls}>
+        <span className="term-prompt">&gt;</span>
+        <span className="term-ts">{(log.timestamp || '').slice(0, 16)}</span>
+        {direction && <span className={`log-jdir ${dirCls}`}>{direction}</span>}
+        {session   && <span className="log-chip chip-session">{session}</span>}
+        <span className={isSignal ? 'chip-status-ok' : isRej ? 'chip-status-rej' : 'chip-status-idle'}>{status.toUpperCase()}</span>
+        {params.map((tok, j) => {
+          const kv = parseKV(tok);
+          if (kv) return <span key={j} className={reasonChipClass(kv.key)}>{kv.key} <strong>{kv.val}</strong></span>;
+          return <span key={j} className={reasonChipClass(tok)}>{tok.replace(/_/g,' ')}</span>;
+        })}
+      </div>
+    );
+  }
 
+  /* ── 3. Fallback: plain terminal line ── */
+  const txt    = msg.toLowerCase();
+  const isErr  = log.level === 'ERROR' || log.level === 'CRITICAL' || txt.includes('error') || txt.includes('failed');
+  const isSig  = txt.includes('[signal]') || txt.includes('signal_sent');
+  const rowCls = ['term-row', isNew ? 'term-row-new' : '', isSig ? 'term-row-signal' : ''].filter(Boolean).join(' ');
   return (
-    <div key={i} className="log-row">
-      <span className="log-ts">{(log.timestamp || '').slice(0, 19)}</span>
-      <span className={`log-lvl lvl-${lvlNorm(log.level)}`}>{lvlNorm(log.level)}</span>
-      <span className={`log-msg ${msgCls}`}>{msg}</span>
+    <div key={i} className={rowCls}>
+      <span className="term-prompt">&gt;</span>
+      <span className="term-ts">{(log.timestamp || '').slice(0, 19)}</span>
+      <span className={`term-plain ${isErr ? 'td-loss' : isSig ? 'td-win' : ''}`}>{msg}</span>
     </div>
   );
 }
 
 function LogsPanel() {
-  const [logs,    setLogs]    = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [updated, setUpdated] = useState('');
-  const listRef = useRef(null);
+  const [logs,      setLogs]      = useState([]);
+  const [ready,     setReady]     = useState(false);
+  const [botOnline, setBotOnline] = useState(false);
+  const [lastSeen,  setLastSeen]  = useState('');
+  const [newIdxs,   setNewIdxs]   = useState(new Set());
+  const [tick,      setTick]      = useState(0);   // drives live clock in titlebar
+  const prevCountRef = useRef(0);
+  const bottomRef    = useRef(null);
 
-  const fetchLogs = useCallback(async () => {
-    try {
-      const res  = await fetch('/logs?limit=20');
-      const data = await res.json();
-      setLogs(data.logs || []);
-      setUpdated(new Date().toLocaleTimeString());
-    } catch (_) {}
-    finally { setLoading(false); }
+  /* ── Poll /logs every 3 s ── */
+  useEffect(() => {
+    let cancelled = false;
+
+    function poll() {
+      fetch('/logs?limit=60')
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (cancelled) return;
+          var entries = (d.logs || []).slice().reverse(); // oldest→newest
+          var prevLen = prevCountRef.current;
+          if (entries.length > prevLen) {
+            var fresh = new Set();
+            for (var j = prevLen; j < entries.length; j++) {
+              fresh.add(j);
+            }
+            setNewIdxs(fresh);
+            setTimeout(function(){ setNewIdxs(new Set()); }, 1200);
+          }
+          prevCountRef.current = entries.length;
+          setLogs(entries);
+          setReady(true);
+          if (d.file_mtime) {
+            var dt  = new Date(d.file_mtime * 1000);
+            var ago = Date.now() - dt.getTime();
+            setLastSeen(dt.toLocaleTimeString());
+            setBotOnline(ago < 5 * 60 * 1000);
+          }
+        })
+        .catch(function(){ if (!cancelled) setReady(true); });
+    }
+
+    poll();
+    var id = setInterval(poll, 3000);
+    var tickId = setInterval(function(){ setTick(function(t){ return t + 1; }); }, 1000);
+
+    return function(){ cancelled = true; clearInterval(id); clearInterval(tickId); };
   }, []);
 
-  useEffect(() => {
-    fetchLogs();
-    const id = setInterval(fetchLogs, 5000);
-    return () => clearInterval(id);
-  }, [fetchLogs]);
+  /* ── Auto-scroll to newest ── */
+  useEffect(function(){
+    if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [logs.length]);
+
+  /* ── Safe render wrapper — never let one bad entry crash the list ── */
+  function safeRender(log, i) {
+    try {
+      return renderLogEntry(log, i, newIdxs.has(i));
+    } catch(e) {
+      return (
+        <div key={i} className="term-row">
+          <span className="term-prompt">&gt;</span>
+          <span className="term-plain">{String(log.raw || log.message || '').slice(0, 120)}</span>
+        </div>
+      );
+    }
+  }
+
+  var now = new Date().toLocaleTimeString();
 
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
-      <div className="card-hd">
-        <span className="card-title">Live Logs <span style={{ fontWeight: 400, textTransform: 'none' }}>(last 20)</span></span>
-        <div className="live-row">
-          <div className="dot-live" />
-          <span>Auto-refresh 5s</span>
-          {updated && <span>{updated}</span>}
-          <button className="btn btn-ghost btn-sm" onClick={fetchLogs}>↻</button>
+    <div className="term-panel">
+      {/* macOS title bar */}
+      <div className="term-titlebar">
+        <div className="term-dots">
+          <span className="term-dot term-dot-red" />
+          <span className="term-dot term-dot-yellow" />
+          <span className="term-dot term-dot-green2" />
+        </div>
+        <span className="term-title-txt">SEAN0-ALGO · decision_trace.log</span>
+        <div className="term-meta">
+          <span className={`term-live-dot ${ready ? 'live' : 'dead'}`} />
+          <span className={`term-live-lbl ${ready ? 'live' : 'dead'}`} style={{fontSize:'9px'}}>
+            {ready ? 'LIVE' : 'CONNECTING'}
+          </span>
+          <span style={{fontSize:'9px', fontFamily:'monospace', fontWeight:700,
+            color: botOnline ? '#28ca41' : '#f59e0b'}}>
+            {botOnline ? '● BOT ON' : '○ BOT IDLE'}
+          </span>
+          <span style={{fontSize:'9px', fontFamily:'monospace', color:'#3a5a3a'}}>{now}</span>
         </div>
       </div>
-      <div className="card-body" style={{ padding: '10px', flex: 1 }}>
-        {loading ? (
-          <div className="info-box">Loading…</div>
-        ) : logs.length === 0 ? (
-          <div className="info-box">No logs found. Start the bot (<code>python main.py</code>) to see activity.</div>
+
+      {/* Terminal body */}
+      <div className="term-body">
+        {!ready ? (
+          <div className="term-empty">
+            <span className="term-prompt">$</span> connecting to log feed…
+          </div>
         ) : (
-          <div className="log-list" ref={listRef}>
-            {logs.map((log, i) => renderLogEntry(log, i))}
+          <div>
+            {!botOnline && lastSeen && (
+              <div style={{padding:'5px 14px', background:'rgba(245,158,11,.07)',
+                borderBottom:'1px solid rgba(245,158,11,.15)', color:'#f59e0b',
+                fontSize:'11px', fontFamily:'monospace', lineHeight:'1.6'}}>
+                ⚠ Bot idle · last log: <strong>{lastSeen}</strong> · run <code style={{color:'#fbbf24'}}>python main.py</code>
+              </div>
+            )}
+            {logs.length === 0 ? (
+              <div className="term-empty">
+                <span className="term-prompt">$</span> no entries · start bot: <code>python main.py</code>
+              </div>
+            ) : (
+              logs.map(function(log, i){ return safeRender(log, i); })
+            )}
           </div>
         )}
+        <div className="term-cursor-row">
+          <span className="term-prompt">$</span>
+          <span className="term-cursor" />
+        </div>
+        <div ref={bottomRef} />
       </div>
     </div>
   );
@@ -682,28 +984,36 @@ function LogsPanel() {
 /* ─────────────────────────────────────────────────────────────────────────────
    Trade History Panel
 ───────────────────────────────────────────────────────────────────────────── */
-function TradeHistoryPanel() {
-  const [trades,  setTrades]  = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [count,   setCount]   = useState(0);
+function TradeHistoryPanel({ backtestResult }) {
+  const [csvTrades,  setCsvTrades]  = useState([]);
+  const [csvLoading, setCsvLoading] = useState(true);
 
+  /* Load CSV trades once on mount as fallback */
   useEffect(() => {
     (async () => {
       try {
         const res  = await fetch('/trades');
         const data = await res.json();
-        setTrades(data.trades || []);
-        setCount(data.count || 0);
+        setCsvTrades(data.trades || []);
       } catch (_) {}
-      finally { setLoading(false); }
+      finally { setCsvLoading(false); }
     })();
   }, []);
+
+  /* Always prefer live backtest trades if available */
+  const trades  = backtestResult?.trades?.length ? backtestResult.trades : csvTrades;
+  const count   = trades.length;
+  const loading = csvLoading && !backtestResult;
+  const source  = backtestResult?.trades?.length ? 'backtest' : 'csv';
 
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="card-hd">
         <span className="card-title">Trade History</span>
         {count > 0 && <span className="badge badge-gray">{count} trades</span>}
+        {source === 'backtest' && count > 0 && (
+          <span className="badge badge-green">✓ Latest Backtest</span>
+        )}
       </div>
 
       {loading ? (
@@ -770,14 +1080,120 @@ function TradeHistoryPanel() {
 /* ─────────────────────────────────────────────────────────────────────────────
    App Shell
 ───────────────────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   Bot Control Panel
+───────────────────────────────────────────────────────────────────────────── */
+function BotControlPanel() {
+  const [status,  setStatus]  = useState(null);   // null | {running, pid, uptime_seconds, log_age_seconds}
+  const [busy,    setBusy]    = useState(false);
+  const [flash,   setFlash]   = useState('');      // success/error message
+
+  // Poll /bot/status every 4 seconds
+  useEffect(() => {
+    let cancelled = false;
+    function poll() {
+      fetch('/bot/status')
+        .then(r => r.json())
+        .then(d => { if (!cancelled) setStatus(d); })
+        .catch(() => {});
+    }
+    poll();
+    const id = setInterval(poll, 4000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  async function handleStart() {
+    setBusy(true); setFlash('');
+    try {
+      const res  = await fetch('/bot/start', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to start');
+      setFlash(data.status === 'already_running' ? 'Bot is already running.' : 'Bot started!');
+      setStatus(s => ({ ...s, running: true, pid: data.pid }));
+    } catch (e) {
+      setFlash('\u26a0 ' + e.message);
+    } finally {
+      setBusy(false);
+      setTimeout(() => setFlash(''), 4000);
+    }
+  }
+
+  async function handleStop() {
+    setBusy(true); setFlash('');
+    try {
+      const res  = await fetch('/bot/stop', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to stop');
+      setFlash('Bot stopped.');
+      setStatus(s => ({ ...s, running: false, pid: null, uptime_seconds: null }));
+    } catch (e) {
+      setFlash('\u26a0 ' + e.message);
+    } finally {
+      setBusy(false);
+      setTimeout(() => setFlash(''), 4000);
+    }
+  }
+
+  function fmtUptime(secs) {
+    if (!secs) return null;
+    if (secs < 60)   return secs + 's';
+    if (secs < 3600) return Math.floor(secs/60) + 'm ' + (secs%60) + 's';
+    return Math.floor(secs/3600) + 'h ' + Math.floor((secs%3600)/60) + 'm';
+  }
+  function fmtAge(secs) {
+    if (secs == null) return null;
+    if (secs < 60)   return secs + 's ago';
+    if (secs < 3600) return Math.floor(secs/60) + 'm ago';
+    return Math.floor(secs/3600) + 'h ago';
+  }
+
+  const running = status?.running ?? false;
+  const dotCls  = busy ? 'starting' : running ? 'on' : 'off';
+  const uptime  = fmtUptime(status?.uptime_seconds);
+  const logAge  = fmtAge(status?.log_age_seconds);
+  const logFresh = status?.log_age_seconds != null && status.log_age_seconds < 300;
+
+  return (
+    <div className="bot-ctrl card">
+      <div className="bot-ctrl-left">
+        <div className={`bot-status-dot ${dotCls}`} />
+        <div className="bot-info">
+          <span className="bot-info-title">
+            {busy ? 'Updating…' : running ? 'Bot Running' : 'Bot Stopped'}
+          </span>
+          <div className="bot-stat-chips">
+            {status?.pid  && <span className="bot-chip bot-chip-pid">PID {status.pid}</span>}
+            {uptime       && <span className="bot-chip bot-chip-uptime">up {uptime}</span>}
+            {logAge && logFresh  && <span className="bot-chip bot-chip-uptime">last log {logAge}</span>}
+            {logAge && !logFresh && <span className="bot-chip bot-chip-idle">last log {logAge}</span>}
+            {flash        && <span className={`bot-chip ${flash.includes('\u26a0') ? 'bot-chip-err' : 'bot-chip-uptime'}`}>{flash}</span>}
+          </div>
+        </div>
+      </div>
+      <div style={{display:'flex', gap:'10px'}}>
+        <button className="btn-start" onClick={handleStart}
+          disabled={busy || running}>
+          &#9654; Start Bot
+        </button>
+        <button className="btn-stop" onClick={handleStop}
+          disabled={busy || !running}>
+          &#9632; Stop Bot
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 function App() {
-  const [clock, setClock] = useState('');
+  const [clock,          setClock]          = useState('');
+  const [backtestResult, setBacktestResult] = useState(null);
+  const [activeTab,      setActiveTab]      = useState('live');
+
   useEffect(() => {
     const tick = () => {
       const now = new Date();
-      setClock(
-        now.toUTCString().slice(5, 22) + ' UTC'
-      );
+      setClock(now.toUTCString().slice(5, 22) + ' UTC');
     };
     tick();
     const id = setInterval(tick, 1000);
@@ -794,19 +1210,45 @@ function App() {
           <span style={{ color: 'var(--muted)', fontWeight: 400 }}>· XAUUSD</span>
         </div>
         <div className="hdr-meta">
-          <span className="badge badge-gray">5m / 15m</span>
+          <span className="badge badge-gray">5m / 15m / 1H</span>
           <span className="badge badge-green">OANDA</span>
           <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{clock}</span>
         </div>
       </header>
 
+      {/* ── Nav Tabs ── */}
+      <nav className="nav-tabs">
+        <button
+          className={`nav-tab${activeTab === 'live' ? ' active' : ''}`}
+          onClick={() => setActiveTab('live')}>
+          <span className="nav-tab-icon">&#128251;</span>Live Bot
+        </button>
+        <button
+          className={`nav-tab${activeTab === 'backtest' ? ' active' : ''}`}
+          onClick={() => setActiveTab('backtest')}>
+          <span className="nav-tab-icon">&#128202;</span>Backtest
+        </button>
+      </nav>
+
       {/* ── Content ── */}
       <main className="main">
-        <BacktestPanel />
-        <div className="grid2">
-          <LogsPanel />
-          <TradeHistoryPanel />
-        </div>
+
+        {/* ── Live Bot Tab ── */}
+        {activeTab === 'live' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <BotControlPanel />
+            <LogsPanel />
+          </div>
+        )}
+
+        {/* ── Backtest Tab ── */}
+        {activeTab === 'backtest' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <BacktestPanel onBacktestComplete={setBacktestResult} />
+            <TradeHistoryPanel backtestResult={backtestResult} />
+          </div>
+        )}
+
       </main>
     </div>
   );

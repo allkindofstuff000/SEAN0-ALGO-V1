@@ -26,10 +26,13 @@ DECISION_TRACE_PATH = ROOT_DIR / "logs" / "decision_trace.log"
 SYMBOL = "XAUUSDT"
 TREND_TIMEFRAME = "15m"
 ENTRY_TIMEFRAME = "5m"
+HTF_TIMEFRAME = "1h"
 SIGNAL_MODES = ("forex",)
 CANDLE_LIMIT = 300
+HTF_CANDLE_LIMIT = 300
 POLL_INTERVAL_SECONDS = 60
 DEFAULT_MAX_CYCLES = 0
+ENABLE_HTF_FILTER = True
 
 MARKET_HOURS = {
     "always_open": False,
@@ -92,7 +95,7 @@ def _build_components() -> tuple[DataFetcher, IndicatorEngine, SignalLogic, Risk
     fetcher = DataFetcher(min_candles=CANDLE_LIMIT)
     fetcher.startup_check()
     indicators = IndicatorEngine()
-    signal_engine = SignalLogic(symbol=SYMBOL, signal_modes=SIGNAL_MODES)
+    signal_engine = SignalLogic(symbol=SYMBOL, signal_modes=SIGNAL_MODES, enable_htf_filter=ENABLE_HTF_FILTER)
     risk_manager = RiskManager(
         max_signals_per_day=int(os.getenv("MAX_SIGNALS_PER_DAY", "3")),
         cooldown_candles=int(os.getenv("COOLDOWN_CANDLES", "1")),
@@ -178,10 +181,12 @@ async def run_loop() -> None:
     cycles_completed = 0
 
     LOGGER.info(
-        "[ENGINE] started symbol=%s trend_tf=%s entry_tf=%s modes=%s interval=%ss decision_log=%s",
+        "[ENGINE] started symbol=%s trend_tf=%s entry_tf=%s htf_tf=%s htf_filter=%s modes=%s interval=%ss decision_log=%s",
         SYMBOL,
         TREND_TIMEFRAME,
         ENTRY_TIMEFRAME,
+        HTF_TIMEFRAME,
+        ENABLE_HTF_FILTER,
         ",".join(SIGNAL_MODES),
         POLL_INTERVAL_SECONDS,
         DECISION_TRACE_PATH,
@@ -228,6 +233,21 @@ async def run_loop() -> None:
             trend_indicators = indicators.add_indicators(trend_candles)
             entry_indicators = indicators.add_indicators(entry_candles)
 
+            # HTF (1H) candles for structural bias filter
+            htf_indicators = None
+            if ENABLE_HTF_FILTER:
+                try:
+                    htf_candles = await asyncio.to_thread(
+                        fetcher.fetch_market_data, SYMBOL, HTF_TIMEFRAME, HTF_CANDLE_LIMIT
+                    )
+                    htf_indicators = indicators.add_indicators(htf_candles)
+                    if htf_indicators.empty:
+                        LOGGER.warning("[HTF] empty indicators for %s %s — HTF filter skipped", SYMBOL, HTF_TIMEFRAME)
+                        htf_indicators = None
+                except Exception:
+                    LOGGER.warning("[HTF] failed to fetch %s %s candles — HTF filter skipped", SYMBOL, HTF_TIMEFRAME)
+                    htf_indicators = None
+
             if trend_indicators.empty or entry_indicators.empty:
                 raise RuntimeError(f"Missing indicator data for {SYMBOL}.")
 
@@ -272,7 +292,9 @@ async def run_loop() -> None:
                 last_logged_trend_candle = trend_candle_time
                 last_logged_entry_candle = entry_candle_time
 
-            decision = signal_engine.evaluate(trend_indicators, entry_indicators, now_utc=now_utc)
+            decision = signal_engine.evaluate(
+                trend_indicators, entry_indicators, now_utc=now_utc, htf_candles=htf_indicators
+            )
             runtime_state = _state_from_decision(
                 runtime_state,
                 decision,

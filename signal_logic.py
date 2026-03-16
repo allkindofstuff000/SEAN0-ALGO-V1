@@ -98,6 +98,9 @@ class SignalDecision:
     reason: str
     breakdown: dict[str, int]
     regime_details: dict[str, Any] = field(default_factory=dict)
+    htf_bias: str = "unknown"
+    htf_ema50: float = 0.0
+    htf_ema200: float = 0.0
     signal: TradeSignal | None = None
     signals: list[TradeSignal] = field(default_factory=list)
 
@@ -112,6 +115,7 @@ class SignalLogic:
     signal_modes: tuple[str, ...] = ("forex",)
     forex_sl_atr_multiplier: float = 1.5
     forex_tp_atr_multiplier: float = 3.0
+    enable_htf_filter: bool = True
     decision_logger: DecisionLogger = field(default_factory=get_decision_logger)
 
     def evaluate(
@@ -119,6 +123,7 @@ class SignalLogic:
         trend_candles: pd.DataFrame,
         entry_candles: pd.DataFrame | None = None,
         now_utc: datetime.datetime | None = None,
+        htf_candles: pd.DataFrame | None = None,
     ) -> SignalDecision:
         if trend_candles is None or trend_candles.empty:
             raise ValueError("No trend candle data available for signal evaluation.")
@@ -131,13 +136,14 @@ class SignalLogic:
             raise ValueError(f"Unsupported symbol for XAU strategy: {self.symbol}")
 
         current_utc = now_utc.astimezone(pytz.UTC) if now_utc is not None else datetime.datetime.now(pytz.UTC)
-        return self.evaluate_xau_strategy(trend_candles, entry_candles, current_utc)
+        return self.evaluate_xau_strategy(trend_candles, entry_candles, current_utc, htf_candles=htf_candles)
 
     def evaluate_xau_strategy(
         self,
         trend_candles: pd.DataFrame,
         entry_candles: pd.DataFrame,
         now_utc: datetime.datetime,
+        htf_candles: pd.DataFrame | None = None,
     ) -> SignalDecision:
         self._ensure_minimum_rows(trend_candles, entry_candles)
         trend_last = trend_candles.iloc[-1]
@@ -170,6 +176,38 @@ class SignalLogic:
         else:
             direction = "NONE"
         trend_alignment = (bullish_trend or bearish_trend) and trend_regime == "trend"
+
+        # ── HTF Structure Filter (1H EMA50/EMA200 bias check) ──────────────────
+        htf_bias = "unknown"
+        htf_ema50: float = 0.0
+        htf_ema200: float = 0.0
+        if self.enable_htf_filter and htf_candles is not None and not htf_candles.empty:
+            htf_last = htf_candles.iloc[-1]
+            htf_ema50 = float(htf_last.get("ema50", 0.0) or 0.0)
+            htf_ema200 = float(htf_last.get("ema200", 0.0) or 0.0)
+            htf_bias = self.decision_logger.log_htf(htf_ema50, htf_ema200, direction)
+            htf_conflict = (
+                (direction == "BUY" and htf_bias == "bearish")
+                or (direction == "SELL" and htf_bias == "bullish")
+            )
+            if htf_conflict:
+                return self._build_htf_reject_decision(
+                    candle_time=candle_time,
+                    session=session,
+                    direction=direction,
+                    market_regime=market_regime,
+                    regime_confidence=regime_confidence,
+                    volatility_regime=volatility_regime,
+                    strategy_behavior=strategy_behavior,
+                    trend_alignment=trend_alignment,
+                    session_filter=session_filter,
+                    regime_details=regime_details,
+                    htf_bias=htf_bias,
+                    htf_ema50=htf_ema50,
+                    htf_ema200=htf_ema200,
+                )
+        # ───────────────────────────────────────────────────────────────────────
+
         price_trigger = self.decision_logger.log_breakout(
             float(entry_last["close"]),
             float(entry_prev["high"]),
@@ -385,6 +423,9 @@ class SignalLogic:
                 "direction": decision.direction,
                 "breakdown": decision.breakdown,
                 "regime_details": decision.regime_details,
+                "htf_bias": decision.htf_bias,
+                "htf_ema50": decision.htf_ema50,
+                "htf_ema200": decision.htf_ema200,
                 "signal_modes": [signal.signal_kind for signal in decision.signals],
             }
         )
@@ -460,6 +501,71 @@ class SignalLogic:
                 "regime_details": decision.regime_details,
                 "signal_modes": list(self.signal_modes),
                 "filter_details": filter_details or {},
+            },
+        )
+        self.decision_logger.log_result(None, reason=reason)
+        return decision
+
+    def _build_htf_reject_decision(
+        self,
+        *,
+        candle_time: pd.Timestamp,
+        session: str,
+        direction: str,
+        market_regime: str,
+        regime_confidence: float,
+        volatility_regime: str,
+        strategy_behavior: str,
+        trend_alignment: bool,
+        session_filter: bool,
+        regime_details: dict[str, Any] | None = None,
+        htf_bias: str = "unknown",
+        htf_ema50: float = 0.0,
+        htf_ema200: float = 0.0,
+    ) -> SignalDecision:
+        reason = "rejected:htf_conflict"
+        decision = SignalDecision(
+            candle_time_utc=candle_time,
+            symbol=self._normalize_symbol(self.symbol),
+            strategy="xau_regime_adaptive_strategy",
+            session=session,
+            score=0,
+            score_threshold=self.threshold,
+            direction=direction,
+            market_regime=market_regime,
+            regime_confidence=regime_confidence,
+            volatility_regime=volatility_regime,
+            strategy_behavior=strategy_behavior,
+            trend_alignment=trend_alignment,
+            price_trigger=False,
+            rsi_filter=False,
+            atr_expansion=False,
+            session_filter=session_filter,
+            signal_generated=False,
+            reason=reason,
+            breakdown={},
+            regime_details=regime_details or {},
+            htf_bias=htf_bias,
+            htf_ema50=htf_ema50,
+            htf_ema200=htf_ema200,
+            signal=None,
+            signals=[],
+        )
+        self.decision_logger.log_skip(
+            decision.symbol,
+            "htf_conflict",
+            {
+                "timestamp": decision.candle_time_utc,
+                "strategy": decision.strategy,
+                "session": decision.session,
+                "market_regime": decision.market_regime,
+                "direction": decision.direction,
+                "htf_bias": htf_bias,
+                "htf_ema50": htf_ema50,
+                "htf_ema200": htf_ema200,
+                "signal_score": 0,
+                "score_threshold": self.threshold,
+                "signal_modes": list(self.signal_modes),
             },
         )
         self.decision_logger.log_result(None, reason=reason)

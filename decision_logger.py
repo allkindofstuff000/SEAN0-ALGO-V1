@@ -160,6 +160,28 @@ class DecisionLogger:
         LOGGER.info("[BREAKOUT] No breakout -> rejected (no trend bias)")
         return False
 
+    def log_htf(self, ema50: float, ema200: float, direction: str) -> str:
+        """Log the HTF (1H) structure filter evaluation. Returns bias string."""
+        if ema50 > ema200:
+            bias = "bullish"
+            LOGGER.info("[HTF] H1 EMA50=%.2f EMA200=%.2f -> bullish bias -> BUY allowed", ema50, ema200)
+        elif ema50 < ema200:
+            bias = "bearish"
+            LOGGER.info("[HTF] H1 EMA50=%.2f EMA200=%.2f -> bearish bias -> SELL allowed", ema50, ema200)
+        else:
+            bias = "neutral"
+            LOGGER.info("[HTF] H1 EMA50=%.2f EMA200=%.2f -> neutral -> no clear direction", ema50, ema200)
+        normalized_dir = (direction or "").strip().upper()
+        if normalized_dir in {"BUY", "SELL"}:
+            htf_aligned = (normalized_dir == "BUY" and bias == "bullish") or (
+                normalized_dir == "SELL" and bias == "bearish"
+            )
+            if htf_aligned:
+                LOGGER.info("[HTF] aligned with %s signal -> trade allowed", normalized_dir)
+            else:
+                LOGGER.info("[HTF] Conflict with HTF trend -> trade rejected")
+        return bias
+
     def log_range_setup(self, direction: str | None, close: float, prev_high: float, prev_low: float, rsi_value: float) -> bool:
         normalized = (direction or "").strip().upper()
         if normalized == "BUY":

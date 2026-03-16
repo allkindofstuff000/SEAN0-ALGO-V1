@@ -106,15 +106,24 @@ def fetch_historical_5m_candles(start_utc: pd.Timestamp, end_utc: pd.Timestamp) 
 
     frames: list[pd.DataFrame] = []
     for window_start, window_end in build_request_windows(start_utc, end_utc):
-        frames.append(
-            fetch_oanda_window(
+        try:
+            frame = fetch_oanda_window(
                 base_url=base_url,
                 api_key=api_key,
                 price_component=price_component,
                 start_utc=window_start,
                 end_utc=window_end,
             )
-        )
+            frames.append(frame)
+        except RuntimeError as fetch_err:
+            # Skip windows that OANDA rejects (e.g. 400 for partial/future
+            # dates, or empty weekend windows) — log and continue so the rest
+            # of the backtest still runs with whatever data was fetched.
+            print(
+                f"[SKIP] window {window_start.date()} -> {window_end.date()} "
+                f"skipped: {fetch_err}"
+            )
+            continue
 
     if not frames:
         raise RuntimeError("No OANDA windows were fetched for the selected date range.")
@@ -154,6 +163,21 @@ def fetch_oanda_window(
             response.raise_for_status()
             payload = response.json()
             return candles_to_frame(payload.get("candles", []))
+        except requests.HTTPError as error:
+            last_error = error
+            status_code = error.response.status_code if error.response is not None else 0
+            # 400 Bad Request — invalid params (e.g. future/weekend date).
+            # Retrying the exact same URL will always fail; break immediately.
+            # 401/403 — auth failure; no point retrying.
+            if status_code in (400, 401, 403):
+                break
+            if attempt >= MAX_RETRIES:
+                break
+            print(
+                f"[FETCH] window={start_utc.date()}->{end_utc.date()} "
+                f"attempt={attempt}/{MAX_RETRIES} status={status_code} retry_in={RETRY_SECONDS}s"
+            )
+            time.sleep(RETRY_SECONDS)
         except (requests.RequestException, ValueError) as error:
             last_error = error
             if attempt >= MAX_RETRIES:
