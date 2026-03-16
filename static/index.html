@@ -95,6 +95,22 @@
     /* ── Divider ─────────────────────────────────── */
     .divider            { border:none; border-top:1px solid var(--border); margin:18px 0; }
 
+    /* ── Trade Summary Banner ────────────────────── */
+    .trade-summary      { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px; }
+    @media(max-width:640px){ .trade-summary{ grid-template-columns:repeat(2,1fr); } }
+    .ts-block           { border-radius:9px; padding:14px 16px; display:flex; flex-direction:column; align-items:center; gap:4px; border:1px solid transparent; }
+    .ts-block-total     { background:rgba(255,255,255,.04); border-color:var(--border); }
+    .ts-block-win       { background:var(--win-dim); border-color:rgba(16,163,127,.25); }
+    .ts-block-loss      { background:var(--loss-dim); border-color:rgba(239,68,68,.25); }
+    .ts-block-rate      { background:rgba(16,163,127,.07); border-color:rgba(16,163,127,.18); }
+    .ts-label           { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }
+    .ts-num             { font-size:32px; font-weight:800; line-height:1; letter-spacing:-.02em; }
+    .ts-num-total       { color:var(--text); }
+    .ts-num-win         { color:var(--win); }
+    .ts-num-loss        { color:var(--loss); }
+    .ts-num-rate        { color:var(--accent); }
+    .ts-sub             { font-size:11px; color:var(--muted); margin-top:1px; }
+
     /* ── Equity chart ────────────────────────────── */
     .chart-wrap         { background:rgba(0,0,0,.25); border-radius:7px; overflow:hidden; }
     .chart-empty        { height:150px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; }
@@ -466,6 +482,31 @@ function BacktestPanel() {
         {result && (
           <>
             <hr className="divider" />
+
+            {/* ── Trade Summary Banner ── */}
+            <div className="trade-summary">
+              <div className="ts-block ts-block-total">
+                <span className="ts-label">Total Trades</span>
+                <span className="ts-num ts-num-total">{m.total_trades ?? '—'}</span>
+                <span className="ts-sub">closed positions</span>
+              </div>
+              <div className="ts-block ts-block-win">
+                <span className="ts-label">✔ Wins</span>
+                <span className="ts-num ts-num-win">{m.wins ?? 0}</span>
+                <span className="ts-sub">profitable trades</span>
+              </div>
+              <div className="ts-block ts-block-loss">
+                <span className="ts-label">✘ Losses</span>
+                <span className="ts-num ts-num-loss">{m.losses ?? 0}</span>
+                <span className="ts-sub">losing trades</span>
+              </div>
+              <div className="ts-block ts-block-rate">
+                <span className="ts-label">Win Rate</span>
+                <span className="ts-num ts-num-rate">{fmtPct(m.win_rate)}</span>
+                <span className="ts-sub">{m.win_rate >= 50 ? '▲ above 50%' : '▼ below 50%'}</span>
+              </div>
+            </div>
+
             <div className="metrics-grid" style={{ marginBottom: 14 }}>
               <MetricCard
                 label="Total Trades"
