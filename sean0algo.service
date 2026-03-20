@@ -1,0 +1,25 @@
+[Unit]
+Description=SEAN0-ALGO Trading Bot Dashboard
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+# ── Change these two lines to match your VPS user and project path ───────────
+User=root
+WorkingDirectory=/root/QUOTEX_BOT
+
+ExecStart=/usr/bin/python3 /root/QUOTEX_BOT/web_server.py
+Restart=on-failure
+RestartSec=5
+
+# Stream all output to journald (view with: journalctl -u sean0algo -f)
+StandardOutput=journal
+StandardError=journal
+
+# Environment (override .env values here if needed)
+Environment="PORT=8000"
+
+[Install]
+WantedBy=multi-user.target

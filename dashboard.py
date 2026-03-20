@@ -1,21 +1,17 @@
 """
 dashboard.py — DEPRECATED
-==========================
-The Streamlit dashboard has been replaced by the new React web dashboard.
+=========================
+The dashboard implementation now lives under the `web/` package.
 
-To start the new dashboard run:
+Run:
 
     python web_server.py
 
-Then open:  http://localhost:8000
-
-The new dashboard provides:
-  • Backtest panel with date range and adjustable SL/TP candle sliders
-  • Live market logs (auto-refresh every 5 s)
-  • Trade history table with win/loss colour coding
-  • Equity curve chart
+Then open: http://localhost:8000
 """
+
 import sys
+
 
 print(__doc__)
 sys.exit(0)
