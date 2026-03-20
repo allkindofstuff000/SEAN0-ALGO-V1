@@ -48,7 +48,7 @@
 
     /* ── Layout ──────────────────────────────────── */
     .main               { flex:1; padding:18px 20px 40px; max-width:1440px; margin:0 auto; width:100%; display:flex; flex-direction:column; gap:18px; }
-    .main-chart         { flex:1; padding:12px 20px 16px; max-width:1440px; margin:0 auto; width:100%; display:flex; flex-direction:column; gap:0; }
+    .main-chart         { flex:1; padding:0; width:100%; display:flex; flex-direction:column; gap:0; overflow:hidden; }
     .grid2              { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
     @media(max-width:900px){ .grid2{ grid-template-columns:1fr; } }
 
@@ -321,51 +321,117 @@
     .sig-tg-fail        { color:var(--muted); font-size:12px; }
     .sig-empty          { padding:32px; text-align:center; color:var(--muted); font-size:13px; }
 
-    /* ── Candlestick Chart ────────────────────────── */
-    .chart-toolbar      { display:flex; align-items:center; gap:14px; padding:11px 16px; border-bottom:1px solid var(--border); flex-wrap:wrap; min-height:44px; }
-    .chart-tf-btn       { font-size:11px; font-weight:700; padding:4px 13px; border-radius:5px; border:1px solid var(--border); background:transparent; color:var(--muted); cursor:pointer; letter-spacing:.5px; transition:all .15s; }
-    .chart-tf-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
-    .chart-tf-btn:hover:not(.active) { color:var(--text); border-color:var(--text); }
-    .chart-ohlc         { display:flex; gap:14px; font-size:12px; color:var(--muted); flex-wrap:wrap; }
-    .chart-ohlc-item    { display:flex; gap:4px; }
-    .chart-ohlc-lbl     { font-weight:600; }
-    .chart-ohlc-val     { color:var(--text); font-family:monospace; }
-    .chart-live-wrap    { display:flex; align-items:center; gap:6px; margin-left:auto; }
-    .chart-live-dot     { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-    .chart-live-dot.connected    { background:#26a69a; animation:chartPulse 1.6s ease-in-out infinite; }
-    .chart-live-dot.reconnecting { background:var(--warn); animation:chartPulse .6s ease-in-out infinite; }
-    .chart-live-dot.disconnected { background:#555; }
-    @keyframes chartPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.8)} }
-    .chart-live-lbl     { font-size:10px; font-weight:700; letter-spacing:.8px; color:var(--muted); }
-    .chart-wrap         { position:relative; background:#131722; }
-    .chart-container    { width:100%; display:block; }
-    .chart-overlay      { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; background:rgba(19,23,34,.85); z-index:20; pointer-events:none; }
-    .chart-overlay-msg  { font-size:13px; color:var(--muted); }
-    .chart-err-msg      { padding:24px; text-align:center; color:var(--loss); font-size:13px; background:#131722; }
+    /* ── TradingView-style Chart Terminal ──────────────────────────────────── */
+    .tv-symbar        { display:flex; align-items:center; gap:10px; padding:6px 14px; background:#131722; border-bottom:1px solid #1e222d; min-height:44px; flex-wrap:wrap; }
+    .tv-sym-name      { font-size:17px; font-weight:800; color:#d1d4dc; letter-spacing:-.01em; }
+    .tv-sym-ex        { font-size:10px; color:#787b86; font-weight:600; letter-spacing:.04em; padding:2px 6px; background:rgba(255,255,255,.05); border-radius:3px; border:1px solid #2a2e39; }
+    .tv-price         { font-size:20px; font-weight:700; font-family:'Courier New',monospace; color:#d1d4dc; margin-left:4px; letter-spacing:-.02em; }
+    .tv-change        { display:flex; align-items:center; gap:4px; font-size:12px; font-weight:700; font-family:monospace; padding:3px 8px; border-radius:4px; }
+    .tv-change.up     { background:rgba(38,166,154,.15); color:#26a69a; }
+    .tv-change.dn     { background:rgba(239,83,80,.12); color:#ef5350; }
+    .tv-change.flat   { background:rgba(255,255,255,.05); color:#787b86; }
+    .tv-tbar          { display:flex; align-items:center; gap:0; padding:0 6px; background:#1a1d28; border-bottom:1px solid #1e222d; height:38px; overflow-x:auto; flex-shrink:0; }
+    .tv-tbar::-webkit-scrollbar { height:0; }
+    .tv-sep           { width:1px; height:22px; background:#2a2e39; margin:0 4px; flex-shrink:0; }
+    .tv-tf-btn        { display:flex; align-items:center; justify-content:center; min-width:30px; height:26px; padding:0 7px; border-radius:4px; border:none; background:transparent; color:#787b86; font-size:12px; font-weight:700; cursor:pointer; letter-spacing:.4px; font-family:var(--font); transition:all .12s; flex-shrink:0; }
+    .tv-tf-btn:hover  { color:#d1d4dc; background:rgba(255,255,255,.06); }
+    .tv-tf-btn.active { color:#fff; background:rgba(33,150,243,.22); }
+    .tv-ind-btn       { display:flex; align-items:center; gap:4px; height:26px; padding:0 7px; border-radius:4px; border:none; background:transparent; color:#787b86; font-size:11px; font-weight:600; cursor:pointer; font-family:var(--font); transition:all .12s; flex-shrink:0; white-space:nowrap; }
+    .tv-ind-btn:hover { color:#d1d4dc; background:rgba(255,255,255,.05); }
+    .tv-ind-btn.on    { color:#2196F3; background:rgba(33,150,243,.12); }
+    .tv-ind-btn.on-g  { color:#26a69a; background:rgba(38,166,154,.12); }
+    .tv-ind-btn.on-r  { color:#FF9800; background:rgba(255,152,0,.1); }
+    .tv-ind-btn svg   { flex-shrink:0; }
+    .tv-gear          { display:flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:4px; border:none; background:transparent; color:#787b86; cursor:pointer; transition:all .12s; margin-left:auto; flex-shrink:0; }
+    .tv-gear:hover    { color:#d1d4dc; background:rgba(255,255,255,.06); }
+    .tv-ohlc          { display:flex; gap:10px; font-size:11px; align-items:center; margin-left:6px; }
+    .tv-ohlc-item     { display:flex; gap:2px; align-items:center; }
+    .tv-ohlc-lbl      { color:#787b86; font-weight:700; font-size:10px; }
+    .tv-ohlc-val      { font-family:monospace; color:#b2b5be; font-size:11px; }
+    .tv-live-wrap     { display:flex; align-items:center; gap:5px; }
+    .tv-live-dot      { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+    .tv-live-dot.connected    { background:#26a69a; animation:tvPulse 1.6s ease-in-out infinite; }
+    .tv-live-dot.reconnecting { background:#f59e0b; animation:tvPulse .6s ease-in-out infinite; }
+    .tv-live-dot.disconnected { background:#555; }
+    @keyframes tvPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.8)} }
+    .tv-live-lbl      { font-size:10px; font-weight:700; letter-spacing:.7px; color:#787b86; }
+    .tv-chart-wrap    { position:relative; background:#131722; flex:1; min-height:280px; }
+    .tv-pane          { position:relative; background:#131722; border-top:1px solid #1e222d; overflow:hidden; transition:height .2s; }
+    .tv-pane-lbl      { position:absolute; top:4px; left:8px; z-index:10; font-size:10px; color:rgba(178,181,190,.65); pointer-events:none; display:flex; gap:6px; align-items:center; }
+    .tv-pane-val      { font-weight:700; font-family:monospace; font-size:11px; }
+    .tv-pane-macd     { color:#2196F3; }
+    .tv-pane-sig      { color:#FF6D00; }
+    .tv-pane-hist     { font-weight:700; }
+    .tv-overlay       { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; background:rgba(19,23,34,.85); z-index:20; }
+    .tv-overlay-msg   { font-size:13px; color:#787b86; }
+    .tv-err-msg       { padding:24px; text-align:center; color:#ef5350; font-size:13px; background:#131722; }
+    .tv-siglog        { border-top:1px solid #1e222d; background:#161821; }
+    .tv-siglog-hd     { display:flex; align-items:center; justify-content:space-between; padding:5px 14px; font-size:10px; color:#787b86; font-weight:700; text-transform:uppercase; letter-spacing:.06em; background:#1a1d28; cursor:pointer; user-select:none; }
+    .tv-siglog-hd:hover { color:#d1d4dc; }
+    .tv-siglog-body   { max-height:160px; overflow-y:auto; }
+    .tv-siglog-body::-webkit-scrollbar { width:3px; }
+    .tv-siglog-body::-webkit-scrollbar-thumb { background:#2a2e39; border-radius:2px; }
+    .tv-siglog-row    { display:flex; align-items:center; gap:8px; padding:4px 14px; font-size:11px; border-bottom:1px solid rgba(255,255,255,.02); cursor:pointer; transition:background .1s; }
+    .tv-siglog-row:hover { background:rgba(255,255,255,.03); }
+    .tv-sig-l         { color:#00E676; font-weight:800; font-size:12px; }
+    .tv-sig-s         { color:#FF1744; font-weight:800; font-size:12px; }
+    .tv-sig-strong    { background:rgba(0,230,118,.15); color:#00E676; border-radius:3px; padding:1px 5px; font-weight:700; font-size:10px; }
+    .tv-sig-med       { background:rgba(38,166,154,.12); color:#26a69a; border-radius:3px; padding:1px 5px; font-weight:700; font-size:10px; }
+    .tv-sig-tf        { background:rgba(255,255,255,.07); color:#787b86; border-radius:3px; padding:1px 5px; font-size:10px; }
+    .tv-sig-price     { font-family:monospace; color:#d1d4dc; }
+    .tv-sig-time      { color:#787b86; font-size:10px; margin-left:auto; }
 
-    /* ── Indicator Toolbar ─────────────────────────────── */
-    .chart-toolbar-row  { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--border); flex-wrap:wrap; min-height:40px; }
-    .chart-toolbar-row1 { background:#1a1d27; }
-    .chart-toolbar-row2 { background:#161821; gap:6px; }
-    .ind-sep            { width:1px; height:18px; background:var(--border); margin:0 2px; flex-shrink:0; }
-    .ind-btn            { font-size:11px; font-weight:700; padding:3px 10px; border-radius:4px; border:1px solid #363a45; background:transparent; color:#787b86; cursor:pointer; letter-spacing:.4px; font-family:var(--font); transition:all .15s; white-space:nowrap; }
-    .ind-btn:hover      { color:var(--text); border-color:#888; }
-    .ind-btn.on         { background:rgba(33,150,243,.18); border-color:#2196F3; color:#2196F3; }
-    .ind-btn.on-g       { background:rgba(38,166,154,.15); border-color:#26a69a; color:#26a69a; }
-    .ind-btn.on-r       { background:rgba(239,83,80,.13); border-color:#ef5350; color:#ef5350; }
-    .ind-gear           { font-size:14px; padding:3px 8px; border-radius:4px; border:1px solid #363a45; background:transparent; color:#787b86; cursor:pointer; margin-left:auto; transition:all .15s; }
-    .ind-gear:hover     { color:var(--text); background:rgba(255,255,255,.06); }
-
-    /* ── Sub-pane (RSI / MACD / VCAD) ─────────────────── */
-    .pane-outer         { overflow:hidden; transition:height .2s ease; border-top:1px solid #1e222d; position:relative; background:#131722; }
-    .pane-label         { position:absolute; top:4px; left:8px; z-index:10; font-size:10px; color:rgba(178,181,190,.7); pointer-events:none; display:flex; gap:8px; align-items:center; }
-    .pane-lbl-val       { font-weight:700; font-family:monospace; font-size:11px; }
-    .pane-lbl-macd      { color:#2196F3; }
-    .pane-lbl-sig       { color:#FF6D00; }
-    .pane-lbl-hist      { font-weight:700; font-size:10px; }
-    .pane-resize-handle { height:4px; background:transparent; cursor:ns-resize; display:flex; align-items:center; justify-content:center; }
-    .pane-resize-handle:hover { background:rgba(255,255,255,.06); }
-    .pane-resize-grip   { width:30px; height:2px; background:#363a45; border-radius:1px; }
+    /* ── TP/SL Position Tracker ───────────────────────────────────────────── */
+    /* TV-style draggable position lines */
+    .tv-pos-drag-wrap   { position:absolute; inset:0; z-index:20; pointer-events:none; overflow:hidden; }
+    .tv-pos-fill        { position:absolute; left:0; right:0; pointer-events:none; }
+    .tv-pos-line-row    { position:absolute; left:0; right:0; height:0; z-index:21; }
+    .tv-pos-line        { position:absolute; left:0; right:0; top:-0.5px; height:1.5px; pointer-events:none; }
+    .tv-pos-line-dashed { position:absolute; left:0; right:0; top:-0.5px; height:1px; pointer-events:none;
+                          background: repeating-linear-gradient(90deg, #2196F3 0, #2196F3 5px, transparent 5px, transparent 10px); }
+    .tv-pos-hit         { position:absolute; left:20px; right:200px; top:-5px; height:11px; cursor:ns-resize; pointer-events:auto; z-index:22; }
+    .tv-pos-handle      { position:absolute; left:4px; top:-5px; width:10px; height:10px; border:2px solid; background:#131722; cursor:ns-resize; pointer-events:auto; z-index:23; border-radius:1px; }
+    .tv-pos-handle:hover { background:#1e222d; }
+    .tv-pos-rhs         { position:absolute; right:2px; transform:translateY(-50%); border-radius:3px; padding:3px 8px 3px 8px; font-size:11px; font-family:'Courier New',monospace; white-space:nowrap; pointer-events:auto; cursor:ns-resize; z-index:23; line-height:1.5; min-width:160px; }
+    .tv-pos-rhs:hover   { filter:brightness(1.15); }
+    .tv-pos-rhs-price   { font-weight:700; font-size:12px; }
+    .tv-pos-rhs-sub     { font-size:10px; opacity:.85; }
+    .tv-pos-center      { position:absolute; left:50%; transform:translateX(-50%); background:rgba(10,13,21,.93); border:1px solid #2a2e39; border-radius:5px; padding:7px 14px; font-size:11px; font-family:'Courier New',monospace; color:#d1d4dc; white-space:nowrap; pointer-events:auto; cursor:move; z-index:24; text-align:center; min-width:190px; user-select:none; }
+    .tv-pos-center-pnl  { font-size:13px; font-weight:800; letter-spacing:.3px; }
+    .tv-pos-center-row  { display:flex; gap:10px; justify-content:center; font-size:10px; opacity:.8; margin-top:2px; }
+    .tv-pos-close-btn   { position:absolute; top:-8px; right:-8px; width:16px; height:16px; border-radius:50%; background:#ef5350; border:none; color:#fff; font-size:10px; cursor:pointer; pointer-events:auto; z-index:25; display:flex; align-items:center; justify-content:center; line-height:1; }
+    .tv-pos-close-btn:hover { background:#c62828; }
+    .tv-pos-pnl-pos     { color:#26a69a; }
+    .tv-pos-pnl-neg     { color:#ef5350; }
+    .tv-pos-btn         { display:flex; align-items:center; gap:4px; height:26px; padding:0 8px; border-radius:4px; border:none; background:transparent; color:#787b86; font-size:11px; font-weight:700; cursor:pointer; font-family:var(--font); transition:all .12s; flex-shrink:0; letter-spacing:.3px; }
+    .tv-pos-btn:hover   { color:#d1d4dc; background:rgba(255,255,255,.05); }
+    .tv-pos-btn.has-pos { color:#26a69a; background:rgba(38,166,154,.12); }
+    .tv-pos-modal-wrap  { position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:300; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+    .tv-pos-modal       { background:#1a1d28; border:1px solid #2a2e39; border-radius:10px; width:360px; max-width:96vw; padding:20px; box-shadow:0 24px 64px rgba(0,0,0,.7); }
+    .tv-pos-modal-hd    { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+    .tv-pos-modal-title { font-size:14px; font-weight:700; color:#d1d4dc; }
+    .tv-pos-modal-close { background:none; border:none; color:#787b86; cursor:pointer; font-size:18px; padding:0 4px; }
+    .tv-pos-modal-close:hover { color:#d1d4dc; }
+    .tv-pos-dir         { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:14px; }
+    .tv-pos-dir-btn     { padding:9px; border-radius:6px; border:1px solid #2a2e39; background:transparent; color:#787b86; font-size:13px; font-weight:700; cursor:pointer; font-family:var(--font); transition:all .15s; text-align:center; }
+    .tv-pos-dir-btn.long.active  { background:rgba(38,166,154,.18); border-color:#26a69a; color:#26a69a; }
+    .tv-pos-dir-btn.short.active { background:rgba(239,83,80,.15);  border-color:#ef5350; color:#ef5350; }
+    .tv-pos-field       { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+    .tv-pos-label       { font-size:10px; color:#787b86; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+    .tv-pos-input       { background:rgba(255,255,255,.05); border:1px solid #2a2e39; border-radius:5px; color:#d1d4dc; padding:7px 10px; font-size:13px; font-family:monospace; outline:none; width:100%; }
+    .tv-pos-input:focus { border-color:#2196F3; }
+    .tv-pos-grid2       { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .tv-pos-stats       { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:14px 0; padding:12px; background:rgba(255,255,255,.03); border-radius:6px; border:1px solid #1e222d; }
+    .tv-pos-stat        { font-size:11px; }
+    .tv-pos-stat-lbl    { color:#787b86; font-size:10px; }
+    .tv-pos-stat-val    { color:#d1d4dc; font-weight:700; font-family:monospace; }
+    .tv-pos-stat-val.g  { color:#26a69a; }
+    .tv-pos-stat-val.r  { color:#ef5350; }
+    .tv-pos-actions     { display:flex; gap:8px; margin-top:14px; }
+    .tv-pos-set-btn     { flex:1; padding:9px; border-radius:6px; border:none; background:#10a37f; color:#fff; font-size:13px; font-weight:700; cursor:pointer; font-family:var(--font); }
+    .tv-pos-set-btn:hover { background:#0d9272; }
+    .tv-pos-cancel-btn  { padding:9px 14px; border-radius:6px; border:1px solid #2a2e39; background:transparent; color:#787b86; font-size:13px; cursor:pointer; font-family:var(--font); }
+    .tv-pos-cancel-btn:hover { color:#d1d4dc; }
 
     /* ── Settings Modal ──────────────────────────────── */
     .settings-overlay   { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:200; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
@@ -391,22 +457,6 @@
     .settings-num       { width:68px; font-size:12px; background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:5px; color:var(--text); padding:4px 8px; text-align:center; font-family:monospace; }
     .settings-num:focus { border-color:var(--accent); outline:none; }
     .settings-group-hd  { font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:14px 0 4px; }
-
-    /* ── Signal Log Panel ─────────────────────────────── */
-    .siglog-panel       { border-top:1px solid var(--border); background:#161821; max-height:200px; overflow-y:auto; }
-    .siglog-panel::-webkit-scrollbar{ width:4px; }
-    .siglog-panel::-webkit-scrollbar-thumb{ background:var(--border); border-radius:2px; }
-    .siglog-hd          { display:flex; align-items:center; justify-content:space-between; padding:7px 14px; font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.05em; background:#1a1d27; cursor:pointer; user-select:none; }
-    .siglog-hd:hover    { color:var(--text); }
-    .siglog-row         { display:flex; align-items:center; gap:8px; padding:5px 14px; font-size:11px; border-bottom:1px solid rgba(255,255,255,.03); cursor:pointer; transition:background .1s; }
-    .siglog-row:hover   { background:rgba(255,255,255,.04); }
-    .siglog-dir-l       { color:#00E676; font-weight:800; font-size:12px; }
-    .siglog-dir-s       { color:#FF1744; font-weight:800; font-size:12px; }
-    .siglog-str-strong  { background:rgba(0,230,118,.15); color:#00E676; border-radius:3px; padding:1px 5px; font-weight:700; font-size:10px; }
-    .siglog-str-med     { background:rgba(38,166,154,.12); color:#26a69a; border-radius:3px; padding:1px 5px; font-weight:700; font-size:10px; }
-    .siglog-tf          { background:rgba(255,255,255,.07); color:var(--muted); border-radius:3px; padding:1px 5px; font-size:10px; }
-    .siglog-price       { font-family:monospace; color:var(--text); }
-    .siglog-time        { color:var(--muted); font-size:10px; margin-left:auto; }
 
   </style>
 </head>
@@ -1599,11 +1649,22 @@ class IndicatorEngine {
 const TF_LIST   = ['M1', 'M5', 'M15', 'H1'];
 const TF_LABELS = { M1: '1M', M5: '5M', M15: '15M', H1: '1H' };
 
+/* ── SVG Icons ──────────────────────────────────────────────────────────── */
+const IcoRSI  = () => <svg width="11" height="11" viewBox="0 0 12 12"><polyline points="1,9 3,4 5,8 7,2 9,6 11,4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/></svg>;
+const IcoEMA  = () => <svg width="11" height="11" viewBox="0 0 12 12"><path d="M1 9 Q4 8 6 6 Q8 4 11 3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>;
+const IcoFIB  = () => <svg width="11" height="11" viewBox="0 0 12 12"><line x1="1" y1="3" x2="11" y2="3" stroke="currentColor" strokeWidth="1" strokeDasharray="2,1"/><line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.2"/><line x1="1" y1="9" x2="11" y2="9" stroke="currentColor" strokeWidth="1" strokeDasharray="2,1"/></svg>;
+const IcoMACD = () => <svg width="11" height="11" viewBox="0 0 12 12"><rect x="1" y="5" width="2" height="5" fill="currentColor" opacity=".8"/><rect x="4" y="3" width="2" height="7" fill="currentColor"/><rect x="7" y="6" width="2" height="4" fill="currentColor" opacity=".6"/><rect x="10" y="4" width="2" height="6" fill="currentColor" opacity=".4"/></svg>;
+const IcoVWAP = () => <svg width="11" height="11" viewBox="0 0 12 12"><path d="M1 8 Q3 3 6 5 Q9 7 11 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M1 10 Q3 5 6 7 Q9 9 11 6" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="2,1" opacity=".55"/></svg>;
+const IcoVCAD = () => <svg width="11" height="11" viewBox="0 0 12 12"><polyline points="1,10 3,7 5,8 7,4 9,5 11,2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/></svg>;
+const IcoLS   = () => <svg width="11" height="11" viewBox="0 0 12 12"><polygon points="6,1 10,6 2,6" fill="#26a69a" opacity=".9"/><polygon points="6,11 10,6.5 2,6.5" fill="#ef5350" opacity=".9"/></svg>;
+const IcoPos  = () => <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><line x1="1" y1="4" x2="13" y2="4" stroke="#26a69a" strokeWidth="1.5" strokeLinecap="round"/><line x1="1" y1="10" x2="13" y2="10" stroke="#ef5350" strokeWidth="1.5" strokeLinecap="round"/><line x1="1" y1="7" x2="13" y2="7" stroke="#2196F3" strokeWidth="1" strokeLinecap="round" strokeDasharray="2,2"/><rect x="9" y="2.5" width="4" height="3" rx="1" fill="#26a69a" opacity=".9"/><rect x="9" y="8.5" width="4" height="3" rx="1" fill="#ef5350" opacity=".9"/></svg>;
+const IcoGear = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
+
 function ChartPanel() {
   const LC = typeof LightweightCharts !== 'undefined' ? LightweightCharts : null;
 
   // ── Default indicator state ────────────────────────────────────────────────
-  const DEFAULT_TOGGLES = { rsi:true, ema:true, fib:false, macd:true, vwap:false, vcad:false, ls:false };
+  const DEFAULT_TOGGLES = { rsi:true, ema:true, fib:false, macd:true, vwap:false, vcad:false };
   const DEFAULT_PARAMS  = { rsiPeriod:14, emaFast:50, emaSlow:200,
                             macdFast:12, macdSlow:26, macdSignal:9,
                             fibLookback:50, minSignalStrength:3 };
@@ -1640,6 +1701,12 @@ function ChartPanel() {
   const togglesRef      = useRef(DEFAULT_TOGGLES);
   const paramsRef       = useRef(DEFAULT_PARAMS);
   const syncUnsub       = useRef([]);
+  const posTPLineRef    = useRef(null);
+  const posSLLineRef    = useRef(null);
+  const posEntryLineRef = useRef(null);
+  const posRef          = useRef(null);
+  const isDraggingRef   = useRef(false);
+  const dragFieldRef    = useRef(null); // 'tp' | 'sl' | 'entry'
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [activeTf,     _setActiveTf]   = useState('M5');
@@ -1660,14 +1727,104 @@ function ChartPanel() {
   const [settingsTab,  setSettingsTab] = useState('toggles');
   const [rsiDisp,      setRsiDisp]     = useState(null);
   const [macdDisp,     setMacdDisp]    = useState({ ml:null, sl:null, hs:null });
-  const [signalLog,    setSignalLog]   = useState([]);
-  const [sigLogOpen,   setSigLogOpen]  = useState(true);
+  const [priceInfo,    setPriceInfo]   = useState({ price:null, change:0, changePct:0, dir:'flat' });
+  const dayOpenRef = useRef(null);
+  // ── Position tracker ─────────────────────────────────────────────────────
+  const [position,     setPosition]    = useState(() => {
+    try { return JSON.parse(localStorage.getItem('chart_pos') || 'null'); } catch { return null; }
+  });
+  const [posYCoords,   setPosYCoords]  = useState({ tp:null, sl:null, entry:null });
+  const [openPnl,      setOpenPnl]     = useState(0);
+  const [showPosModal, setShowPosModal]= useState(false);
+  const [posForm,      setPosForm]     = useState({ dir:'long', entry:'', tp:'', sl:'', qty:'1' });
 
   function setActiveTf(tf) { activeTfRef.current = tf; _setActiveTf(tf); }
 
   // Keep refs in sync with state for use inside closures
   useEffect(() => { togglesRef.current = indicators; }, [indicators]);
   useEffect(() => { paramsRef.current  = indParams;  }, [indParams]);
+
+  // ── Position tracker: keep posRef in sync + draw price lines ───────────────
+  useEffect(() => {
+    posRef.current = position;
+    try { localStorage.setItem('chart_pos', JSON.stringify(position)); } catch {}
+    if (isDraggingRef.current) return; // skip line redraw during live drag
+    if (!candleRef.current) return;
+    // Remove old lines
+    [posTPLineRef, posSLLineRef, posEntryLineRef].forEach(r => {
+      if (r.current) { try { candleRef.current.removePriceLine(r.current); } catch {} r.current = null; }
+    });
+    if (!position || !LC) return;
+    const LS = LC.LineStyle;
+    posEntryLineRef.current = candleRef.current.createPriceLine({
+      price: position.entry, color: '#2196F3', lineWidth: 1,
+      lineStyle: LS ? LS.Dashed : 1, axisLabelVisible: false,
+      title: '',
+    });
+    posTPLineRef.current = candleRef.current.createPriceLine({
+      price: position.tp, color: '#26a69a', lineWidth: 1,
+      lineStyle: LS ? LS.Solid : 0, axisLabelVisible: false,
+      title: '',
+    });
+    posSLLineRef.current = candleRef.current.createPriceLine({
+      price: position.sl, color: '#ef5350', lineWidth: 1,
+      lineStyle: LS ? LS.Solid : 0, axisLabelVisible: false,
+      title: '',
+    });
+  }, [position]);
+
+  // ── Drag handler for TV-style draggable price lines ───────────────────────
+  function startPriceDrag(e, field) {
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingRef.current = true;
+    dragFieldRef.current  = field;
+
+    function onMove(ev) {
+      if (!dragFieldRef.current || !candleRef.current || !containerRef.current) return;
+      const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
+      const rect    = containerRef.current.getBoundingClientRect();
+      const y       = clientY - rect.top;
+      const price   = candleRef.current.coordinateToPrice(y);
+      if (price == null || price <= 0) return;
+      const p = Math.round(price * 100) / 100;
+      setPosition(prev => {
+        if (!prev) return prev;
+        const next = { ...prev, [dragFieldRef.current]: p };
+        posRef.current = next;
+        return next;
+      });
+      _updatePosCoords();
+    }
+
+    function onUp() {
+      isDraggingRef.current = false;
+      dragFieldRef.current  = null;
+      // Commit: redraw the price lines now drag is done
+      setPosition(prev => prev ? { ...prev } : prev);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup',   onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend',  onUp);
+    }
+
+    window.addEventListener('mousemove', onMove, { passive:false });
+    window.addEventListener('mouseup',   onUp);
+    window.addEventListener('touchmove', onMove, { passive:false });
+    window.addEventListener('touchend',  onUp);
+  }
+
+  // ── Update Y-coordinates for position overlay boxes ───────────────────────
+  function _updatePosCoords() {
+    const pos = posRef.current;
+    if (!pos || !candleRef.current) return;
+    try {
+      const tpY    = candleRef.current.priceToCoordinate(pos.tp);
+      const slY    = candleRef.current.priceToCoordinate(pos.sl);
+      const entryY = candleRef.current.priceToCoordinate(pos.entry);
+      setPosYCoords({ tp: tpY, sl: slY, entry: entryY });
+    } catch {}
+  }
 
   // ── Chart creation (once on mount) ─────────────────────────────────────────
   useEffect(() => {
@@ -1695,7 +1852,9 @@ function ChartPanel() {
         const d = param.seriesData.get(series);
         if (d) setOhlcByTf(p => ({ ...p, [activeTfRef.current]: d }));
       }
+      _updatePosCoords();
     });
+    chart.timeScale().subscribeVisibleTimeRangeChange(() => _updatePosCoords());
     // EMA series on main chart
     const e50  = chart.addLineSeries({ color:'#2196F3', lineWidth:1, title:'EMA50',  lastValueVisible:false, priceLineVisible:false });
     const e200 = chart.addLineSeries({ color:'#FF6D00', lineWidth:2, title:'EMA200', lastValueVisible:false, priceLineVisible:false });
@@ -2048,6 +2207,23 @@ function ChartPanel() {
           indDataRef.current = iData;
           _renderIndicators(hist, iData);
         }
+        // Extract day open from M1 candles (first candle of today UTC)
+        try {
+          const m1 = cacheRef.current['M1'] || [];
+          if (m1.length) {
+            const todayStart = new Date(); todayStart.setUTCHours(0,0,0,0);
+            const todayTs = todayStart.getTime() / 1000;
+            const todayCandle = m1.find(c => c.time >= todayTs) || m1[m1.length - 1];
+            if (todayCandle) dayOpenRef.current = todayCandle.open;
+            const last = cacheRef.current[activeTfRef.current];
+            if (last && last.length) {
+              const lc = last[last.length - 1];
+              const chg = dayOpenRef.current ? lc.close - dayOpenRef.current : 0;
+              const chgPct = dayOpenRef.current ? (chg / dayOpenRef.current) * 100 : 0;
+              setPriceInfo({ price:lc.close, change:chg, changePct:chgPct, dir: chg > 0 ? 'up' : chg < 0 ? 'dn' : 'flat' });
+            }
+          }
+        } catch {}
         setLoading(false);
       }
 
@@ -2085,6 +2261,21 @@ function ChartPanel() {
               candleRef.current.update({ time:c.time, open:c.open, high:c.high, low:c.low, close:c.close });
               _updatePriceLine(c.close);
               setOhlcByTf(p => ({ ...p, [tf]: c }));
+            } catch {}
+            // Update live price display
+            try {
+              const chg = dayOpenRef.current ? c.close - dayOpenRef.current : 0;
+              const chgPct = dayOpenRef.current ? (chg / dayOpenRef.current) * 100 : 0;
+              setPriceInfo({ price:c.close, change:chg, changePct:chgPct, dir: chg > 0 ? 'up' : chg < 0 ? 'dn' : 'flat' });
+            } catch {}
+            // Update position P&L
+            try {
+              const pos = posRef.current;
+              if (pos) {
+                const mult = pos.dir === 'long' ? 1 : -1;
+                setOpenPnl((c.close - pos.entry) * pos.qty * mult);
+                _updatePosCoords();
+              }
             } catch {}
             // Fast incremental update — only last indicator values
             if (indDataRef.current) _updateLastIndicatorValues(c);
@@ -2206,120 +2397,358 @@ function ChartPanel() {
   const rsiColor = rsiDisp === null ? 'var(--muted)' : rsiDisp > 70 ? '#ef5350' : rsiDisp < 30 ? '#26a69a' : 'var(--text)';
 
   return (
-    <div className="card" style={{ display:'flex', flexDirection:'column' }}>
+    <div style={{ display:'flex', flexDirection:'column', background:'#131722', height:'calc(100vh - 52px)', overflow:'hidden' }}>
 
-      {/* ── Toolbar Row 1: TF + OHLC + Live status ── */}
-      <div className="chart-toolbar-row chart-toolbar-row1">
-        <span style={{ fontSize:13, fontWeight:700, letterSpacing:'.5px', color:'var(--text)', marginRight:4 }}>XAUUSD</span>
+      {/* ── Symbol Info Bar ── */}
+      <div className="tv-symbar">
+        <span className="tv-sym-name">XAU/USD</span>
+        <span className="tv-sym-ex">OANDA · GOLD</span>
+        {priceInfo.price !== null && (
+          <>
+            <span className="tv-price">{fmtP(priceInfo.price)}</span>
+            <span className={`tv-change ${priceInfo.dir}`}>
+              {priceInfo.dir === 'up' ? '▲' : priceInfo.dir === 'dn' ? '▼' : '●'}
+              {' '}{priceInfo.change >= 0 ? '+' : ''}{fmtP(priceInfo.change)}
+              {' '}({priceInfo.changePct >= 0 ? '+' : ''}{fmt(priceInfo.changePct, 2)}%)
+            </span>
+          </>
+        )}
+        <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:8 }}>
+          <div className="tv-live-wrap">
+            <span className={`tv-live-dot ${streamStatus}`} />
+            <span className="tv-live-lbl">{statusLabel}</span>
+            {lastTick && <span style={{ fontSize:10, color:'#555', marginLeft:4, fontFamily:'monospace' }}>{lastTick}</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Professional Toolbar ── */}
+      <div className="tv-tbar">
         {TF_LIST.map(tf => (
-          <button key={tf} className={`chart-tf-btn${activeTf === tf ? ' active' : ''}`} onClick={() => setActiveTf(tf)}>
+          <button key={tf} className={`tv-tf-btn${activeTf === tf ? ' active' : ''}`} onClick={() => setActiveTf(tf)}>
             {TF_LABELS[tf]}
           </button>
         ))}
-        <div className="ind-sep" />
-        {/* Indicator toggles */}
-        <button className={`ind-btn${indicators.rsi  ? ' on' : ''}`}  onClick={() => toggleInd('rsi')}>RSI</button>
-        <button className={`ind-btn${indicators.ema  ? ' on' : ''}`}  onClick={() => toggleInd('ema')}>EMA</button>
-        <button className={`ind-btn${indicators.fib  ? ' on-r' : ''}`} onClick={() => toggleInd('fib')}>FIB</button>
-        <button className={`ind-btn${indicators.macd ? ' on' : ''}`}  onClick={() => toggleInd('macd')}>MACD</button>
-        <button className={`ind-btn${indicators.vwap ? ' on-g' : ''}`} onClick={() => toggleInd('vwap')}>VWAP</button>
-        <button className={`ind-btn${indicators.vcad ? ' on' : ''}`}  onClick={() => toggleInd('vcad')}>VCAD</button>
-        <button className={`ind-btn${indicators.ls   ? ' on-g' : ''}`} onClick={() => toggleInd('ls')}>L/S</button>
-        <div className="ind-sep" />
-        {/* OHLC */}
+        <div className="tv-sep" />
+        <button className={`tv-ind-btn${indicators.rsi  ? ' on' : ''}`}  onClick={() => toggleInd('rsi')}>
+          <IcoRSI />RSI
+        </button>
+        <button className={`tv-ind-btn${indicators.ema  ? ' on' : ''}`}  onClick={() => toggleInd('ema')}>
+          <IcoEMA />EMA
+        </button>
+        <button className={`tv-ind-btn${indicators.fib  ? ' on-r' : ''}`} onClick={() => toggleInd('fib')}>
+          <IcoFIB />FIB
+        </button>
+        <button className={`tv-ind-btn${indicators.macd ? ' on' : ''}`}  onClick={() => toggleInd('macd')}>
+          <IcoMACD />MACD
+        </button>
+        <button className={`tv-ind-btn${indicators.vwap ? ' on-g' : ''}`} onClick={() => toggleInd('vwap')}>
+          <IcoVWAP />VWAP
+        </button>
+        <button className={`tv-ind-btn${indicators.vcad ? ' on' : ''}`}  onClick={() => toggleInd('vcad')}>
+          <IcoVCAD />VCAD
+        </button>
+        <div className="tv-sep" />
+        <button
+          className={`tv-pos-btn${position ? ' has-pos' : ''}`}
+          title="Set TP / SL position"
+          onClick={() => {
+            if (!position) {
+              const lastPrice = priceInfo.price;
+              const ep = lastPrice ? lastPrice.toFixed(2) : '';
+              const tpDef = lastPrice ? (lastPrice * 1.005).toFixed(2) : '';
+              const slDef = lastPrice ? (lastPrice * 0.995).toFixed(2) : '';
+              setPosForm({ dir:'long', entry:ep, tp:tpDef, sl:slDef, qty:'1' });
+            }
+            setShowPosModal(true);
+          }}
+        >
+          <IcoPos />TP/SL
+        </button>
         {currOhlc && (
-          <div className="chart-ohlc">
-            <span className="chart-ohlc-item"><span className="chart-ohlc-lbl" style={{ color:'var(--muted)' }}>O</span><span className="chart-ohlc-val">{fmtP(currOhlc.open)}</span></span>
-            <span className="chart-ohlc-item"><span className="chart-ohlc-lbl" style={{ color:'#26a69a' }}>H</span><span className="chart-ohlc-val" style={{ color:'#26a69a' }}>{fmtP(currOhlc.high)}</span></span>
-            <span className="chart-ohlc-item"><span className="chart-ohlc-lbl" style={{ color:'#ef5350' }}>L</span><span className="chart-ohlc-val" style={{ color:'#ef5350' }}>{fmtP(currOhlc.low)}</span></span>
-            <span className="chart-ohlc-item"><span className="chart-ohlc-lbl" style={{ color:'var(--muted)' }}>C</span><span className="chart-ohlc-val">{fmtP(currOhlc.close)}</span></span>
+          <div className="tv-ohlc">
+            <span className="tv-ohlc-item"><span className="tv-ohlc-lbl">O</span><span className="tv-ohlc-val">{fmtP(currOhlc.open)}</span></span>
+            <span className="tv-ohlc-item"><span className="tv-ohlc-lbl" style={{color:'#26a69a'}}>H</span><span className="tv-ohlc-val" style={{color:'#26a69a'}}>{fmtP(currOhlc.high)}</span></span>
+            <span className="tv-ohlc-item"><span className="tv-ohlc-lbl" style={{color:'#ef5350'}}>L</span><span className="tv-ohlc-val" style={{color:'#ef5350'}}>{fmtP(currOhlc.low)}</span></span>
+            <span className="tv-ohlc-item"><span className="tv-ohlc-lbl">C</span><span className="tv-ohlc-val">{fmtP(currOhlc.close)}</span></span>
           </div>
         )}
-        {/* Live status + settings */}
-        <div className="chart-live-wrap">
-          <span className={`chart-live-dot ${streamStatus}`} />
-          <span className="chart-live-lbl">{statusLabel}</span>
-          {lastTick && <span style={{ fontSize:10, color:'var(--muted)', marginLeft:4 }}>{lastTick}</span>}
-        </div>
-        <button className="ind-gear" title="Settings" onClick={() => setShowSettings(true)}>⚙</button>
+        <button className="tv-gear" title="Indicator Settings" onClick={() => setShowSettings(true)}>
+          <IcoGear />
+        </button>
       </div>
 
-      {/* ── Main chart ── */}
-      <div className="chart-wrap" style={{ position:'relative' }}>
+      {/* ── Main Chart ── */}
+      <div className="tv-chart-wrap">
         {loading && (
-          <div className="chart-overlay">
+          <div className="tv-overlay">
             <div className="spin" style={{ width:28, height:28, borderWidth:3 }} />
-            <span className="chart-overlay-msg">Loading 5-day history…</span>
+            <span className="tv-overlay-msg">Loading 5-day history…</span>
           </div>
         )}
-        {error && !loading && <div className="chart-err-msg">{error}</div>}
-        <div ref={containerRef} className="chart-container" style={{ height:'calc(100vh - 290px)', minHeight:320 }} />
+        {error && !loading && <div className="tv-err-msg">{error}</div>}
+        <div ref={containerRef} style={{ width:'100%', height:'100%' }} />
+
+        {/* ── TV-Style Draggable Position Overlay ── */}
+        {position && (() => {
+          const { tp, sl, entry, dir, qty } = position;
+          const isLong  = dir === 'long';
+          const { tp: tpY, sl: slY, entry: entryY } = posYCoords;
+
+          const tpPct  = entry ? ((tp - entry)    / entry * 100 * (isLong?1:-1)) : 0;
+          const slPct  = entry ? ((entry - sl)    / entry * 100 * (isLong?1:-1)) : 0;
+          const tpAmt  = Math.abs((tp - entry)    * qty * (isLong?1:-1));
+          const slAmt  = Math.abs((entry - sl)    * qty * (isLong?1:-1));
+          const rr     = slAmt > 0 ? (tpAmt / slAmt).toFixed(2) : '∞';
+          const pnlPos = openPnl >= 0;
+
+          // Fill regions (clamp to visible range)
+          const greenTop = tpY !== null && entryY !== null ? Math.min(tpY, entryY) : null;
+          const greenH   = tpY !== null && entryY !== null ? Math.abs(tpY - entryY) : 0;
+          const redTop   = slY !== null && entryY !== null ? Math.min(slY, entryY) : null;
+          const redH     = slY !== null && entryY !== null ? Math.abs(slY - entryY) : 0;
+
+          // Center info box: position between entry and tp (or sl if short)
+          const topLine  = isLong ? (tpY ?? entryY ?? 0) : (slY ?? entryY ?? 0);
+          const botLine  = isLong ? (entryY ?? 0) : (entryY ?? 0);
+          const centerY  = ((topLine + botLine) / 2);
+
+          return (
+            <div className="tv-pos-drag-wrap">
+
+              {/* Green fill: entry → TP */}
+              {greenTop !== null && greenH > 0 && (
+                <div className="tv-pos-fill" style={{ top:greenTop, height:greenH, background:'rgba(38,166,154,.12)' }} />
+              )}
+              {/* Red fill: entry → SL */}
+              {redTop !== null && redH > 0 && (
+                <div className="tv-pos-fill" style={{ top:redTop, height:redH, background:'rgba(239,83,80,.12)' }} />
+              )}
+
+              {/* ── TP line ── */}
+              {tpY !== null && (
+                <div className="tv-pos-line-row" style={{ top: tpY }}>
+                  <div className="tv-pos-line" style={{ background:'#26a69a' }} />
+                  {/* drag handle */}
+                  <div className="tv-pos-handle" style={{ borderColor:'#26a69a' }}
+                    onMouseDown={e => startPriceDrag(e, 'tp')} onTouchStart={e => startPriceDrag(e, 'tp')} />
+                  {/* wide hit area */}
+                  <div className="tv-pos-hit" onMouseDown={e => startPriceDrag(e, 'tp')} onTouchStart={e => startPriceDrag(e, 'tp')} />
+                  {/* right-side label */}
+                  <div className="tv-pos-rhs" style={{ background:'rgba(38,166,154,.92)', border:'1px solid #26a69a', color:'#fff', top:0 }}
+                    onMouseDown={e => startPriceDrag(e, 'tp')} onTouchStart={e => startPriceDrag(e, 'tp')}>
+                    <div className="tv-pos-rhs-price">Target: {tp.toFixed(2)}</div>
+                    <div className="tv-pos-rhs-sub">+{Math.abs(tpPct).toFixed(3)}%  ·  +${tpAmt.toFixed(2)}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Entry line ── */}
+              {entryY !== null && (
+                <div className="tv-pos-line-row" style={{ top: entryY }}>
+                  <div className="tv-pos-line-dashed" />
+                  {/* drag handle */}
+                  <div className="tv-pos-handle" style={{ borderColor:'#2196F3' }}
+                    onMouseDown={e => startPriceDrag(e, 'entry')} onTouchStart={e => startPriceDrag(e, 'entry')} />
+                  {/* wide hit area */}
+                  <div className="tv-pos-hit" onMouseDown={e => startPriceDrag(e, 'entry')} onTouchStart={e => startPriceDrag(e, 'entry')} />
+                  {/* right-side label */}
+                  <div className="tv-pos-rhs" style={{ background:'rgba(33,150,243,.85)', border:'1px solid #2196F3', color:'#fff', top:0 }}
+                    onMouseDown={e => startPriceDrag(e, 'entry')} onTouchStart={e => startPriceDrag(e, 'entry')}>
+                    <div className="tv-pos-rhs-price">Entry: {entry.toFixed(2)}</div>
+                    <div className="tv-pos-rhs-sub">{isLong ? '▲ LONG' : '▼ SHORT'}  ·  Qty: {qty}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── SL line ── */}
+              {slY !== null && (
+                <div className="tv-pos-line-row" style={{ top: slY }}>
+                  <div className="tv-pos-line" style={{ background:'#ef5350' }} />
+                  {/* drag handle */}
+                  <div className="tv-pos-handle" style={{ borderColor:'#ef5350' }}
+                    onMouseDown={e => startPriceDrag(e, 'sl')} onTouchStart={e => startPriceDrag(e, 'sl')} />
+                  {/* wide hit area */}
+                  <div className="tv-pos-hit" onMouseDown={e => startPriceDrag(e, 'sl')} onTouchStart={e => startPriceDrag(e, 'sl')} />
+                  {/* right-side label */}
+                  <div className="tv-pos-rhs" style={{ background:'rgba(239,83,80,.92)', border:'1px solid #ef5350', color:'#fff', top:0 }}
+                    onMouseDown={e => startPriceDrag(e, 'sl')} onTouchStart={e => startPriceDrag(e, 'sl')}>
+                    <div className="tv-pos-rhs-price">Stop: {sl.toFixed(2)}</div>
+                    <div className="tv-pos-rhs-sub">-{Math.abs(slPct).toFixed(3)}%  ·  -${slAmt.toFixed(2)}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Center P&L box ── */}
+              {entryY !== null && (
+                <div className="tv-pos-center" style={{ top: centerY, transform:'translate(-50%,-50%)' }}>
+                  <button className="tv-pos-close-btn" onClick={() => setPosition(null)} title="Close position">✕</button>
+                  <div className={`tv-pos-center-pnl ${pnlPos ? 'tv-pos-pnl-pos' : 'tv-pos-pnl-neg'}`}>
+                    Open P&amp;L: {pnlPos?'+':''}{openPnl.toFixed(2)}
+                  </div>
+                  <div className="tv-pos-center-row">
+                    <span>Qty: {qty}</span>
+                    <span>R/R: {rr}</span>
+                    <span style={{color: isLong?'#26a69a':'#ef5350', fontWeight:700}}>{isLong?'▲ LONG':'▼ SHORT'}</span>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          );
+        })()}
       </div>
 
-      {/* ── RSI pane ── */}
-      <div className="pane-outer" style={{ height: indicators.rsi ? 120 : 0 }}>
-        <div className="pane-label">
+      {/* ── RSI Sub-pane ── */}
+      <div className="tv-pane" style={{ height: indicators.rsi ? 110 : 0 }}>
+        <div className="tv-pane-lbl">
           <span>RSI({indParams.rsiPeriod})</span>
-          {rsiDisp !== null && <span className="pane-lbl-val" style={{ color: rsiColor }}>{fmtI(rsiDisp)}</span>}
+          {rsiDisp !== null && <span className="tv-pane-val" style={{ color: rsiColor }}>{fmtI(rsiDisp)}</span>}
         </div>
-        <div ref={rsiContainerRef} style={{ width:'100%', height:120 }} />
+        <div ref={rsiContainerRef} style={{ width:'100%', height:110 }} />
       </div>
 
-      {/* ── MACD pane ── */}
-      <div className="pane-outer" style={{ height: indicators.macd ? 120 : 0 }}>
-        <div className="pane-label">
+      {/* ── MACD Sub-pane ── */}
+      <div className="tv-pane" style={{ height: indicators.macd ? 110 : 0 }}>
+        <div className="tv-pane-lbl">
           <span>MACD({indParams.macdFast},{indParams.macdSlow},{indParams.macdSignal})</span>
-          {macdDisp.ml !== null && <span className="pane-lbl-macd pane-lbl-val">{fmt(macdDisp.ml, 3)}</span>}
-          {macdDisp.sl !== null && <span className="pane-lbl-sig pane-lbl-val">{fmt(macdDisp.sl, 3)}</span>}
-          {macdDisp.hs !== null && <span className="pane-lbl-hist pane-lbl-val" style={{ color: macdDisp.hs >= 0 ? '#26a69a' : '#ef5350' }}>{fmt(macdDisp.hs, 3)}</span>}
+          {macdDisp.ml !== null && <span className="tv-pane-val tv-pane-macd">{fmt(macdDisp.ml, 3)}</span>}
+          {macdDisp.sl !== null && <span className="tv-pane-val tv-pane-sig">{fmt(macdDisp.sl, 3)}</span>}
+          {macdDisp.hs !== null && <span className="tv-pane-val tv-pane-hist" style={{ color: macdDisp.hs >= 0 ? '#26a69a' : '#ef5350' }}>{fmt(macdDisp.hs, 3)}</span>}
         </div>
-        <div ref={macdContainerRef} style={{ width:'100%', height:120 }} />
+        <div ref={macdContainerRef} style={{ width:'100%', height:110 }} />
       </div>
 
-      {/* ── VCAD pane ── */}
-      <div className="pane-outer" style={{ height: indicators.vcad ? 80 : 0 }}>
-        <div className="pane-label"><span>VCAD</span></div>
+      {/* ── VCAD Sub-pane ── */}
+      <div className="tv-pane" style={{ height: indicators.vcad ? 80 : 0 }}>
+        <div className="tv-pane-lbl"><span>VCAD A/D</span></div>
         <div ref={vcadContainerRef} style={{ width:'100%', height:80 }} />
       </div>
 
-      {/* ── Signal Log ── */}
-      {indicators.ls && signalLog.length > 0 && (
-        <div className="siglog-panel">
-          <div className="siglog-hd" onClick={() => setSigLogOpen(p => !p)}>
-            <span>Signal Log — last {signalLog.length}</span>
-            <span>{sigLogOpen ? '▲' : '▼'}</span>
-          </div>
-          {sigLogOpen && signalLog.slice(0, 20).map((s, i) => {
-            const t = new Date(s.time * 1000);
-            const tStr = t.toUTCString().slice(5, 22);
-            return (
-              <div key={i} className="siglog-row" onClick={() => {
-                if (chartRef.current) {
-                  try { chartRef.current.timeScale().scrollToPosition(chartRef.current.timeScale().timeToCoordinate(s.time), true); } catch {}
-                }
-              }}>
-                <span className={s.direction === 'long' ? 'siglog-dir-l' : 'siglog-dir-s'}>
-                  {s.direction === 'long' ? '▲' : '▼'}
-                </span>
-                <span style={{ color:'var(--text)', fontWeight:600 }}>{s.direction === 'long' ? 'LONG' : 'SHORT'}</span>
-                <span className="siglog-tf">{activeTf}</span>
-                <span className="siglog-price">{fmtP(s.price)}</span>
-                <span className={s.score === 5 ? 'siglog-str-strong' : 'siglog-str-med'}>
-                  {s.score}/5 {s.score === 5 ? 'STRONG' : 'MED'}
-                </span>
-                <span className="siglog-time">{tStr}</span>
+
+      {/* ── Position Setup Modal ── */}
+      {showPosModal && (() => {
+        const ep  = parseFloat(posForm.entry) || 0;
+        const tp  = parseFloat(posForm.tp)    || 0;
+        const sl  = parseFloat(posForm.sl)    || 0;
+        const qty = parseFloat(posForm.qty)   || 1;
+        const isLong = posForm.dir === 'long';
+        const tpPct   = ep ? ((tp - ep) / ep * 100 * (isLong?1:-1)) : 0;
+        const slPct   = ep ? ((ep - sl) / ep * 100 * (isLong?1:-1)) : 0;
+        const tpAmt   = ep && tp ? Math.abs((tp - ep) * qty * (isLong?1:-1)) : 0;
+        const slAmt   = ep && sl ? Math.abs((ep - sl) * qty * (isLong?1:-1)) : 0;
+        const rr      = slAmt > 0 ? (tpAmt / slAmt).toFixed(2) : '—';
+        function savePos() {
+          if (!ep || !tp || !sl) return;
+          const p = { dir: posForm.dir, entry: ep, tp, sl, qty };
+          setPosition(p);
+          setOpenPnl(0);
+          setShowPosModal(false);
+        }
+        return (
+          <div className="tv-pos-modal-wrap" onClick={e => { if (e.target === e.currentTarget) setShowPosModal(false); }}>
+            <div className="tv-pos-modal">
+              <div className="tv-pos-modal-hd">
+                <span className="tv-pos-modal-title">Set Position</span>
+                <button className="tv-pos-modal-close" onClick={() => setShowPosModal(false)}>✕</button>
               </div>
-            );
-          })}
-        </div>
-      )}
+
+              {/* Direction */}
+              <div className="tv-pos-dir">
+                <button className={`tv-pos-dir-btn long${posForm.dir==='long'?' active':''}`} onClick={() => setPosForm(p=>({...p, dir:'long'}))}>▲ LONG</button>
+                <button className={`tv-pos-dir-btn short${posForm.dir==='short'?' active':''}`} onClick={() => setPosForm(p=>({...p, dir:'short'}))}>▼ SHORT</button>
+              </div>
+
+              {/* Entry */}
+              <div className="tv-pos-field">
+                <label className="tv-pos-label">Entry Price</label>
+                <input className="tv-pos-input" type="number" step="0.01"
+                  value={posForm.entry}
+                  onChange={e => setPosForm(p=>({...p, entry:e.target.value}))}
+                  placeholder={priceInfo.price ? priceInfo.price.toFixed(2) : 'e.g. 2640.00'}
+                />
+              </div>
+
+              {/* TP + SL side by side */}
+              <div className="tv-pos-grid2">
+                <div className="tv-pos-field">
+                  <label className="tv-pos-label" style={{color:'#26a69a'}}>Take Profit</label>
+                  <input className="tv-pos-input" type="number" step="0.01"
+                    value={posForm.tp}
+                    onChange={e => setPosForm(p=>({...p, tp:e.target.value}))}
+                    placeholder="TP price"
+                  />
+                </div>
+                <div className="tv-pos-field">
+                  <label className="tv-pos-label" style={{color:'#ef5350'}}>Stop Loss</label>
+                  <input className="tv-pos-input" type="number" step="0.01"
+                    value={posForm.sl}
+                    onChange={e => setPosForm(p=>({...p, sl:e.target.value}))}
+                    placeholder="SL price"
+                  />
+                </div>
+              </div>
+
+              {/* Qty */}
+              <div className="tv-pos-field">
+                <label className="tv-pos-label">Quantity (oz / units)</label>
+                <input className="tv-pos-input" type="number" step="0.01" min="0.01"
+                  value={posForm.qty}
+                  onChange={e => setPosForm(p=>({...p, qty:e.target.value}))}
+                />
+              </div>
+
+              {/* Calculated stats */}
+              <div className="tv-pos-stats">
+                <div className="tv-pos-stat">
+                  <div className="tv-pos-stat-lbl">TP Distance</div>
+                  <div className={`tv-pos-stat-val ${tpPct>=0?'g':'r'}`}>{tpPct>=0?'+':''}{tpPct.toFixed(3)}%</div>
+                </div>
+                <div className="tv-pos-stat">
+                  <div className="tv-pos-stat-lbl">SL Distance</div>
+                  <div className="tv-pos-stat-val r">-{Math.abs(slPct).toFixed(3)}%</div>
+                </div>
+                <div className="tv-pos-stat">
+                  <div className="tv-pos-stat-lbl">Max Profit</div>
+                  <div className="tv-pos-stat-val g">+${tpAmt.toFixed(2)}</div>
+                </div>
+                <div className="tv-pos-stat">
+                  <div className="tv-pos-stat-lbl">Max Loss</div>
+                  <div className="tv-pos-stat-val r">-${slAmt.toFixed(2)}</div>
+                </div>
+                <div className="tv-pos-stat">
+                  <div className="tv-pos-stat-lbl">Risk / Reward</div>
+                  <div className="tv-pos-stat-val">{rr}</div>
+                </div>
+                <div className="tv-pos-stat">
+                  <div className="tv-pos-stat-lbl">Direction</div>
+                  <div className={`tv-pos-stat-val ${isLong?'g':'r'}`}>{isLong?'▲ LONG':'▼ SHORT'}</div>
+                </div>
+              </div>
+
+              <div className="tv-pos-actions">
+                <button className="tv-pos-cancel-btn" onClick={() => setShowPosModal(false)}>Cancel</button>
+                {position && (
+                  <button className="tv-pos-cancel-btn" style={{color:'#ef5350',borderColor:'#ef5350'}}
+                    onClick={() => { setPosition(null); setShowPosModal(false); }}>
+                    Close Position
+                  </button>
+                )}
+                <button className="tv-pos-set-btn" onClick={savePos}>
+                  {position ? 'Update' : 'Set Position'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Settings Modal ── */}
       {showSettings && (
         <div className="settings-overlay" onClick={e => { if (e.target === e.currentTarget) setShowSettings(false); }}>
           <div className="settings-modal">
             <div className="settings-hd">
-              <span className="settings-title">⚙ Indicator Settings</span>
+              <span className="settings-title">Indicator Settings</span>
               <button className="settings-close" onClick={() => setShowSettings(false)}>✕</button>
             </div>
             <div className="settings-tabs">
@@ -2333,13 +2762,12 @@ function ChartPanel() {
               {settingsTab === 'toggles' && (
                 <div>
                   {[
-                    { key:'rsi',  label:'RSI (14)',                 dot:'#7b1fa2' },
-                    { key:'ema',  label:'EMA 50 / EMA 200',         dot:'#2196F3' },
-                    { key:'fib',  label:'Fibonacci Retracement',    dot:'#FF9800' },
-                    { key:'macd', label:'MACD (12, 26, 9)',         dot:'#2196F3' },
-                    { key:'vwap', label:'VWAP + Bands',             dot:'#FF6D00' },
-                    { key:'vcad', label:'VCAD (A/D Line)',          dot:'#7b1fa2' },
-                    { key:'ls',   label:'Long / Short Signals',     dot:'#00E676' },
+                    { key:'rsi',  label:'RSI (14)',              dot:'#7b1fa2' },
+                    { key:'ema',  label:'EMA 50 / EMA 200',      dot:'#2196F3' },
+                    { key:'fib',  label:'Fibonacci Retracement', dot:'#FF9800' },
+                    { key:'macd', label:'MACD (12, 26, 9)',      dot:'#2196F3' },
+                    { key:'vwap', label:'VWAP + Bands',          dot:'#FF6D00' },
+                    { key:'vcad', label:'VCAD (A/D Line)',       dot:'#7b1fa2' },
                   ].map(({ key, label, dot }) => (
                     <div key={key} className="settings-row">
                       <span className="settings-lbl">
