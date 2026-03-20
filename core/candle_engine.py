@@ -14,6 +14,7 @@ Usage (from web_server.py):
 from __future__ import annotations
 
 import asyncio
+import datetime as _dt
 import json
 import logging
 import math
@@ -22,6 +23,7 @@ import threading
 import time
 import urllib.request
 import urllib.error
+import urllib.parse
 from collections import deque
 from typing import Any
 
@@ -35,7 +37,20 @@ TIMEFRAMES: dict[str, int] = {   # timeframe → period in seconds
     "M15": 900,
     "H1":  3600,
 }
-MAX_CANDLES = 200
+
+# How many days of history to fetch on startup
+DAYS_HISTORY = 5
+
+# Per-timeframe store capacity (5 days + small buffer)
+TF_MAX_CANDLES: dict[str, int] = {
+    "M1":  7_500,   # 5 days × 1440  = 7200
+    "M5":  1_500,   # 5 days × 288   = 1440
+    "M15":   500,   # 5 days × 96    = 480
+    "H1":    130,   # 5 days × 24    = 120
+}
+
+# OANDA hard limit per single candle request
+OANDA_MAX_COUNT = 5_000
 
 
 # ── CandleStore ────────────────────────────────────────────────────────────────
@@ -44,7 +59,10 @@ class CandleStore:
     """Thread-safe in-memory store for completed + current candles."""
 
     def __init__(self) -> None:
-        self._completed: dict[str, deque] = {tf: deque(maxlen=MAX_CANDLES) for tf in TIMEFRAMES}
+        # Per-TF deques sized for 5 days of data
+        self._completed: dict[str, deque] = {
+            tf: deque(maxlen=TF_MAX_CANDLES[tf]) for tf in TIMEFRAMES
+        }
         self._current:   dict[str, dict | None] = {tf: None for tf in TIMEFRAMES}
         self._lock = threading.Lock()
 
@@ -61,7 +79,7 @@ class CandleStore:
         """Pre-fill store with historical candles (called on startup)."""
         with self._lock:
             self._completed[timeframe].clear()
-            for c in candles[-MAX_CANDLES:]:
+            for c in candles:          # deque's maxlen handles the cap automatically
                 self._completed[timeframe].append(c)
 
     def push_completed(self, timeframe: str, candle: dict) -> None:
@@ -271,17 +289,43 @@ class OandaStreamEngine:
     # ── Historical fetch ────────────────────────────────────────────────────────
 
     def _fetch_and_seed(self, timeframe: str) -> None:
-        """Fetch 200 historical candles for one TF and seed the store."""
-        candles = _fetch_oanda_candles(
-            api_key=self.api_key,
-            base_url=self.api_base,
-            granularity=timeframe,
-            count=MAX_CANDLES + 5,   # fetch a few extra
-        )
+        """Fetch 5 days of historical candles for one TF and seed the store."""
+        period    = TIMEFRAMES[timeframe]
+        now_unix  = int(time.time())
+        from_unix = now_unix - DAYS_HISTORY * 86_400
+
+        # How many candles fit in 5 days for this TF
+        expected = (DAYS_HISTORY * 86_400) // period + 10   # +10 buffer
+
+        if expected <= OANDA_MAX_COUNT:
+            # Single request covers the full 5 days
+            raw = _fetch_oanda_candles(
+                api_key=self.api_key, base_url=self.api_base,
+                granularity=timeframe, from_unix=from_unix,
+            )
+        else:
+            # M1 only: 7200 candles needs 2 requests of ~3600 each
+            mid_unix = from_unix + (DAYS_HISTORY * 86_400) // 2
+            chunk1 = _fetch_oanda_candles(
+                api_key=self.api_key, base_url=self.api_base,
+                granularity=timeframe, from_unix=from_unix, to_unix=mid_unix,
+            )
+            chunk2 = _fetch_oanda_candles(
+                api_key=self.api_key, base_url=self.api_base,
+                granularity=timeframe, from_unix=mid_unix,
+            )
+            # Merge + deduplicate by time (keep order)
+            seen: set[int] = set()
+            raw = []
+            for c in chunk1 + chunk2:
+                if c["time"] not in seen:
+                    seen.add(c["time"])
+                    raw.append(c)
+
         # Keep only complete candles
-        complete = [c for c in candles if c.get("complete", False)][-MAX_CANDLES:]
+        complete = [c for c in raw if c.get("complete", False)]
         self.store.seed_historical(timeframe, complete)
-        LOGGER.info("[ENGINE] seeded %s  candles=%d", timeframe, len(complete))
+        LOGGER.info("[ENGINE] seeded %s  candles=%d (5-day history)", timeframe, len(complete))
 
     # ── Stream loop ─────────────────────────────────────────────────────────────
 
@@ -425,25 +469,41 @@ def _init_event(store: CandleStore) -> dict:
 
 # ── OANDA helpers ──────────────────────────────────────────────────────────────
 
+def _ts_to_rfc3339(unix: float) -> str:
+    """Convert unix timestamp to RFC3339 string for OANDA API params."""
+    return _dt.datetime.utcfromtimestamp(unix).strftime("%Y-%m-%dT%H:%M:%S.000000000Z")
+
+
 def _fetch_oanda_candles(
-    api_key: str,
-    base_url: str,
+    api_key:     str,
+    base_url:    str,
     granularity: str,
-    count: int,
+    count:       int  | None = None,
+    from_unix:   float | None = None,
+    to_unix:     float | None = None,
 ) -> list[dict]:
-    """Fetch candles from OANDA REST API. Returns list including incomplete candle."""
-    url = (
-        f"{base_url}/instruments/XAU_USD/candles"
-        f"?price=M&granularity={granularity}&count={count}"
-    )
+    """Fetch candles from OANDA REST API.
+
+    Pass either ``count`` (recent N candles) or ``from_unix`` / ``to_unix``
+    for date-range fetches (max 5000 candles per call).
+    """
+    params: list[str] = ["price=M", f"granularity={granularity}"]
+    if from_unix is not None:
+        params.append(f"from={urllib.parse.quote(_ts_to_rfc3339(from_unix))}")
+    if to_unix is not None:
+        params.append(f"to={urllib.parse.quote(_ts_to_rfc3339(to_unix))}")
+    if count is not None:
+        params.append(f"count={count}")
+
+    url = f"{base_url}/instruments/XAU_USD/candles?{'&'.join(params)}"
     headers = {
-        "Authorization":         f"Bearer {api_key}",
+        "Authorization":          f"Bearer {api_key}",
         "Accept-Datetime-Format": "RFC3339",
-        "User-Agent":            "SEAN0-ALGO-V1/1.0",
+        "User-Agent":             "SEAN0-ALGO-V1/1.0",
     }
     ssl_ctx = ssl.create_default_context()
     req = urllib.request.Request(url, headers=headers, method="GET")
-    with urllib.request.urlopen(req, timeout=20, context=ssl_ctx) as resp:
+    with urllib.request.urlopen(req, timeout=30, context=ssl_ctx) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
 
     candles: list[dict] = []
