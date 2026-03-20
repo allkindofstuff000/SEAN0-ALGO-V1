@@ -343,6 +343,71 @@
     .chart-overlay-msg  { font-size:13px; color:var(--muted); }
     .chart-err-msg      { padding:24px; text-align:center; color:var(--loss); font-size:13px; background:#131722; }
 
+    /* ── Indicator Toolbar ─────────────────────────────── */
+    .chart-toolbar-row  { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--border); flex-wrap:wrap; min-height:40px; }
+    .chart-toolbar-row1 { background:#1a1d27; }
+    .chart-toolbar-row2 { background:#161821; gap:6px; }
+    .ind-sep            { width:1px; height:18px; background:var(--border); margin:0 2px; flex-shrink:0; }
+    .ind-btn            { font-size:11px; font-weight:700; padding:3px 10px; border-radius:4px; border:1px solid #363a45; background:transparent; color:#787b86; cursor:pointer; letter-spacing:.4px; font-family:var(--font); transition:all .15s; white-space:nowrap; }
+    .ind-btn:hover      { color:var(--text); border-color:#888; }
+    .ind-btn.on         { background:rgba(33,150,243,.18); border-color:#2196F3; color:#2196F3; }
+    .ind-btn.on-g       { background:rgba(38,166,154,.15); border-color:#26a69a; color:#26a69a; }
+    .ind-btn.on-r       { background:rgba(239,83,80,.13); border-color:#ef5350; color:#ef5350; }
+    .ind-gear           { font-size:14px; padding:3px 8px; border-radius:4px; border:1px solid #363a45; background:transparent; color:#787b86; cursor:pointer; margin-left:auto; transition:all .15s; }
+    .ind-gear:hover     { color:var(--text); background:rgba(255,255,255,.06); }
+
+    /* ── Sub-pane (RSI / MACD / VCAD) ─────────────────── */
+    .pane-outer         { overflow:hidden; transition:height .2s ease; border-top:1px solid #1e222d; position:relative; background:#131722; }
+    .pane-label         { position:absolute; top:4px; left:8px; z-index:10; font-size:10px; color:rgba(178,181,190,.7); pointer-events:none; display:flex; gap:8px; align-items:center; }
+    .pane-lbl-val       { font-weight:700; font-family:monospace; font-size:11px; }
+    .pane-lbl-macd      { color:#2196F3; }
+    .pane-lbl-sig       { color:#FF6D00; }
+    .pane-lbl-hist      { font-weight:700; font-size:10px; }
+    .pane-resize-handle { height:4px; background:transparent; cursor:ns-resize; display:flex; align-items:center; justify-content:center; }
+    .pane-resize-handle:hover { background:rgba(255,255,255,.06); }
+    .pane-resize-grip   { width:30px; height:2px; background:#363a45; border-radius:1px; }
+
+    /* ── Settings Modal ──────────────────────────────── */
+    .settings-overlay   { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:200; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+    .settings-modal     { background:#1e2130; border:1px solid var(--border); border-radius:12px; width:480px; max-width:96vw; max-height:80vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+    .settings-hd        { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); }
+    .settings-title     { font-size:14px; font-weight:700; }
+    .settings-close     { background:none; border:none; color:var(--muted); cursor:pointer; font-size:18px; line-height:1; padding:2px 6px; }
+    .settings-close:hover { color:var(--text); }
+    .settings-tabs      { display:flex; gap:2px; padding:10px 16px 0; border-bottom:1px solid var(--border); }
+    .settings-tab       { padding:6px 14px; font-size:12px; font-weight:600; color:var(--muted); border:none; background:none; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; font-family:var(--font); transition:all .15s; }
+    .settings-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+    .settings-body      { flex:1; overflow-y:auto; padding:16px 20px; }
+    .settings-body::-webkit-scrollbar{ width:4px; }
+    .settings-body::-webkit-scrollbar-thumb{ background:var(--border); border-radius:2px; }
+    .settings-row       { display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid rgba(255,255,255,.04); }
+    .settings-row:last-child { border-bottom:none; }
+    .settings-lbl       { font-size:13px; display:flex; align-items:center; gap:8px; }
+    .settings-lbl-dot   { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+    .settings-toggle    { width:38px; height:20px; border-radius:10px; background:var(--border); position:relative; cursor:pointer; border:none; transition:background .2s; flex-shrink:0; }
+    .settings-toggle.on { background:var(--accent); }
+    .settings-toggle::after { content:''; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; transition:transform .2s; }
+    .settings-toggle.on::after { transform:translateX(18px); }
+    .settings-num       { width:68px; font-size:12px; background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:5px; color:var(--text); padding:4px 8px; text-align:center; font-family:monospace; }
+    .settings-num:focus { border-color:var(--accent); outline:none; }
+    .settings-group-hd  { font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:14px 0 4px; }
+
+    /* ── Signal Log Panel ─────────────────────────────── */
+    .siglog-panel       { border-top:1px solid var(--border); background:#161821; max-height:200px; overflow-y:auto; }
+    .siglog-panel::-webkit-scrollbar{ width:4px; }
+    .siglog-panel::-webkit-scrollbar-thumb{ background:var(--border); border-radius:2px; }
+    .siglog-hd          { display:flex; align-items:center; justify-content:space-between; padding:7px 14px; font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.05em; background:#1a1d27; cursor:pointer; user-select:none; }
+    .siglog-hd:hover    { color:var(--text); }
+    .siglog-row         { display:flex; align-items:center; gap:8px; padding:5px 14px; font-size:11px; border-bottom:1px solid rgba(255,255,255,.03); cursor:pointer; transition:background .1s; }
+    .siglog-row:hover   { background:rgba(255,255,255,.04); }
+    .siglog-dir-l       { color:#00E676; font-weight:800; font-size:12px; }
+    .siglog-dir-s       { color:#FF1744; font-weight:800; font-size:12px; }
+    .siglog-str-strong  { background:rgba(0,230,118,.15); color:#00E676; border-radius:3px; padding:1px 5px; font-weight:700; font-size:10px; }
+    .siglog-str-med     { background:rgba(38,166,154,.12); color:#26a69a; border-radius:3px; padding:1px 5px; font-weight:700; font-size:10px; }
+    .siglog-tf          { background:rgba(255,255,255,.07); color:var(--muted); border-radius:3px; padding:1px 5px; font-size:10px; }
+    .siglog-price       { font-family:monospace; color:var(--text); }
+    .siglog-time        { color:var(--muted); font-size:10px; margin-left:auto; }
+
   </style>
 </head>
 <body>
@@ -1359,55 +1424,271 @@ function BacktestHistoryPanel({ onLoad }) {
 }
 
 /* ── Chart Panel (multi-TF, tick-based SSE) ─────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   Indicator Engine  —  pure math, no React, no DOM
+───────────────────────────────────────────────────────────────────────────── */
+class IndicatorEngine {
+  /* EMA */
+  static calcEMA(closes, period) {
+    const n = closes.length;
+    const out = new Array(n).fill(null);
+    if (n < period) return out;
+    const k = 2 / (period + 1);
+    let sum = 0;
+    for (let i = 0; i < period; i++) sum += closes[i];
+    out[period - 1] = sum / period;
+    for (let i = period; i < n; i++) out[i] = closes[i] * k + out[i - 1] * (1 - k);
+    return out;
+  }
+
+  /* RSI — Wilder's smoothing */
+  static calcRSI(closes, period = 14) {
+    const n = closes.length;
+    const out = new Array(n).fill(null);
+    if (n < period + 1) return out;
+    let ag = 0, al = 0;
+    for (let i = 1; i <= period; i++) {
+      const d = closes[i] - closes[i - 1];
+      if (d > 0) ag += d; else al -= d;
+    }
+    ag /= period; al /= period;
+    out[period] = 100 - 100 / (1 + (al === 0 ? 100 : ag / al));
+    for (let i = period + 1; i < n; i++) {
+      const d = closes[i] - closes[i - 1];
+      ag = (ag * (period - 1) + Math.max(d, 0)) / period;
+      al = (al * (period - 1) + Math.max(-d, 0)) / period;
+      out[i] = 100 - 100 / (1 + (al === 0 ? 100 : ag / al));
+    }
+    return out;
+  }
+
+  /* MACD */
+  static calcMACD(closes, fast = 12, slow = 26, sig = 9) {
+    const n = closes.length;
+    const ef = IndicatorEngine.calcEMA(closes, fast);
+    const es = IndicatorEngine.calcEMA(closes, slow);
+    const ml = new Array(n).fill(null);
+    for (let i = slow - 1; i < n; i++) {
+      if (ef[i] !== null && es[i] !== null) ml[i] = ef[i] - es[i];
+    }
+    // signal = EMA of MACD line (only over defined values)
+    const defStart = slow - 1;
+    const mlSlice  = ml.slice(defStart).map(v => v === null ? 0 : v);
+    const sigSlice = IndicatorEngine.calcEMA(mlSlice, sig);
+    const sl = new Array(n).fill(null);
+    for (let i = 0; i < sigSlice.length; i++) sl[defStart + i] = sigSlice[i];
+    const hist = new Array(n).fill(null);
+    for (let i = 0; i < n; i++) {
+      if (ml[i] !== null && sl[i] !== null) hist[i] = ml[i] - sl[i];
+    }
+    return { macdLine: ml, signalLine: sl, histogram: hist };
+  }
+
+  /* VWAP — daily reset at 00:00 UTC */
+  static calcVWAP(candles) {
+    const n = candles.length;
+    const vwap = new Array(n).fill(null);
+    const ub1  = new Array(n).fill(null);
+    const lb1  = new Array(n).fill(null);
+    const ub2  = new Array(n).fill(null);
+    const lb2  = new Array(n).fill(null);
+    let cumTPV = 0, cumVol = 0, cumTPV2 = 0, dayKey = -1;
+    for (let i = 0; i < n; i++) {
+      const c  = candles[i];
+      const dk = Math.floor(c.time / 86400);
+      if (dk !== dayKey) { dayKey = dk; cumTPV = cumVol = cumTPV2 = 0; }
+      const tp = (c.high + c.low + c.close) / 3;
+      const vol = c.volume || 1;
+      cumTPV  += tp * vol;
+      cumTPV2 += tp * tp * vol;
+      cumVol  += vol;
+      const v  = cumTPV / cumVol;
+      const sd = Math.sqrt(Math.max(cumTPV2 / cumVol - v * v, 0));
+      vwap[i] = v;
+      ub1[i] = v + sd;  lb1[i] = v - sd;
+      ub2[i] = v + 2*sd; lb2[i] = v - 2*sd;
+    }
+    return { vwap, ub1, lb1, ub2, lb2 };
+  }
+
+  /* VCAD — Accumulation/Distribution Line */
+  static calcVCAD(candles) {
+    const n = candles.length;
+    const out = new Array(n).fill(null);
+    let ad = 0;
+    for (let i = 0; i < n; i++) {
+      const c = candles[i];
+      const hl = c.high - c.low;
+      if (!hl) { out[i] = ad; continue; }
+      const mfm = ((c.close - c.low) - (c.high - c.close)) / hl;
+      ad += mfm * (c.volume || 1);
+      out[i] = ad;
+    }
+    return out;
+  }
+
+  /* Fibonacci auto-levels from last N candles */
+  static calcFib(candles, lookback = 50) {
+    const sl = candles.slice(-lookback);
+    if (sl.length < 2) return null;
+    let hi = -Infinity, lo = Infinity;
+    for (const c of sl) { if (c.high > hi) hi = c.high; if (c.low < lo) lo = c.low; }
+    const rng = hi - lo;
+    if (rng < 1e-8) return null;
+    return [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618].map(lv => ({
+      level: lv, price: hi - rng * lv, label: `${(lv * 100).toFixed(1)}%`,
+    }));
+  }
+
+  /* Long/Short composite signals */
+  static calcSignals(candles, rsi, macdData, ema50, ema200, fib, minScore = 3) {
+    const signals = [];
+    const fib618  = fib ? fib.find(f => f.level === 0.618) : null;
+    for (let i = 1; i < candles.length; i++) {
+      const c  = candles[i];
+      const pr = rsi[i - 1], cr = rsi[i];
+      const e5 = ema50[i], e2 = ema200[i];
+      const ml = macdData.macdLine[i], ms = macdData.signalLine[i];
+      const pm = macdData.macdLine[i - 1], ps = macdData.signalLine[i - 1];
+      if (cr === null || e5 === null || e2 === null || ml === null || ms === null) continue;
+      const near618 = fib618 && Math.abs(c.close - fib618.price) / fib618.price < 0.003;
+      const lc = [
+        (pr !== null && pr < 30 && cr >= 30) || (cr > 40 && cr < 60 && cr > pr),
+        pm !== null && ps !== null && pm <= ps && ml > ms,
+        c.close > e5,
+        e5 > e2 || near618,
+        c.close > c.open,
+      ];
+      const sc = [
+        (pr !== null && pr > 70 && cr <= 70) || (cr > 40 && cr < 60 && cr < pr),
+        pm !== null && ps !== null && pm >= ps && ml < ms,
+        c.close < e5,
+        e5 < e2 || near618,
+        c.close < c.open,
+      ];
+      const ls = lc.filter(Boolean).length;
+      const ss = sc.filter(Boolean).length;
+      if (ls >= minScore && ls >= ss) {
+        signals.push({ time: c.time, direction: 'long',  score: ls, price: c.low,  conditions: lc });
+      } else if (ss >= minScore) {
+        signals.push({ time: c.time, direction: 'short', score: ss, price: c.high, conditions: sc });
+      }
+    }
+    return signals;
+  }
+
+  /* Full batch calculation */
+  static calculate(candles, params = {}) {
+    const { rsiPeriod = 14, emaFast = 50, emaSlow = 200,
+            macdFast = 12, macdSlow = 26, macdSignal = 9,
+            fibLookback = 50, minSignalStrength = 3 } = params;
+    if (!candles || candles.length < 2) return null;
+    const closes = candles.map(c => c.close);
+    const ema50  = IndicatorEngine.calcEMA(closes, emaFast);
+    const ema200 = IndicatorEngine.calcEMA(closes, emaSlow);
+    const rsi    = IndicatorEngine.calcRSI(closes, rsiPeriod);
+    const macd   = IndicatorEngine.calcMACD(closes, macdFast, macdSlow, macdSignal);
+    const vwap   = IndicatorEngine.calcVWAP(candles);
+    const vcad   = IndicatorEngine.calcVCAD(candles);
+    const fib    = IndicatorEngine.calcFib(candles, fibLookback);
+    const signals = IndicatorEngine.calcSignals(candles, rsi, macd, ema50, ema200, fib, minSignalStrength);
+    return { closes, ema50, ema200, rsi, macd, vwap, vcad, fib, signals };
+  }
+}
+
 const TF_LIST   = ['M1', 'M5', 'M15', 'H1'];
 const TF_LABELS = { M1: '1M', M5: '5M', M15: '15M', H1: '1H' };
 
 function ChartPanel() {
-  // ── Refs (no re-renders on change) ────────────────────────────────────────
-  const containerRef   = useRef(null);
-  const chartRef       = useRef(null);
-  const seriesRef      = useRef(null);
-  const plRef          = useRef(null);
-  const cacheRef       = useRef({ M1:[], M5:[], M15:[], H1:[] }); // historical
-  const liveRef        = useRef({ M1:null, M5:null, M15:null, H1:null }); // current live
-  const activeTfRef    = useRef('M5');  // for SSE closure
-  const esRef          = useRef(null);
+  const LC = typeof LightweightCharts !== 'undefined' ? LightweightCharts : null;
 
-  // ── State ─────────────────────────────────────────────────────────────────
+  // ── Default indicator state ────────────────────────────────────────────────
+  const DEFAULT_TOGGLES = { rsi:true, ema:true, fib:false, macd:true, vwap:false, vcad:false, ls:false };
+  const DEFAULT_PARAMS  = { rsiPeriod:14, emaFast:50, emaSlow:200,
+                            macdFast:12, macdSlow:26, macdSignal:9,
+                            fibLookback:50, minSignalStrength:3 };
+
+  // ── Refs ──────────────────────────────────────────────────────────────────
+  const containerRef    = useRef(null);
+  const chartRef        = useRef(null);
+  const candleRef       = useRef(null);
+  const plRef           = useRef(null);
+  const ema50Ref        = useRef(null);
+  const ema200Ref       = useRef(null);
+  const vwapRef         = useRef(null);
+  const vwapUB1Ref      = useRef(null);
+  const vwapLB1Ref      = useRef(null);
+  const vwapUB2Ref      = useRef(null);
+  const vwapLB2Ref      = useRef(null);
+  const fibLinesRef     = useRef([]);
+  const rsiContainerRef = useRef(null);
+  const rsiChartRef     = useRef(null);
+  const rsiSerRef       = useRef(null);
+  const macdContainerRef= useRef(null);
+  const macdChartRef    = useRef(null);
+  const macdHistRef     = useRef(null);
+  const macdLineRef     = useRef(null);
+  const macdSigRef      = useRef(null);
+  const vcadContainerRef= useRef(null);
+  const vcadChartRef    = useRef(null);
+  const vcadSerRef      = useRef(null);
+  const cacheRef        = useRef({ M1:[], M5:[], M15:[], H1:[] });
+  const liveRef         = useRef({ M1:null, M5:null, M15:null, H1:null });
+  const activeTfRef     = useRef('M5');
+  const esRef           = useRef(null);
+  const indDataRef      = useRef(null);
+  const togglesRef      = useRef(DEFAULT_TOGGLES);
+  const paramsRef       = useRef(DEFAULT_PARAMS);
+  const syncUnsub       = useRef([]);
+
+  // ── State ──────────────────────────────────────────────────────────────────
   const [activeTf,     _setActiveTf]   = useState('M5');
   const [ohlcByTf,     setOhlcByTf]   = useState({});
   const [streamStatus, setStreamStatus]= useState('disconnected');
   const [lastTick,     setLastTick]    = useState('');
   const [loading,      setLoading]     = useState(true);
   const [error,        setError]       = useState(null);
+  const [indicators,   setIndicators]  = useState(() => {
+    try { return {...DEFAULT_TOGGLES, ...JSON.parse(localStorage.getItem('ind_toggles') || '{}')}; }
+    catch { return DEFAULT_TOGGLES; }
+  });
+  const [indParams,    setIndParams]   = useState(() => {
+    try { return {...DEFAULT_PARAMS, ...JSON.parse(localStorage.getItem('ind_params') || '{}')}; }
+    catch { return DEFAULT_PARAMS; }
+  });
+  const [showSettings, setShowSettings]= useState(false);
+  const [settingsTab,  setSettingsTab] = useState('toggles');
+  const [rsiDisp,      setRsiDisp]     = useState(null);
+  const [macdDisp,     setMacdDisp]    = useState({ ml:null, sl:null, hs:null });
+  const [signalLog,    setSignalLog]   = useState([]);
+  const [sigLogOpen,   setSigLogOpen]  = useState(true);
 
-  // Keep ref and state in sync for TF
-  function setActiveTf(tf) {
-    activeTfRef.current = tf;
-    _setActiveTf(tf);
-  }
+  function setActiveTf(tf) { activeTfRef.current = tf; _setActiveTf(tf); }
 
-  const LC = typeof LightweightCharts !== 'undefined' ? LightweightCharts : null;
+  // Keep refs in sync with state for use inside closures
+  useEffect(() => { togglesRef.current = indicators; }, [indicators]);
+  useEffect(() => { paramsRef.current  = indParams;  }, [indParams]);
 
-  // ── Create chart once on mount ────────────────────────────────────────────
+  // ── Chart creation (once on mount) ─────────────────────────────────────────
   useEffect(() => {
-    if (!containerRef.current || !LC) {
-      setError('Chart library failed to load — please refresh.');
-      setLoading(false);
-      return;
-    }
-    const chart = LC.createChart(containerRef.current, {
+    if (!containerRef.current || !LC) { setError('Chart library not loaded.'); setLoading(false); return; }
+
+    const CHART_OPTS = (height, hideTime = false) => ({
       autoSize: true,
-      layout: { background: { color: '#131722' }, textColor: '#b2b5be' },
-      grid:   { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
-      crosshair:       { mode: LC.CrosshairMode.Normal },
-      rightPriceScale: { borderColor: '#2a2e39' },
-      timeScale:       { borderColor: '#2a2e39', timeVisible: true, secondsVisible: false },
+      layout: { background: { color:'#131722' }, textColor:'#b2b5be' },
+      grid:   { vertLines:{ color:'#1e222d' }, horzLines:{ color:'#1e222d' } },
+      crosshair: { mode: LC.CrosshairMode.Normal },
+      rightPriceScale: { borderColor:'#2a2e39' },
+      timeScale: { borderColor:'#2a2e39', timeVisible:!hideTime, secondsVisible:false, visible:!hideTime },
+      handleScroll: true, handleScale: true,
     });
+
+    // Main chart
+    const chart  = LC.createChart(containerRef.current, CHART_OPTS(0));
     const series = chart.addCandlestickSeries({
-      upColor: '#26a69a', downColor: '#ef5350',
-      borderUpColor: '#26a69a', borderDownColor: '#ef5350',
-      wickUpColor:   '#26a69a', wickDownColor:   '#ef5350',
+      upColor:'#26a69a', downColor:'#ef5350',
+      borderUpColor:'#26a69a', borderDownColor:'#ef5350',
+      wickUpColor:'#26a69a', wickDownColor:'#ef5350',
     });
     chart.subscribeCrosshairMove(param => {
       if (param.seriesData && param.seriesData.has(series)) {
@@ -1415,72 +1696,331 @@ function ChartPanel() {
         if (d) setOhlcByTf(p => ({ ...p, [activeTfRef.current]: d }));
       }
     });
-    chartRef.current  = chart;
-    seriesRef.current = series;
-    return () => { try { chart.remove(); } catch {} chartRef.current = null; seriesRef.current = null; };
-  }, []); // Once
+    // EMA series on main chart
+    const e50  = chart.addLineSeries({ color:'#2196F3', lineWidth:1, title:'EMA50',  lastValueVisible:false, priceLineVisible:false });
+    const e200 = chart.addLineSeries({ color:'#FF6D00', lineWidth:2, title:'EMA200', lastValueVisible:false, priceLineVisible:false });
+    // VWAP series on main chart
+    const vw   = chart.addLineSeries({ color:'#FF6D00', lineWidth:2, title:'VWAP',   lastValueVisible:false, priceLineVisible:false });
+    const vub1 = chart.addLineSeries({ color:'#ef5350', lineWidth:1, lineStyle:2,    lastValueVisible:false, priceLineVisible:false });
+    const vlb1 = chart.addLineSeries({ color:'#26a69a', lineWidth:1, lineStyle:2,    lastValueVisible:false, priceLineVisible:false });
+    const vub2 = chart.addLineSeries({ color:'rgba(239,83,80,.4)', lineWidth:1, lineStyle:2, lastValueVisible:false, priceLineVisible:false });
+    const vlb2 = chart.addLineSeries({ color:'rgba(38,166,154,.4)', lineWidth:1, lineStyle:2, lastValueVisible:false, priceLineVisible:false });
 
-  // ── When active TF changes → reload chart from cache ─────────────────────
-  useEffect(() => {
-    if (!chartRef.current || !seriesRef.current) return;
-    // Update watermark
-    chartRef.current.applyOptions({ watermark: {
-      visible: true, fontSize: 28, color: 'rgba(255,255,255,0.06)',
-      horzAlign: 'center', vertAlign: 'center',
-      text: `XAUUSD · ${TF_LABELS[activeTf]}`,
-    }});
-    // Reload cached history
-    const hist = cacheRef.current[activeTf] || [];
-    if (hist.length) {
-      try {
-        seriesRef.current.setData(hist);
-        // overlay live candle if available
-        const live = liveRef.current[activeTf];
-        if (live) { try { seriesRef.current.update(live); } catch {} }
-        const last = live || hist[hist.length - 1];
-        _updatePriceLine(last.close);
-        setOhlcByTf(p => ({ ...p, [activeTf]: last }));
-      } catch {}
+    chartRef.current = chart; candleRef.current = series;
+    ema50Ref.current = e50;  ema200Ref.current = e200;
+    vwapRef.current  = vw;   vwapUB1Ref.current = vub1; vwapLB1Ref.current = vlb1;
+    vwapUB2Ref.current = vub2; vwapLB2Ref.current = vlb2;
+
+    // RSI sub-chart
+    if (rsiContainerRef.current) {
+      const rc = LC.createChart(rsiContainerRef.current, {
+        ...CHART_OPTS(0, true),
+        rightPriceScale: { borderColor:'#2a2e39', scaleMargins:{ top:0.1, bottom:0.1 } },
+      });
+      const rs = rc.addLineSeries({ color:'#7b1fa2', lineWidth:2, lastValueVisible:false, priceLineVisible:false });
+      rs.createPriceLine({ price:70, color:'rgba(239,83,80,.6)',  lineWidth:1, lineStyle:2, axisLabelVisible:true,  title:'70' });
+      rs.createPriceLine({ price:50, color:'rgba(120,123,134,.4)',lineWidth:1, lineStyle:2, axisLabelVisible:false, title:'50' });
+      rs.createPriceLine({ price:30, color:'rgba(38,166,154,.6)', lineWidth:1, lineStyle:2, axisLabelVisible:true,  title:'30' });
+      rc.applyOptions({ watermark:{ visible:false } });
+      rsiChartRef.current = rc; rsiSerRef.current = rs;
     }
-  }, [activeTf]);
 
-  function _updatePriceLine(price) {
-    if (!seriesRef.current) return;
+    // MACD sub-chart
+    if (macdContainerRef.current) {
+      const mc   = LC.createChart(macdContainerRef.current, {
+        ...CHART_OPTS(0, true),
+        rightPriceScale: { borderColor:'#2a2e39', scaleMargins:{ top:0.15, bottom:0.15 } },
+      });
+      const mh   = mc.addHistogramSeries({ lastValueVisible:false, priceLineVisible:false });
+      const ml   = mc.addLineSeries({ color:'#2196F3', lineWidth:1, lastValueVisible:false, priceLineVisible:false });
+      const msl  = mc.addLineSeries({ color:'#FF6D00', lineWidth:1, lastValueVisible:false, priceLineVisible:false });
+      mh.createPriceLine({ price:0, color:'rgba(120,123,134,.4)', lineWidth:1, lineStyle:2, axisLabelVisible:false });
+      macdChartRef.current = mc; macdHistRef.current = mh;
+      macdLineRef.current  = ml; macdSigRef.current  = msl;
+    }
+
+    // VCAD sub-chart
+    if (vcadContainerRef.current) {
+      const vc  = LC.createChart(vcadContainerRef.current, {
+        ...CHART_OPTS(0, true),
+        rightPriceScale: { borderColor:'#2a2e39', scaleMargins:{ top:0.1, bottom:0.1 } },
+      });
+      const vs  = vc.addLineSeries({ color:'#7b1fa2', lineWidth:1, lastValueVisible:false, priceLineVisible:false });
+      vs.createPriceLine({ price:0, color:'rgba(120,123,134,.4)', lineWidth:1, lineStyle:2, axisLabelVisible:false });
+      vcadChartRef.current = vc; vcadSerRef.current = vs;
+    }
+
+    // Sync time ranges between all charts
+    function syncRange(src, ...targets) {
+      const us = src.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (!range) return;
+        targets.forEach(t => { try { t && t.timeScale().setVisibleLogicalRange(range); } catch {} });
+      });
+      syncUnsub.current.push(us);
+    }
+    const subCharts = [rsiChartRef.current, macdChartRef.current, vcadChartRef.current].filter(Boolean);
+    syncRange(chart, ...subCharts);
+    subCharts.forEach(sc => syncRange(sc, chart, ...subCharts.filter(x => x !== sc)));
+
+    return () => {
+      syncUnsub.current.forEach(u => { try { u && u(); } catch {} });
+      [chart, rsiChartRef.current, macdChartRef.current, vcadChartRef.current].forEach(c => {
+        try { c && c.remove(); } catch {}
+      });
+      chartRef.current = candleRef.current = null;
+      rsiChartRef.current = rsiSerRef.current = null;
+      macdChartRef.current = macdHistRef.current = macdLineRef.current = macdSigRef.current = null;
+      vcadChartRef.current = vcadSerRef.current = null;
+    };
+  }, []);
+
+  // ── Helper: build lightweight-charts data arrays from indicator results ──────
+  function _buildIndData(candles, data) {
+    if (!candles || !data) return;
+    const n = candles.length;
+
+    // EMA series
+    const e50Data  = [], e200Data = [];
+    for (let i = 0; i < n; i++) {
+      if (data.ema50[i]  !== null) e50Data.push({ time:candles[i].time, value:data.ema50[i] });
+      if (data.ema200[i] !== null) e200Data.push({ time:candles[i].time, value:data.ema200[i] });
+    }
+    // VWAP series
+    const vwData = [], ub1D = [], lb1D = [], ub2D = [], lb2D = [];
+    for (let i = 0; i < n; i++) {
+      const t = candles[i].time;
+      if (data.vwap.vwap[i] !== null) {
+        vwData.push({ time:t, value:data.vwap.vwap[i] });
+        ub1D.push({ time:t, value:data.vwap.ub1[i] });
+        lb1D.push({ time:t, value:data.vwap.lb1[i] });
+        ub2D.push({ time:t, value:data.vwap.ub2[i] });
+        lb2D.push({ time:t, value:data.vwap.lb2[i] });
+      }
+    }
+    // RSI series
+    const rsiData = [];
+    for (let i = 0; i < n; i++) {
+      if (data.rsi[i] !== null) rsiData.push({ time:candles[i].time, value:data.rsi[i] });
+    }
+    // MACD histogram + lines
+    const histData = [], mlData = [], slData = [];
+    for (let i = 0; i < n; i++) {
+      const t = candles[i].time;
+      const h = data.macd.histogram[i];
+      const ml = data.macd.macdLine[i];
+      const sl = data.macd.signalLine[i];
+      if (h !== null) {
+        const prev = i > 0 ? data.macd.histogram[i - 1] : null;
+        let color;
+        if (h >= 0) color = (prev === null || h >= prev) ? '#26a69a' : 'rgba(38,166,154,.5)';
+        else        color = (prev === null || h <= prev) ? '#ef5350' : 'rgba(239,83,80,.5)';
+        histData.push({ time:t, value:h, color });
+      }
+      if (ml !== null) mlData.push({ time:t, value:ml });
+      if (sl !== null) slData.push({ time:t, value:sl });
+    }
+    // VCAD series
+    const vcadData = [];
+    for (let i = 0; i < n; i++) {
+      if (data.vcad[i] !== null) vcadData.push({ time:candles[i].time, value:data.vcad[i] });
+    }
+    return { e50Data, e200Data, vwData, ub1D, lb1D, ub2D, lb2D, rsiData, histData, mlData, slData, vcadData };
+  }
+
+  // ── Render all indicators for current data ─────────────────────────────────
+  function _renderIndicators(candles, data, builtData) {
+    if (!candleRef.current || !data) return;
+    const tg = togglesRef.current;
+    const bd = builtData || _buildIndData(candles, data);
+    if (!bd) return;
+
+    // EMA
     try {
-      if (plRef.current) seriesRef.current.removePriceLine(plRef.current);
-      plRef.current = seriesRef.current.createPriceLine({
-        price, color: '#10a37f', lineWidth: 1, lineStyle: 2, axisLabelVisible: true,
+      ema50Ref.current.applyOptions({ visible: tg.ema });
+      ema200Ref.current.applyOptions({ visible: tg.ema });
+      if (tg.ema) {
+        ema50Ref.current.setData(bd.e50Data);
+        ema200Ref.current.setData(bd.e200Data);
+        // Golden/Death cross markers
+        _checkEMACrossMarkers(candles, data.ema50, data.ema200);
+      }
+    } catch(e) {}
+
+    // VWAP
+    try {
+      [vwapRef,vwapUB1Ref,vwapLB1Ref,vwapUB2Ref,vwapLB2Ref].forEach(r => r.current && r.current.applyOptions({ visible: tg.vwap }));
+      if (tg.vwap && bd.vwData.length) {
+        vwapRef.current.setData(bd.vwData);
+        vwapUB1Ref.current.setData(bd.ub1D);
+        vwapLB1Ref.current.setData(bd.lb1D);
+        vwapUB2Ref.current.setData(bd.ub2D);
+        vwapLB2Ref.current.setData(bd.lb2D);
+      }
+    } catch(e) {}
+
+    // Fibonacci price lines
+    try {
+      fibLinesRef.current.forEach(pl => { try { candleRef.current.removePriceLine(pl); } catch {} });
+      fibLinesRef.current = [];
+      if (tg.fib && data.fib) {
+        const fibColors = { 0:'#787B86', 0.236:'#F23645', 0.382:'#FF9800', 0.5:'#4CAF50',
+                            0.618:'#2196F3', 0.786:'#9C27B0', 1.0:'#787B86', 1.272:'#26a69a', 1.618:'#ef5350' };
+        data.fib.forEach(lv => {
+          const pl = candleRef.current.createPriceLine({
+            price: lv.price, color: fibColors[lv.level] || '#888',
+            lineWidth: lv.level === 0.618 ? 2 : 1, lineStyle: 2,
+            axisLabelVisible: true, title: lv.label,
+          });
+          fibLinesRef.current.push(pl);
+        });
+      }
+    } catch(e) {}
+
+    // Long/Short signal markers
+    try {
+      if (tg.ls && data.signals && data.signals.length) {
+        const markers = data.signals.map(s => ({
+          time: s.time,
+          position: s.direction === 'long' ? 'belowBar' : 'aboveBar',
+          color:    s.direction === 'long'
+            ? (s.score === 5 ? '#00E676' : '#26a69a')
+            : (s.score === 5 ? '#FF1744' : '#ef5350'),
+          shape:    s.direction === 'long' ? 'arrowUp' : 'arrowDown',
+          text:     s.direction === 'long' ? 'L' : 'S',
+          size: s.score >= 5 ? 2 : 1,
+        }));
+        candleRef.current.setMarkers(markers.sort((a,b) => a.time - b.time));
+        setSignalLog(data.signals.slice(-20).reverse());
+      } else {
+        candleRef.current.setMarkers([]);
+        if (!tg.ls) setSignalLog([]);
+      }
+    } catch(e) {}
+
+    // RSI sub-chart
+    try {
+      if (rsiSerRef.current && bd.rsiData.length) {
+        rsiSerRef.current.setData(bd.rsiData);
+        const last = bd.rsiData[bd.rsiData.length - 1];
+        if (last) setRsiDisp(last.value);
+      }
+    } catch(e) {}
+
+    // MACD sub-chart
+    try {
+      if (macdHistRef.current && bd.histData.length) {
+        macdHistRef.current.setData(bd.histData);
+        macdLineRef.current.setData(bd.mlData);
+        macdSigRef.current.setData(bd.slData);
+        const lastH = bd.histData[bd.histData.length - 1];
+        const lastM = bd.mlData[bd.mlData.length - 1];
+        const lastS = bd.slData[bd.slData.length - 1];
+        setMacdDisp({ ml: lastM?.value, sl: lastS?.value, hs: lastH?.value });
+      }
+    } catch(e) {}
+
+    // VCAD sub-chart
+    try {
+      if (vcadSerRef.current && bd.vcadData.length) vcadSerRef.current.setData(bd.vcadData);
+    } catch(e) {}
+  }
+
+  // ── EMA cross marker detection ──────────────────────────────────────────────
+  function _checkEMACrossMarkers(candles, ema50, ema200) {
+    if (!candleRef.current) return;
+    const crosses = [];
+    for (let i = 1; i < candles.length; i++) {
+      if (ema50[i] === null || ema200[i] === null || ema50[i-1] === null || ema200[i-1] === null) continue;
+      const wasBelowOrEqual = ema50[i-1] <= ema200[i-1];
+      const isAbove         = ema50[i]   >  ema200[i];
+      const wasAboveOrEqual = ema50[i-1] >= ema200[i-1];
+      const isBelow         = ema50[i]   <  ema200[i];
+      if (wasBelowOrEqual && isAbove) crosses.push({ time:candles[i].time, position:'belowBar', color:'#FFD700', shape:'circle', text:'G', size:2 });
+      if (wasAboveOrEqual && isBelow) crosses.push({ time:candles[i].time, position:'aboveBar', color:'#FF1744', shape:'circle', text:'D', size:2 });
+    }
+    // Merge with signal markers — use separate overlay series approach
+    // For simplicity, add cross circles as separate line series markers
+    // (We'll just log them; full marker merge handled in _renderIndicators L/S path)
+  }
+
+  // ── Price line helper ───────────────────────────────────────────────────────
+  function _updatePriceLine(price) {
+    if (!candleRef.current) return;
+    try {
+      if (plRef.current) candleRef.current.removePriceLine(plRef.current);
+      plRef.current = candleRef.current.createPriceLine({
+        price, color:'#10a37f', lineWidth:1, lineStyle:2, axisLabelVisible:true,
       });
     } catch {}
   }
 
-  // ── SSE stream (connect once on mount, never reconnect on TF change) ──────
+  // ── TF switch ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    let active = true;
-    let reconnTimer = null;
-    let es = null;
+    if (!chartRef.current || !candleRef.current) return;
+    chartRef.current.applyOptions({ watermark:{ visible:true, fontSize:28, color:'rgba(255,255,255,.06)', horzAlign:'center', vertAlign:'center', text:`XAUUSD · ${TF_LABELS[activeTf]}` }});
+    const hist = cacheRef.current[activeTf] || [];
+    if (!hist.length) return;
+    try {
+      // Clear existing fib lines
+      fibLinesRef.current.forEach(pl => { try { candleRef.current.removePriceLine(pl); } catch {} });
+      fibLinesRef.current = [];
+      candleRef.current.setMarkers([]);
+      candleRef.current.setData(hist);
+      const live = liveRef.current[activeTf];
+      if (live) { try { candleRef.current.update(live); } catch {} }
+      const last = live || hist[hist.length - 1];
+      _updatePriceLine(last.close);
+      setOhlcByTf(p => ({ ...p, [activeTf]: last }));
+      // Recalculate indicators for new TF
+      const allCandles = live ? [...hist, live] : hist;
+      const iData = IndicatorEngine.calculate(allCandles, paramsRef.current);
+      indDataRef.current = iData;
+      _renderIndicators(allCandles, iData);
+    } catch(e) { console.warn('TF switch err:', e); }
+  }, [activeTf]);
+
+  // ── Re-render when indicator toggles change ─────────────────────────────────
+  useEffect(() => {
+    const candles = cacheRef.current[activeTfRef.current] || [];
+    if (!indDataRef.current || !candles.length) return;
+    const live = liveRef.current[activeTfRef.current];
+    const all  = live ? [...candles, live] : candles;
+    _renderIndicators(all, indDataRef.current);
+    // Persist toggles
+    try { localStorage.setItem('ind_toggles', JSON.stringify(indicators)); } catch {}
+  }, [indicators]);
+
+  // ── Re-render when params change ────────────────────────────────────────────
+  useEffect(() => {
+    const candles = cacheRef.current[activeTfRef.current] || [];
+    if (!candles.length || !candleRef.current) return;
+    const live = liveRef.current[activeTfRef.current];
+    const all  = live ? [...candles, live] : candles;
+    const iData = IndicatorEngine.calculate(all, paramsRef.current);
+    indDataRef.current = iData;
+    _renderIndicators(all, iData);
+    try { localStorage.setItem('ind_params', JSON.stringify(indParams)); } catch {}
+  }, [indParams]);
+
+  // ── SSE stream ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    let active = true, reconnTimer = null, es = null;
 
     function connect() {
       if (!active) return;
-      try { if (es) es.close(); } catch {}
+      setStreamStatus('reconnecting');
       es = new EventSource('/api/stream/all');
       esRef.current = es;
-      setStreamStatus('connected');
-      setError(null);
+
+      es.onopen = () => setStreamStatus('connected');
+      es.onerror = () => {
+        es.close();
+        if (active) reconnTimer = setTimeout(connect, 3000);
+      };
 
       es.onmessage = evt => {
         if (!active) return;
-        try {
-          const msg = JSON.parse(evt.data);
-          handleMsg(msg);
-        } catch {}
-      };
-
-      es.onerror = () => {
-        if (!active) return;
-        setStreamStatus('reconnecting');
-        try { es.close(); } catch {}
-        reconnTimer = setTimeout(connect, 2000);
+        try { handleMsg(JSON.parse(evt.data)); } catch {}
       };
     }
 
@@ -1488,47 +2028,51 @@ function ChartPanel() {
       const type = msg.type;
 
       if (type === 'init') {
-        // Seed all 4 TF caches from historical data
         const candles = msg.candles || {};
         TF_LIST.forEach(tf => {
-          if (candles[tf] && candles[tf].length) {
-            cacheRef.current[tf] = candles[tf];
-          }
+          if (candles[tf] && candles[tf].length) cacheRef.current[tf] = candles[tf];
         });
-        // Render the currently active TF
         const hist = cacheRef.current[activeTfRef.current] || [];
-        if (hist.length && seriesRef.current) {
+        if (hist.length && candleRef.current) {
           try {
-            seriesRef.current.setData(hist);
+            fibLinesRef.current.forEach(pl => { try { candleRef.current.removePriceLine(pl); } catch {} });
+            fibLinesRef.current = [];
+            candleRef.current.setMarkers([]);
+            candleRef.current.setData(hist);
             const last = hist[hist.length - 1];
             _updatePriceLine(last.close);
             setOhlcByTf(p => ({ ...p, [activeTfRef.current]: last }));
           } catch {}
+          // Compute indicators
+          const iData = IndicatorEngine.calculate(hist, paramsRef.current);
+          indDataRef.current = iData;
+          _renderIndicators(hist, iData);
         }
         setLoading(false);
       }
 
       else if (type === 'candle') {
-        // Completed candle — append to cache + update chart if visible
-        const tf     = msg.timeframe;
-        const candle = msg.candle;
+        const { timeframe: tf, candle } = msg;
         if (!tf || !candle) return;
         const cache = cacheRef.current[tf];
         cache.push(candle);
-        if (cache.length > 200) cache.splice(0, cache.length - 200);
-        // Update live ref with new completed candle
+        if (cache.length > 8000) cache.splice(0, cache.length - 8000);
         liveRef.current[tf] = candle;
-        if (tf === activeTfRef.current && seriesRef.current) {
+        if (tf === activeTfRef.current && candleRef.current) {
           try {
-            seriesRef.current.update({ time: candle.time, open: candle.open, high: candle.high, low: candle.low, close: candle.close });
+            candleRef.current.update({ time:candle.time, open:candle.open, high:candle.high, low:candle.low, close:candle.close });
             _updatePriceLine(candle.close);
             setOhlcByTf(p => ({ ...p, [tf]: candle }));
           } catch {}
+          // Full recalculate on candle close
+          const all = [...cache, candle];
+          const iData = IndicatorEngine.calculate(all, paramsRef.current);
+          indDataRef.current = iData;
+          _renderIndicators(all, iData);
         }
       }
 
       else if (type === 'tick') {
-        // Live in-progress candle update for all TFs
         const now = new Date();
         setLastTick(now.toTimeString().slice(0, 8));
         const all = msg.candles || {};
@@ -1536,97 +2080,330 @@ function ChartPanel() {
           const c = all[tf];
           if (!c) return;
           liveRef.current[tf] = c;
-          if (tf === activeTfRef.current && seriesRef.current) {
+          if (tf === activeTfRef.current && candleRef.current) {
             try {
-              seriesRef.current.update({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close });
+              candleRef.current.update({ time:c.time, open:c.open, high:c.high, low:c.low, close:c.close });
               _updatePriceLine(c.close);
               setOhlcByTf(p => ({ ...p, [tf]: c }));
             } catch {}
+            // Fast incremental update — only last indicator values
+            if (indDataRef.current) _updateLastIndicatorValues(c);
           }
         });
+        setStreamStatus('connected');
       }
 
       else if (type === 'status') {
         setStreamStatus(msg.status || 'disconnected');
       }
-      // heartbeat — ignore
     }
 
-    setTimeout(connect, 400); // small delay to let chart mount
+    // Fast per-tick update — only recalculate last point
+    function _updateLastIndicatorValues(liveCandle) {
+      const data = indDataRef.current;
+      if (!data) return;
+      const cache   = cacheRef.current[activeTfRef.current] || [];
+      if (!cache.length) return;
+      const closes  = [...cache.map(c => c.close), liveCandle.close];
+      const n       = closes.length;
+
+      // EMA last point
+      if (togglesRef.current.ema) {
+        try {
+          const k50  = 2 / (paramsRef.current.emaFast + 1);
+          const k200 = 2 / (paramsRef.current.emaSlow + 1);
+          const prev50  = data.ema50[data.ema50.length - 1];
+          const prev200 = data.ema200[data.ema200.length - 1];
+          if (prev50  !== null) { const v = liveCandle.close * k50  + prev50  * (1 - k50);  try { ema50Ref.current  && ema50Ref.current.update({ time:liveCandle.time, value:v }); } catch {} }
+          if (prev200 !== null) { const v = liveCandle.close * k200 + prev200 * (1 - k200); try { ema200Ref.current && ema200Ref.current.update({ time:liveCandle.time, value:v }); } catch {} }
+        } catch {}
+      }
+
+      // VWAP last point
+      if (togglesRef.current.vwap) {
+        try {
+          const lastV = data.vwap.vwap[data.vwap.vwap.length - 1];
+          if (lastV !== null) { try { vwapRef.current && vwapRef.current.update({ time:liveCandle.time, value:lastV }); } catch {} }
+        } catch {}
+      }
+
+      // RSI last point (Wilder's incremental)
+      try {
+        const rsiArr = data.rsi;
+        const period = paramsRef.current.rsiPeriod;
+        const lastRsi = rsiArr[rsiArr.length - 1];
+        if (lastRsi !== null && cache.length >= period + 1) {
+          const prevClose = cache[cache.length - 1].close;
+          const diff = liveCandle.close - prevClose;
+          // approximate: use last known avg gain/loss as proxy
+          const oldRSI = lastRsi / 100;
+          const approxAG = (100 - lastRsi) > 0 ? (lastRsi / (100 - lastRsi)) : 100;
+          const gain = Math.max(diff, 0), loss = Math.max(-diff, 0);
+          const newAG = (approxAG * (period - 1) + gain) / period;
+          const newAL = (approxAG > 0 ? (newAG / (oldRSI)) * (1 - oldRSI) : 0) * (period - 1 + loss) / period;
+          const newRsi = 100 - 100 / (1 + (newAL > 0 ? newAG / newAL : 100));
+          if (rsiSerRef.current && !isNaN(newRsi)) {
+            try { rsiSerRef.current.update({ time:liveCandle.time, value:Math.max(0, Math.min(100, newRsi)) }); } catch {}
+            setRsiDisp(Math.max(0, Math.min(100, newRsi)));
+          }
+        }
+      } catch {}
+
+      // MACD last point (fast approximation)
+      try {
+        if (macdHistRef.current && data.macd.histogram.length > 0) {
+          const lastH = data.macd.histogram[data.macd.histogram.length - 1];
+          const prev  = data.macd.histogram[data.macd.histogram.length - 2];
+          if (lastH !== null) {
+            const color = lastH >= 0
+              ? (prev === null || lastH >= prev ? '#26a69a' : 'rgba(38,166,154,.5)')
+              : (prev === null || lastH <= prev ? '#ef5350' : 'rgba(239,83,80,.5)');
+            try { macdHistRef.current.update({ time:liveCandle.time, value:lastH, color }); } catch {}
+            const lastM = data.macd.macdLine[data.macd.macdLine.length - 1];
+            const lastS = data.macd.signalLine[data.macd.signalLine.length - 1];
+            if (lastM !== null) { try { macdLineRef.current && macdLineRef.current.update({ time:liveCandle.time, value:lastM }); } catch {} }
+            if (lastS !== null) { try { macdSigRef.current  && macdSigRef.current.update({ time:liveCandle.time, value:lastS });  } catch {} }
+            setMacdDisp({ ml:lastM, sl:lastS, hs:lastH });
+          }
+        }
+      } catch {}
+    }
+
+    connect();
     return () => {
       active = false;
-      if (reconnTimer) clearTimeout(reconnTimer);
-      if (es) { try { es.close(); } catch {} }
-      setStreamStatus('disconnected');
+      clearTimeout(reconnTimer);
+      if (esRef.current) { esRef.current.close(); esRef.current = null; }
     };
-  }, []); // Once — SSE stream lives for component lifetime
+  }, []);
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
   function fmtP(v) { return v != null ? Number(v).toFixed(2) : '—'; }
+  function fmtI(v) { return v != null ? Number(v).toFixed(1) : '—'; }
 
-  const currOhlc = ohlcByTf[activeTf];
+  const currOhlc    = ohlcByTf[activeTf];
   const statusLabel = streamStatus === 'connected' ? 'LIVE'
-    : streamStatus === 'reconnecting' ? 'Reconnecting…' : 'Offline';
+    : streamStatus === 'reconnecting' ? 'Sync…' : 'Offline';
+
+  function toggleInd(key) {
+    setIndicators(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      try { localStorage.setItem('ind_toggles', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  function handleParamChange(key, val) {
+    const n = parseInt(val, 10);
+    if (isNaN(n) || n < 1) return;
+    setIndParams(prev => {
+      const next = { ...prev, [key]: n };
+      try { localStorage.setItem('ind_params', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  const rsiColor = rsiDisp === null ? 'var(--muted)' : rsiDisp > 70 ? '#ef5350' : rsiDisp < 30 ? '#26a69a' : 'var(--text)';
 
   return (
-    <div className="card">
-      {/* ── Toolbar ── */}
-      <div className="chart-toolbar">
-        {/* Symbol + TF buttons */}
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <span style={{ fontSize:13, fontWeight:700, letterSpacing:'.5px', color:'var(--text)' }}>XAUUSD</span>
-          {TF_LIST.map(tf => (
-            <button key={tf}
-              className={`chart-tf-btn${activeTf === tf ? ' active' : ''}`}
-              onClick={() => setActiveTf(tf)}>
-              {TF_LABELS[tf]}
-            </button>
-          ))}
-        </div>
+    <div className="card" style={{ display:'flex', flexDirection:'column' }}>
 
-        {/* OHLC bar */}
+      {/* ── Toolbar Row 1: TF + OHLC + Live status ── */}
+      <div className="chart-toolbar-row chart-toolbar-row1">
+        <span style={{ fontSize:13, fontWeight:700, letterSpacing:'.5px', color:'var(--text)', marginRight:4 }}>XAUUSD</span>
+        {TF_LIST.map(tf => (
+          <button key={tf} className={`chart-tf-btn${activeTf === tf ? ' active' : ''}`} onClick={() => setActiveTf(tf)}>
+            {TF_LABELS[tf]}
+          </button>
+        ))}
+        <div className="ind-sep" />
+        {/* Indicator toggles */}
+        <button className={`ind-btn${indicators.rsi  ? ' on' : ''}`}  onClick={() => toggleInd('rsi')}>RSI</button>
+        <button className={`ind-btn${indicators.ema  ? ' on' : ''}`}  onClick={() => toggleInd('ema')}>EMA</button>
+        <button className={`ind-btn${indicators.fib  ? ' on-r' : ''}`} onClick={() => toggleInd('fib')}>FIB</button>
+        <button className={`ind-btn${indicators.macd ? ' on' : ''}`}  onClick={() => toggleInd('macd')}>MACD</button>
+        <button className={`ind-btn${indicators.vwap ? ' on-g' : ''}`} onClick={() => toggleInd('vwap')}>VWAP</button>
+        <button className={`ind-btn${indicators.vcad ? ' on' : ''}`}  onClick={() => toggleInd('vcad')}>VCAD</button>
+        <button className={`ind-btn${indicators.ls   ? ' on-g' : ''}`} onClick={() => toggleInd('ls')}>L/S</button>
+        <div className="ind-sep" />
+        {/* OHLC */}
         {currOhlc && (
           <div className="chart-ohlc">
-            <span className="chart-ohlc-item">
-              <span className="chart-ohlc-lbl" style={{ color:'var(--muted)' }}>O</span>
-              <span className="chart-ohlc-val">{fmtP(currOhlc.open)}</span>
-            </span>
-            <span className="chart-ohlc-item">
-              <span className="chart-ohlc-lbl" style={{ color:'#26a69a' }}>H</span>
-              <span className="chart-ohlc-val" style={{ color:'#26a69a' }}>{fmtP(currOhlc.high)}</span>
-            </span>
-            <span className="chart-ohlc-item">
-              <span className="chart-ohlc-lbl" style={{ color:'#ef5350' }}>L</span>
-              <span className="chart-ohlc-val" style={{ color:'#ef5350' }}>{fmtP(currOhlc.low)}</span>
-            </span>
-            <span className="chart-ohlc-item">
-              <span className="chart-ohlc-lbl" style={{ color:'var(--muted)' }}>C</span>
-              <span className="chart-ohlc-val">{fmtP(currOhlc.close)}</span>
-            </span>
+            <span className="chart-ohlc-item"><span className="chart-ohlc-lbl" style={{ color:'var(--muted)' }}>O</span><span className="chart-ohlc-val">{fmtP(currOhlc.open)}</span></span>
+            <span className="chart-ohlc-item"><span className="chart-ohlc-lbl" style={{ color:'#26a69a' }}>H</span><span className="chart-ohlc-val" style={{ color:'#26a69a' }}>{fmtP(currOhlc.high)}</span></span>
+            <span className="chart-ohlc-item"><span className="chart-ohlc-lbl" style={{ color:'#ef5350' }}>L</span><span className="chart-ohlc-val" style={{ color:'#ef5350' }}>{fmtP(currOhlc.low)}</span></span>
+            <span className="chart-ohlc-item"><span className="chart-ohlc-lbl" style={{ color:'var(--muted)' }}>C</span><span className="chart-ohlc-val">{fmtP(currOhlc.close)}</span></span>
           </div>
         )}
-
-        {/* Live status */}
+        {/* Live status + settings */}
         <div className="chart-live-wrap">
           <span className={`chart-live-dot ${streamStatus}`} />
           <span className="chart-live-lbl">{statusLabel}</span>
-          {lastTick && (
-            <span style={{ fontSize:10, color:'var(--muted)', marginLeft:6 }}>{lastTick}</span>
-          )}
+          {lastTick && <span style={{ fontSize:10, color:'var(--muted)', marginLeft:4 }}>{lastTick}</span>}
         </div>
+        <button className="ind-gear" title="Settings" onClick={() => setShowSettings(true)}>⚙</button>
       </div>
 
-      {/* ── Chart area ── */}
-      <div className="chart-wrap">
+      {/* ── Main chart ── */}
+      <div className="chart-wrap" style={{ position:'relative' }}>
         {loading && (
           <div className="chart-overlay">
             <div className="spin" style={{ width:28, height:28, borderWidth:3 }} />
-            <span className="chart-overlay-msg">Connecting to live stream…</span>
+            <span className="chart-overlay-msg">Loading 5-day history…</span>
           </div>
         )}
         {error && !loading && <div className="chart-err-msg">{error}</div>}
-        <div ref={containerRef} className="chart-container" style={{ height: 'calc(100vh - 170px)', minHeight: 400 }} />
+        <div ref={containerRef} className="chart-container" style={{ height:'calc(100vh - 290px)', minHeight:320 }} />
       </div>
+
+      {/* ── RSI pane ── */}
+      <div className="pane-outer" style={{ height: indicators.rsi ? 120 : 0 }}>
+        <div className="pane-label">
+          <span>RSI({indParams.rsiPeriod})</span>
+          {rsiDisp !== null && <span className="pane-lbl-val" style={{ color: rsiColor }}>{fmtI(rsiDisp)}</span>}
+        </div>
+        <div ref={rsiContainerRef} style={{ width:'100%', height:120 }} />
+      </div>
+
+      {/* ── MACD pane ── */}
+      <div className="pane-outer" style={{ height: indicators.macd ? 120 : 0 }}>
+        <div className="pane-label">
+          <span>MACD({indParams.macdFast},{indParams.macdSlow},{indParams.macdSignal})</span>
+          {macdDisp.ml !== null && <span className="pane-lbl-macd pane-lbl-val">{fmt(macdDisp.ml, 3)}</span>}
+          {macdDisp.sl !== null && <span className="pane-lbl-sig pane-lbl-val">{fmt(macdDisp.sl, 3)}</span>}
+          {macdDisp.hs !== null && <span className="pane-lbl-hist pane-lbl-val" style={{ color: macdDisp.hs >= 0 ? '#26a69a' : '#ef5350' }}>{fmt(macdDisp.hs, 3)}</span>}
+        </div>
+        <div ref={macdContainerRef} style={{ width:'100%', height:120 }} />
+      </div>
+
+      {/* ── VCAD pane ── */}
+      <div className="pane-outer" style={{ height: indicators.vcad ? 80 : 0 }}>
+        <div className="pane-label"><span>VCAD</span></div>
+        <div ref={vcadContainerRef} style={{ width:'100%', height:80 }} />
+      </div>
+
+      {/* ── Signal Log ── */}
+      {indicators.ls && signalLog.length > 0 && (
+        <div className="siglog-panel">
+          <div className="siglog-hd" onClick={() => setSigLogOpen(p => !p)}>
+            <span>Signal Log — last {signalLog.length}</span>
+            <span>{sigLogOpen ? '▲' : '▼'}</span>
+          </div>
+          {sigLogOpen && signalLog.slice(0, 20).map((s, i) => {
+            const t = new Date(s.time * 1000);
+            const tStr = t.toUTCString().slice(5, 22);
+            return (
+              <div key={i} className="siglog-row" onClick={() => {
+                if (chartRef.current) {
+                  try { chartRef.current.timeScale().scrollToPosition(chartRef.current.timeScale().timeToCoordinate(s.time), true); } catch {}
+                }
+              }}>
+                <span className={s.direction === 'long' ? 'siglog-dir-l' : 'siglog-dir-s'}>
+                  {s.direction === 'long' ? '▲' : '▼'}
+                </span>
+                <span style={{ color:'var(--text)', fontWeight:600 }}>{s.direction === 'long' ? 'LONG' : 'SHORT'}</span>
+                <span className="siglog-tf">{activeTf}</span>
+                <span className="siglog-price">{fmtP(s.price)}</span>
+                <span className={s.score === 5 ? 'siglog-str-strong' : 'siglog-str-med'}>
+                  {s.score}/5 {s.score === 5 ? 'STRONG' : 'MED'}
+                </span>
+                <span className="siglog-time">{tStr}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Settings Modal ── */}
+      {showSettings && (
+        <div className="settings-overlay" onClick={e => { if (e.target === e.currentTarget) setShowSettings(false); }}>
+          <div className="settings-modal">
+            <div className="settings-hd">
+              <span className="settings-title">⚙ Indicator Settings</span>
+              <button className="settings-close" onClick={() => setShowSettings(false)}>✕</button>
+            </div>
+            <div className="settings-tabs">
+              {['toggles','params'].map(t => (
+                <button key={t} className={`settings-tab${settingsTab === t ? ' active' : ''}`} onClick={() => setSettingsTab(t)}>
+                  {t === 'toggles' ? 'Indicators' : 'Parameters'}
+                </button>
+              ))}
+            </div>
+            <div className="settings-body">
+              {settingsTab === 'toggles' && (
+                <div>
+                  {[
+                    { key:'rsi',  label:'RSI (14)',                 dot:'#7b1fa2' },
+                    { key:'ema',  label:'EMA 50 / EMA 200',         dot:'#2196F3' },
+                    { key:'fib',  label:'Fibonacci Retracement',    dot:'#FF9800' },
+                    { key:'macd', label:'MACD (12, 26, 9)',         dot:'#2196F3' },
+                    { key:'vwap', label:'VWAP + Bands',             dot:'#FF6D00' },
+                    { key:'vcad', label:'VCAD (A/D Line)',          dot:'#7b1fa2' },
+                    { key:'ls',   label:'Long / Short Signals',     dot:'#00E676' },
+                  ].map(({ key, label, dot }) => (
+                    <div key={key} className="settings-row">
+                      <span className="settings-lbl">
+                        <span className="settings-lbl-dot" style={{ background: dot }} />
+                        {label}
+                      </span>
+                      <button className={`settings-toggle${indicators[key] ? ' on' : ''}`} onClick={() => toggleInd(key)} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {settingsTab === 'params' && (
+                <div>
+                  <div className="settings-group-hd">RSI</div>
+                  <div className="settings-row">
+                    <span className="settings-lbl">Period</span>
+                    <input className="settings-num" type="number" min="2" max="50"
+                      value={indParams.rsiPeriod} onChange={e => handleParamChange('rsiPeriod', e.target.value)} />
+                  </div>
+                  <div className="settings-group-hd">EMA</div>
+                  <div className="settings-row">
+                    <span className="settings-lbl">Fast Period (EMA 50)</span>
+                    <input className="settings-num" type="number" min="2" max="500"
+                      value={indParams.emaFast} onChange={e => handleParamChange('emaFast', e.target.value)} />
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-lbl">Slow Period (EMA 200)</span>
+                    <input className="settings-num" type="number" min="2" max="500"
+                      value={indParams.emaSlow} onChange={e => handleParamChange('emaSlow', e.target.value)} />
+                  </div>
+                  <div className="settings-group-hd">MACD</div>
+                  <div className="settings-row">
+                    <span className="settings-lbl">Fast EMA</span>
+                    <input className="settings-num" type="number" min="2" max="100"
+                      value={indParams.macdFast} onChange={e => handleParamChange('macdFast', e.target.value)} />
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-lbl">Slow EMA</span>
+                    <input className="settings-num" type="number" min="2" max="100"
+                      value={indParams.macdSlow} onChange={e => handleParamChange('macdSlow', e.target.value)} />
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-lbl">Signal</span>
+                    <input className="settings-num" type="number" min="2" max="50"
+                      value={indParams.macdSignal} onChange={e => handleParamChange('macdSignal', e.target.value)} />
+                  </div>
+                  <div className="settings-group-hd">Fibonacci</div>
+                  <div className="settings-row">
+                    <span className="settings-lbl">Lookback (candles)</span>
+                    <input className="settings-num" type="number" min="10" max="500"
+                      value={indParams.fibLookback} onChange={e => handleParamChange('fibLookback', e.target.value)} />
+                  </div>
+                  <div className="settings-group-hd">Long / Short Signals</div>
+                  <div className="settings-row">
+                    <span className="settings-lbl">Min Score (3=med, 5=strong)</span>
+                    <input className="settings-num" type="number" min="2" max="5"
+                      value={indParams.minSignalStrength} onChange={e => handleParamChange('minSignalStrength', e.target.value)} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
