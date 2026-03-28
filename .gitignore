@@ -26,3 +26,18 @@ data/threshold_history.csv
 
 frontend/node_modules/
 frontend/dist/
+
+# Temp/scratch files
+_tmp_*
+_brace_check.py
+_check_braces.js
+check_braces.py
+remove_pos_tracker.py
+rg_results.json
+_deploy_runtime.zip
+trades_*.csv
+.claude/worktrees/
+.claude/settings.local.json
+.vscode/
+*.code-workspace
+venv/
