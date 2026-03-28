@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SEAN0-ALGO · Dashboard</title>
+  <title>SEAN ALGO · Dashboard</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -275,6 +275,17 @@
     .nav-tab:hover      { color:var(--text); background:rgba(255,255,255,.06); }
     .nav-tab.active     { color:var(--accent); background:rgba(16,163,127,.12); font-weight:600; }
     .nav-tab-icon       { margin-right:5px; }
+    /* ── All Strategies dropdown ── */
+    .strat-drop         { position:relative; display:inline-flex; align-items:center; }
+    .strat-drop-btn     { padding:6px 12px; font-size:13px; font-weight:500; color:var(--muted); border:none; background:none; cursor:pointer; border-radius:6px; transition:color .15s, background .15s; white-space:nowrap; font-family:var(--font); display:flex; align-items:center; gap:5px; }
+    .strat-drop-btn:hover { color:var(--text); background:rgba(255,255,255,.06); }
+    .strat-drop-menu    { position:absolute; top:calc(100% + 6px); left:0; min-width:210px; background:#1a1d28; border:1px solid var(--border); border-radius:8px; box-shadow:0 12px 32px rgba(0,0,0,.55); z-index:200; overflow:hidden; display:none; }
+    .strat-drop:hover .strat-drop-menu,
+    .strat-drop-menu:hover { display:block; }
+    .strat-drop-item    { display:flex; align-items:center; gap:10px; padding:10px 14px; font-size:12px; font-weight:600; color:var(--muted); text-decoration:none; transition:all .12s; border-left:3px solid transparent; }
+    .strat-drop-item:hover { color:var(--text); background:rgba(255,255,255,.05); }
+    .strat-drop-item.current { color:#2196F3; background:rgba(33,150,243,.1); border-left-color:#2196F3; }
+    .strat-drop-divider { height:1px; background:var(--border); margin:4px 0; }
 
     /* ── Bot Control Card ────────────────────────── */
     .bot-ctrl           { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; padding:16px 20px; background:var(--surface); border-radius:var(--radius); border:1px solid var(--border); margin-bottom:2px; }
@@ -381,57 +392,62 @@
     .tv-sig-price     { font-family:monospace; color:#d1d4dc; }
     .tv-sig-time      { color:#787b86; font-size:10px; margin-left:auto; }
 
-    /* ── TP/SL Position Tracker ───────────────────────────────────────────── */
-    /* TV-style draggable position lines */
-    .tv-pos-drag-wrap   { position:absolute; inset:0; z-index:20; pointer-events:none; overflow:hidden; }
-    .tv-pos-fill        { position:absolute; left:0; right:0; pointer-events:none; }
-    .tv-pos-line-row    { position:absolute; left:0; right:0; height:0; z-index:21; }
-    .tv-pos-line        { position:absolute; left:0; right:0; top:-0.5px; height:1.5px; pointer-events:none; }
-    .tv-pos-line-dashed { position:absolute; left:0; right:0; top:-0.5px; height:1px; pointer-events:none;
-                          background: repeating-linear-gradient(90deg, #2196F3 0, #2196F3 5px, transparent 5px, transparent 10px); }
-    .tv-pos-hit         { position:absolute; left:20px; right:200px; top:-5px; height:11px; cursor:ns-resize; pointer-events:auto; z-index:22; }
-    .tv-pos-handle      { position:absolute; left:4px; top:-5px; width:10px; height:10px; border:2px solid; background:#131722; cursor:ns-resize; pointer-events:auto; z-index:23; border-radius:1px; }
-    .tv-pos-handle:hover { background:#1e222d; }
-    .tv-pos-rhs         { position:absolute; right:2px; transform:translateY(-50%); border-radius:3px; padding:3px 8px 3px 8px; font-size:11px; font-family:'Courier New',monospace; white-space:nowrap; pointer-events:auto; cursor:ns-resize; z-index:23; line-height:1.5; min-width:160px; }
-    .tv-pos-rhs:hover   { filter:brightness(1.15); }
-    .tv-pos-rhs-price   { font-weight:700; font-size:12px; }
-    .tv-pos-rhs-sub     { font-size:10px; opacity:.85; }
-    .tv-pos-center      { position:absolute; left:50%; transform:translateX(-50%); background:rgba(10,13,21,.93); border:1px solid #2a2e39; border-radius:5px; padding:7px 14px; font-size:11px; font-family:'Courier New',monospace; color:#d1d4dc; white-space:nowrap; pointer-events:auto; cursor:move; z-index:24; text-align:center; min-width:190px; user-select:none; }
-    .tv-pos-center-pnl  { font-size:13px; font-weight:800; letter-spacing:.3px; }
-    .tv-pos-center-row  { display:flex; gap:10px; justify-content:center; font-size:10px; opacity:.8; margin-top:2px; }
-    .tv-pos-close-btn   { position:absolute; top:-8px; right:-8px; width:16px; height:16px; border-radius:50%; background:#ef5350; border:none; color:#fff; font-size:10px; cursor:pointer; pointer-events:auto; z-index:25; display:flex; align-items:center; justify-content:center; line-height:1; }
-    .tv-pos-close-btn:hover { background:#c62828; }
-    .tv-pos-pnl-pos     { color:#26a69a; }
-    .tv-pos-pnl-neg     { color:#ef5350; }
-    .tv-pos-btn         { display:flex; align-items:center; gap:4px; height:26px; padding:0 8px; border-radius:4px; border:none; background:transparent; color:#787b86; font-size:11px; font-weight:700; cursor:pointer; font-family:var(--font); transition:all .12s; flex-shrink:0; letter-spacing:.3px; }
-    .tv-pos-btn:hover   { color:#d1d4dc; background:rgba(255,255,255,.05); }
-    .tv-pos-btn.has-pos { color:#26a69a; background:rgba(38,166,154,.12); }
-    .tv-pos-modal-wrap  { position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:300; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
-    .tv-pos-modal       { background:#1a1d28; border:1px solid #2a2e39; border-radius:10px; width:360px; max-width:96vw; padding:20px; box-shadow:0 24px 64px rgba(0,0,0,.7); }
-    .tv-pos-modal-hd    { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
-    .tv-pos-modal-title { font-size:14px; font-weight:700; color:#d1d4dc; }
-    .tv-pos-modal-close { background:none; border:none; color:#787b86; cursor:pointer; font-size:18px; padding:0 4px; }
-    .tv-pos-modal-close:hover { color:#d1d4dc; }
-    .tv-pos-dir         { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:14px; }
-    .tv-pos-dir-btn     { padding:9px; border-radius:6px; border:1px solid #2a2e39; background:transparent; color:#787b86; font-size:13px; font-weight:700; cursor:pointer; font-family:var(--font); transition:all .15s; text-align:center; }
-    .tv-pos-dir-btn.long.active  { background:rgba(38,166,154,.18); border-color:#26a69a; color:#26a69a; }
-    .tv-pos-dir-btn.short.active { background:rgba(239,83,80,.15);  border-color:#ef5350; color:#ef5350; }
-    .tv-pos-field       { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
-    .tv-pos-label       { font-size:10px; color:#787b86; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
-    .tv-pos-input       { background:rgba(255,255,255,.05); border:1px solid #2a2e39; border-radius:5px; color:#d1d4dc; padding:7px 10px; font-size:13px; font-family:monospace; outline:none; width:100%; }
-    .tv-pos-input:focus { border-color:#2196F3; }
-    .tv-pos-grid2       { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    .tv-pos-stats       { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:14px 0; padding:12px; background:rgba(255,255,255,.03); border-radius:6px; border:1px solid #1e222d; }
-    .tv-pos-stat        { font-size:11px; }
-    .tv-pos-stat-lbl    { color:#787b86; font-size:10px; }
-    .tv-pos-stat-val    { color:#d1d4dc; font-weight:700; font-family:monospace; }
-    .tv-pos-stat-val.g  { color:#26a69a; }
-    .tv-pos-stat-val.r  { color:#ef5350; }
-    .tv-pos-actions     { display:flex; gap:8px; margin-top:14px; }
-    .tv-pos-set-btn     { flex:1; padding:9px; border-radius:6px; border:none; background:#10a37f; color:#fff; font-size:13px; font-weight:700; cursor:pointer; font-family:var(--font); }
-    .tv-pos-set-btn:hover { background:#0d9272; }
-    .tv-pos-cancel-btn  { padding:9px 14px; border-radius:6px; border:1px solid #2a2e39; background:transparent; color:#787b86; font-size:13px; cursor:pointer; font-family:var(--font); }
-    .tv-pos-cancel-btn:hover { color:#d1d4dc; }
+    /* ── Position Tool ────────────────────────────────────────────────────── */
+    .tv-pos-overlay  { position:absolute; inset:0; pointer-events:none; z-index:15; overflow:hidden; }
+    .tv-pos-zone     { position:absolute; left:0; right:0; }
+    .tv-pos-profit   { background:rgba(38,166,154,.13); }
+    .tv-pos-loss     { background:rgba(239,83,80,.11); }
+    .tv-pos-row      { position:absolute; left:0; right:0; height:0; pointer-events:none; }
+    .tv-pos-hit      { position:absolute; left:0; right:122px; top:-8px; height:18px; cursor:ns-resize; pointer-events:auto; }
+    .tv-pos-knob     { position:absolute; left:10px; top:-6px; width:12px; height:12px; border-radius:2px; border:2px solid; background:#131722; pointer-events:auto; cursor:ns-resize; box-shadow:0 0 0 1px rgba(0,0,0,.35); }
+    .tv-pos-knob:hover { background:#1e2228; }
+    .tv-pos-tag      { position:absolute; right:2px; top:50%; transform:translateY(-50%); border-radius:4px; padding:4px 7px; font-size:10px; font-family:'Courier New',monospace; white-space:normal; overflow:hidden; pointer-events:auto; cursor:ns-resize; line-height:1.35; width:116px; min-width:0; max-width:116px; box-sizing:border-box; box-shadow:0 4px 12px rgba(0,0,0,.35); }
+    .tv-pos-tag:hover { filter:brightness(1.12); }
+    .tv-pos-tag-en   { background:rgba(33,150,243,.88); border:1px solid #2196F3; color:#fff; }
+    .tv-pos-tag-b    { font-weight:700; font-size:10px; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .tv-pos-tag-s    { font-size:9px; opacity:.85; display:block; margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .tv-pos-info     { position:absolute; background:rgba(10,13,22,.95); border:1px solid #2a2e39; border-radius:8px; padding:7px 10px; font-size:10px; font-family:'Courier New',monospace; color:#d1d4dc; pointer-events:auto; cursor:move; text-align:center; user-select:none; width:156px; box-sizing:border-box; transform:translate(-50%,-50%); box-shadow:0 12px 28px rgba(0,0,0,.5); }
+    .tv-pos-info-pnl { font-size:12px; font-weight:800; letter-spacing:.3px; }
+    .tv-pos-info-row { display:flex; gap:8px; justify-content:center; font-size:9px; opacity:.78; margin-top:3px; }
+    .tv-pos-x        { position:absolute; top:-8px; right:-8px; width:17px; height:17px; border-radius:50%; background:#ef5350; border:none; color:#fff; font-size:10px; cursor:pointer; pointer-events:auto; display:flex; align-items:center; justify-content:center; }
+    .tv-pos-x:hover  { background:#c62828; }
+    .tv-pos-btn      { display:flex; align-items:center; gap:4px; height:26px; padding:0 8px; border-radius:4px; border:none; background:transparent; color:#787b86; font-size:11px; font-weight:700; cursor:pointer; font-family:var(--font); transition:all .12s; flex-shrink:0; }
+    .tv-pos-btn:hover{ color:#d1d4dc; background:rgba(255,255,255,.05); }
+    .tv-pos-btn.on   { color:#26a69a; background:rgba(38,166,154,.12); }
+    .tv-pos-btn.long { border:1px solid rgba(38,166,154,.28); color:#26a69a; background:rgba(38,166,154,.08); }
+    .tv-pos-btn.long:hover, .tv-pos-btn.long.on { background:rgba(38,166,154,.18); }
+    .tv-pos-btn.short{ border:1px solid rgba(239,83,80,.28); color:#ef5350; background:rgba(239,83,80,.08); }
+    .tv-pos-btn.short:hover, .tv-pos-btn.short.on { background:rgba(239,83,80,.18); }
+    .tv-pos-mwrap    { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:300; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(3px); }
+    .tv-pos-mdl      { background:#1a1d28; border:1px solid #2a2e39; border-radius:10px; width:355px; max-width:96vw; padding:20px; box-shadow:0 24px 64px rgba(0,0,0,.7); }
+    .tv-pos-mdl-hd   { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .tv-pos-mdl-ttl  { font-size:14px; font-weight:700; color:#d1d4dc; }
+    .tv-pos-mdl-cls  { background:none; border:none; color:#787b86; cursor:pointer; font-size:18px; }
+    .tv-pos-kind     { display:inline-flex; align-items:center; gap:6px; margin-bottom:12px; padding:6px 10px; border-radius:6px; font-size:12px; font-weight:700; }
+    .tv-pos-kind.long { background:rgba(38,166,154,.12); color:#26a69a; border:1px solid rgba(38,166,154,.28); }
+    .tv-pos-kind.short{ background:rgba(239,83,80,.12); color:#ef5350; border:1px solid rgba(239,83,80,.28); }
+    .tv-pos-dirs     { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:12px; }
+    .tv-pos-dbt      { padding:8px; border-radius:5px; border:1px solid #2a2e39; background:transparent; color:#787b86; font-size:13px; font-weight:700; cursor:pointer; font-family:var(--font); text-align:center; transition:all .15s; }
+    .tv-pos-dbt.la   { background:rgba(38,166,154,.18); border-color:#26a69a; color:#26a69a; }
+    .tv-pos-dbt.sa   { background:rgba(239,83,80,.15);  border-color:#ef5350; color:#ef5350; }
+    .tv-pos-fld      { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+    .tv-pos-fld-lbl  { font-size:10px; color:#787b86; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+    .tv-pos-inp      { background:rgba(255,255,255,.05); border:1px solid #2a2e39; border-radius:5px; color:#d1d4dc; padding:7px 10px; font-size:13px; font-family:monospace; outline:none; width:100%; }
+    .tv-pos-inp:focus{ border-color:#2196F3; }
+    .tv-pos-g2       { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .tv-pos-sts      { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:12px 0; padding:11px; background:rgba(255,255,255,.03); border-radius:6px; border:1px solid #1e222d; }
+    .tv-pos-st       { font-size:11px; }
+    .tv-pos-stl      { color:#787b86; font-size:10px; }
+    .tv-pos-stv      { color:#d1d4dc; font-weight:700; font-family:monospace; }
+    .tv-pos-stv.g    { color:#26a69a; }
+    .tv-pos-stv.r    { color:#ef5350; }
+    .tv-pos-acts     { display:flex; gap:8px; margin-top:12px; }
+    .tv-pos-ok       { flex:1; padding:9px; border-radius:6px; border:none; background:#10a37f; color:#fff; font-size:13px; font-weight:700; cursor:pointer; font-family:var(--font); }
+    .tv-pos-ok:hover { background:#0d9272; }
+    .tv-pos-cc       { padding:9px 14px; border-radius:6px; border:1px solid #2a2e39; background:transparent; color:#787b86; font-size:13px; cursor:pointer; font-family:var(--font); }
+    .tv-pos-cc:hover { color:#d1d4dc; }
+    .tv-pos-rm       { padding:9px 12px; border-radius:6px; border:1px solid rgba(239,83,80,.5); background:transparent; color:#ef5350; font-size:13px; cursor:pointer; font-family:var(--font); }
+    .tv-pos-rm:hover { background:rgba(239,83,80,.1); }
 
     /* ── Settings Modal ──────────────────────────────── */
     .settings-overlay   { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:200; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
@@ -457,6 +473,110 @@
     .settings-num       { width:68px; font-size:12px; background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:5px; color:var(--text); padding:4px 8px; text-align:center; font-family:monospace; }
     .settings-num:focus { border-color:var(--accent); outline:none; }
     .settings-group-hd  { font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:14px 0 4px; }
+
+
+    /* ── Main Nav ────────────────────────────────────────── */
+    #main-nav { display:flex; align-items:center; padding:0 24px; height:48px; border-bottom:0.5px solid #1e222d; background:#131722; position:sticky; top:0; z-index:100; }
+    .nav-brand { font-size:14px; font-weight:700; color:#d1d4dc; margin-right:32px; letter-spacing:1px; }
+    .nav-links { display:flex; gap:4px; }
+    .nav-item { padding:6px 16px; font-size:13px; font-weight:500; color:#787b86; text-decoration:none; border-radius:4px; transition:all .15s; }
+    .nav-item:hover { color:#d1d4dc; }
+    .nav-item.active { color:#2196F3; background:rgba(33,150,243,0.1); }
+    .nav-live { font-weight:700; display:flex; align-items:center; gap:6px; }
+    .nav-live.active { color:#00E676; background:rgba(0,230,118,0.08); }
+    .bot-dot { width:7px; height:7px; border-radius:50%; background:#444; display:inline-block; }
+    .bot-dot.running { background:#00E676; animation:navpulse 1.5s ease-in-out infinite; }
+    @keyframes navpulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ── XAU Scalp Workspace ──────────────────────────────── */
+    .xau-strat-header { display:flex; align-items:center; justify-content:space-between; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 20px; }
+    .xau-strat-title  { font-size:18px; font-weight:800; color:var(--text); }
+    .xau-strat-sub    { font-size:11px; color:var(--muted); margin-top:3px; }
+    .xau-strat-right  { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+    .xau-live-badge   { font-size:11px; font-weight:700; color:var(--win); display:flex; align-items:center; gap:6px; }
+    .xau-live-badge::before { content:''; width:7px; height:7px; border-radius:50%; background:var(--win); animation:pulse 1.5s infinite; }
+    .xau-price-live   { font-size:22px; font-weight:800; font-family:monospace; color:var(--text); }
+    .xau-price-change { font-size:11px; font-family:monospace; }
+    .xau-price-change.up { color:var(--win); }
+    .xau-price-change.dn { color:var(--loss); }
+    .xau-signal-banner { border-radius:var(--radius); padding:14px 20px; font-weight:700; text-align:center; font-size:14px; }
+    .xau-signal-banner.strong { background:rgba(16,163,127,.15); border:2px solid var(--win); color:var(--win); animation:xauGlow 1.5s infinite; }
+    .xau-signal-banner.medium { background:rgba(245,158,11,.12); border:2px solid var(--warn); color:var(--warn); }
+    @keyframes xauGlow { 0%,100%{box-shadow:0 0 12px rgba(16,163,127,.4)} 50%{box-shadow:0 0 24px rgba(16,163,127,.8)} }
+    .xau-cond-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+    @media(max-width:900px){ .xau-cond-grid{ grid-template-columns:repeat(3,1fr); } }
+    .xau-cond-card  { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px; transition:all .25s; }
+    .xau-cond-card.active   { border-color:var(--win); background:rgba(16,163,127,.07); }
+    .xau-cond-card.inactive { opacity:.7; }
+    .xau-cond-icon  { font-size:20px; margin-bottom:6px; }
+    .xau-cond-name  { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+    .xau-cond-value { font-size:13px; font-weight:700; margin-top:4px; }
+    .xau-cond-value.active   { color:var(--win); }
+    .xau-cond-value.inactive { color:var(--muted); }
+    .xau-cond-badge { display:inline-block; margin-top:6px; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:700; }
+    .xau-cond-badge.ok { background:rgba(16,163,127,.2); color:var(--win); }
+    .xau-cond-badge.no { background:rgba(255,255,255,.07); color:var(--muted); }
+    .xau-signal-card     { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; }
+    .xau-signal-card-hd  { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .xau-signal-card-title      { font-size:15px; font-weight:800; }
+    .xau-signal-card-title.strong { color:var(--win); }
+    .xau-signal-card-title.medium { color:var(--warn); }
+    .xau-signal-time { font-size:11px; color:var(--muted); font-family:monospace; }
+    .xau-signal-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px; }
+    @media(max-width:700px){ .xau-signal-grid{ grid-template-columns:repeat(2,1fr); } }
+    .xau-signal-field-lbl { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+    .xau-signal-field-val { font-size:14px; font-weight:700; font-family:monospace; margin-top:2px; }
+    .xau-signal-field-val.g { color:var(--win); }
+    .xau-signal-field-val.r { color:var(--loss); }
+    .xau-signal-field-val.a { color:var(--warn); }
+    .xau-cond-list { display:flex; flex-direction:column; gap:5px; border-top:1px solid var(--border); padding-top:12px; }
+    .xau-cond-row  { display:flex; align-items:center; gap:8px; font-size:12px; }
+    .xau-stats-bar { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+    @media(max-width:700px){ .xau-stats-bar{ grid-template-columns:repeat(3,1fr); } }
+    .xau-stat-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; }
+    .xau-stat-lbl  { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+    .xau-stat-val  { font-size:22px; font-weight:800; margin-top:4px; font-family:monospace; }
+    .xau-stat-val.g { color:var(--win); }
+    .xau-stat-val.a { color:var(--warn); }
+    /* ── Table cell helpers ──────────────────────────── */
+    .td-mono   { font-family:monospace; }
+    .td-muted  { color:var(--muted); }
+    .td-win    { color:var(--win);  font-family:monospace; }
+    .td-loss   { color:var(--loss); font-family:monospace; }
+    .td-buy    { color:var(--win);  font-weight:700; }
+    .tbl-wrap  { overflow-x:auto; }
+    .sig-empty { color:var(--muted); text-align:center; padding:24px; }
+    /* ── XAU Backtest panel ──────────────────────────── */
+    .xau-bt-grid    { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:18px; }
+    @media(max-width:800px){ .xau-bt-grid{ grid-template-columns:repeat(2,1fr); } }
+    .xau-bt-mc      { background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:8px; padding:13px 14px; }
+    .xau-bt-mc-lbl  { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:5px; }
+    .xau-bt-mc-val  { font-size:20px; font-weight:700; color:var(--text); line-height:1.2; font-family:monospace; }
+    .xau-bt-mc-val.g { color:var(--win); }
+    .xau-bt-mc-val.r { color:var(--loss); }
+    .xau-bt-mc-val.a { color:var(--warn); }
+    .xau-equity-wrap { background:rgba(0,0,0,.25); border-radius:7px; overflow:hidden; padding:16px; margin-bottom:18px; }
+    .xau-equity-wrap svg { display:block; width:100%; }
+    /* ── XAU Log panel ───────────────────────────────── */
+    .xau-log-wrap   { font-family:monospace; font-size:12px; max-height:500px; overflow-y:auto; display:flex; flex-direction:column; gap:3px; padding:12px; }
+    .xau-log-entry  { display:flex; align-items:flex-start; gap:10px; padding:7px 10px; border-radius:6px; background:rgba(255,255,255,.02); border:1px solid transparent; transition:border-color .15s; }
+    .xau-log-entry:hover { border-color:var(--border); }
+    .xau-log-entry.signal { background:rgba(16,163,127,.07); border-color:rgba(16,163,127,.2); }
+    .xau-log-ts     { color:var(--muted); white-space:nowrap; min-width:130px; font-size:11px; }
+    .xau-log-price  { color:var(--text); font-weight:700; min-width:60px; }
+    .xau-log-conds  { display:flex; gap:4px; flex-wrap:wrap; }
+    .xau-log-dot    { width:8px; height:8px; border-radius:50%; display:inline-block; }
+    .xau-log-dot.on  { background:var(--win); }
+    .xau-log-dot.off { background:var(--border); }
+    .xau-log-score  { color:var(--muted); min-width:30px; }
+    .xau-log-decision { font-weight:700; min-width:100px; }
+    .xau-log-decision.signal { color:var(--win); }
+    .xau-log-decision.no     { color:var(--muted); }
+    /* ── Strategy selector tabs ─────────────────────── */
+    .strat-tab      { padding:5px 13px; font-size:13px; font-weight:600; color:var(--muted); border:1px solid transparent; background:transparent; cursor:pointer; border-radius:6px; transition:all .15s; white-space:nowrap; font-family:var(--font); display:flex; align-items:center; gap:5px; }
+    .strat-tab:hover { color:var(--text); background:rgba(255,255,255,.06); }
+    .strat-tab.active { color:var(--accent); border-color:var(--accent); background:rgba(16,163,127,.1); font-weight:700; }
+    .hdr-sep        { width:1px; height:20px; background:var(--border); flex-shrink:0; margin:0 4px; }
 
   </style>
 </head>
@@ -1100,7 +1220,7 @@ function LogsPanel() {
           <span className="term-dot term-dot-yellow" />
           <span className="term-dot term-dot-green2" />
         </div>
-        <span className="term-title-txt">SEAN0-ALGO · decision_trace.log</span>
+        <span className="term-title-txt">SEAN ALGO · decision_trace.log</span>
         <div className="term-meta">
           <span className={`term-live-dot ${ready ? 'live' : 'dead'}`} />
           <span className={`term-live-lbl ${ready ? 'live' : 'dead'}`} style={{fontSize:'9px'}}>
@@ -1380,7 +1500,7 @@ function BacktestHistoryPanel({ onLoad }) {
       const r = await fetch(`/backtest/history/${id}`);
       const d = await r.json();
       if (onLoad) onLoad(d);
-    } catch(e) { alert('Failed to load report'); }
+    } catch(e) { console.error('[backtest] Failed to load report:', e); }
     finally { setLoadingId(null); }
   }, [onLoad]);
 
@@ -1657,9 +1777,9 @@ const IcoMACD = () => <svg width="11" height="11" viewBox="0 0 12 12"><rect x="1
 const IcoVWAP = () => <svg width="11" height="11" viewBox="0 0 12 12"><path d="M1 8 Q3 3 6 5 Q9 7 11 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M1 10 Q3 5 6 7 Q9 9 11 6" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="2,1" opacity=".55"/></svg>;
 const IcoVCAD = () => <svg width="11" height="11" viewBox="0 0 12 12"><polyline points="1,10 3,7 5,8 7,4 9,5 11,2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/></svg>;
 const IcoLS   = () => <svg width="11" height="11" viewBox="0 0 12 12"><polygon points="6,1 10,6 2,6" fill="#26a69a" opacity=".9"/><polygon points="6,11 10,6.5 2,6.5" fill="#ef5350" opacity=".9"/></svg>;
-const IcoPos  = () => <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><line x1="1" y1="4" x2="13" y2="4" stroke="#26a69a" strokeWidth="1.5" strokeLinecap="round"/><line x1="1" y1="10" x2="13" y2="10" stroke="#ef5350" strokeWidth="1.5" strokeLinecap="round"/><line x1="1" y1="7" x2="13" y2="7" stroke="#2196F3" strokeWidth="1" strokeLinecap="round" strokeDasharray="2,2"/><rect x="9" y="2.5" width="4" height="3" rx="1" fill="#26a69a" opacity=".9"/><rect x="9" y="8.5" width="4" height="3" rx="1" fill="#ef5350" opacity=".9"/></svg>;
 const IcoGear = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
 
+const IcoPos  = () => <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><line x1="1" y1="3" x2="13" y2="3" stroke="#26a69a" strokeWidth="1.5" strokeLinecap="round"/><line x1="1" y1="11" x2="13" y2="11" stroke="#ef5350" strokeWidth="1.5" strokeLinecap="round"/><line x1="1" y1="7" x2="13" y2="7" stroke="#2196F3" strokeWidth="1" strokeLinecap="round" strokeDasharray="2,2"/><rect x="10" y="1.5" width="3" height="3" rx="1" fill="#26a69a"/><rect x="10" y="9.5" width="3" height="3" rx="1" fill="#ef5350"/></svg>;
 function ChartPanel() {
   const LC = typeof LightweightCharts !== 'undefined' ? LightweightCharts : null;
 
@@ -1701,12 +1821,10 @@ function ChartPanel() {
   const togglesRef      = useRef(DEFAULT_TOGGLES);
   const paramsRef       = useRef(DEFAULT_PARAMS);
   const syncUnsub       = useRef([]);
-  const posTPLineRef    = useRef(null);
-  const posSLLineRef    = useRef(null);
-  const posEntryLineRef = useRef(null);
-  const posRef          = useRef(null);
-  const isDraggingRef   = useRef(false);
-  const dragFieldRef    = useRef(null); // 'tp' | 'sl' | 'entry'
+  const posTPRef        = useRef(null);
+  const posSLRef        = useRef(null);
+  const posEnRef        = useRef(null);
+  const posDataRef      = useRef(null);
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [activeTf,     _setActiveTf]   = useState('M5');
@@ -1729,102 +1847,138 @@ function ChartPanel() {
   const [macdDisp,     setMacdDisp]    = useState({ ml:null, sl:null, hs:null });
   const [priceInfo,    setPriceInfo]   = useState({ price:null, change:0, changePct:0, dir:'flat' });
   const dayOpenRef = useRef(null);
-  // ── Position tracker ─────────────────────────────────────────────────────
-  const [position,     setPosition]    = useState(() => {
-    try { return JSON.parse(localStorage.getItem('chart_pos') || 'null'); } catch { return null; }
-  });
-  const [posYCoords,   setPosYCoords]  = useState({ tp:null, sl:null, entry:null });
+  const [posVersion,   setPosVersion]  = useState(0);
+  const [position,     setPosition]    = useState(() => { try { return JSON.parse(localStorage.getItem('tv_pos')||'null'); } catch { return null; } });
   const [openPnl,      setOpenPnl]     = useState(0);
   const [showPosModal, setShowPosModal]= useState(false);
-  const [posForm,      setPosForm]     = useState({ dir:'long', entry:'', tp:'', sl:'', qty:'1' });
+  const [posForm,      setPosForm]     = useState({ dir:'long', entry:'', tp:'', sl:'', qty:'1', anchorTime:null });
 
   function setActiveTf(tf) { activeTfRef.current = tf; _setActiveTf(tf); }
+
+  function clampOverlayY(y) {
+    const h = containerRef.current?.clientHeight ?? 0;
+    if (y == null || !Number.isFinite(y) || h <= 0) return null;
+    return Math.max(0, Math.min(h, y));
+  }
+
+  function classifyPositionLevel(price, entry, isLong) {
+    if (!Number.isFinite(price) || !Number.isFinite(entry)) return 'neutral';
+    if (price === entry) return 'entry';
+    const isProfit = isLong ? price > entry : price < entry;
+    return isProfit ? 'profit' : 'loss';
+  }
+
+  function levelColors(kind) {
+    if (kind === 'profit') {
+      return { line:'#26a69a', tagBg:'rgba(38,166,154,.9)', tagBorder:'#26a69a' };
+    }
+    if (kind === 'loss') {
+      return { line:'#ef5350', tagBg:'rgba(239,83,80,.9)', tagBorder:'#ef5350' };
+    }
+    return { line:'#2196F3', tagBg:'rgba(33,150,243,.88)', tagBorder:'#2196F3' };
+  }
+
+  function getActiveAnchorTime() {
+    const live = liveRef.current[activeTfRef.current];
+    if (live && live.time != null) return live.time;
+    const hist = cacheRef.current[activeTfRef.current] || [];
+    const last = hist[hist.length - 1];
+    return last?.time ?? null;
+  }
+
+  function getReferencePrice() {
+    if (Number.isFinite(priceInfo.price)) return priceInfo.price;
+    const live = liveRef.current[activeTfRef.current];
+    if (live && Number.isFinite(live.close)) return live.close;
+    const hist = cacheRef.current[activeTfRef.current] || [];
+    const last = hist[hist.length - 1];
+    return Number.isFinite(last?.close) ? last.close : null;
+  }
+
+  function buildPositionDraft(dir) {
+    const price = getReferencePrice();
+    const qty = position?.qty ? String(position.qty) : '1';
+    const anchorTime = getActiveAnchorTime();
+    if (!Number.isFinite(price)) return { dir, entry:'', tp:'', sl:'', qty, anchorTime };
+    const entry = Number(price);
+    const tp = dir === 'long' ? entry * 1.005 : entry * 0.995;
+    const sl = dir === 'long' ? entry * 0.995 : entry * 1.005;
+    return {
+      dir,
+      entry: entry.toFixed(2),
+      tp: tp.toFixed(2),
+      sl: sl.toFixed(2),
+      qty,
+      anchorTime,
+    };
+  }
+
+  function openPositionTool(dir) {
+    if (position && position.dir === dir) {
+      setPosForm({
+        dir,
+        entry: Number(position.entry).toFixed(2),
+        tp: Number(position.tp).toFixed(2),
+        sl: Number(position.sl).toFixed(2),
+        qty: String(position.qty ?? 1),
+        anchorTime: position.anchorTime ?? getActiveAnchorTime(),
+      });
+    } else {
+      setPosForm(buildPositionDraft(dir));
+    }
+    setShowPosModal(true);
+  }
 
   // Keep refs in sync with state for use inside closures
   useEffect(() => { togglesRef.current = indicators; }, [indicators]);
   useEffect(() => { paramsRef.current  = indParams;  }, [indParams]);
 
-  // ── Position tracker: keep posRef in sync + draw price lines ───────────────
+  // ── Position tool: price lines + localStorage ──────────────────────────────
   useEffect(() => {
-    posRef.current = position;
-    try { localStorage.setItem('chart_pos', JSON.stringify(position)); } catch {}
-    if (isDraggingRef.current) return; // skip line redraw during live drag
+    posDataRef.current = position;
+    try { localStorage.setItem('tv_pos', JSON.stringify(position)); } catch {}
     if (!candleRef.current) return;
-    // Remove old lines
-    [posTPLineRef, posSLLineRef, posEntryLineRef].forEach(r => {
-      if (r.current) { try { candleRef.current.removePriceLine(r.current); } catch {} r.current = null; }
-    });
+    [posTPRef, posSLRef, posEnRef].forEach(r => { if (r.current) { try { candleRef.current.removePriceLine(r.current); } catch {} r.current = null; } });
     if (!position || !LC) return;
     const LS = LC.LineStyle;
-    posEntryLineRef.current = candleRef.current.createPriceLine({
-      price: position.entry, color: '#2196F3', lineWidth: 1,
-      lineStyle: LS ? LS.Dashed : 1, axisLabelVisible: false,
-      title: '',
-    });
-    posTPLineRef.current = candleRef.current.createPriceLine({
-      price: position.tp, color: '#26a69a', lineWidth: 1,
-      lineStyle: LS ? LS.Solid : 0, axisLabelVisible: false,
-      title: '',
-    });
-    posSLLineRef.current = candleRef.current.createPriceLine({
-      price: position.sl, color: '#ef5350', lineWidth: 1,
-      lineStyle: LS ? LS.Solid : 0, axisLabelVisible: false,
-      title: '',
-    });
+    const isLong = position.dir === 'long';
+    const tpKind = classifyPositionLevel(position.tp, position.entry, isLong);
+    const slKind = classifyPositionLevel(position.sl, position.entry, isLong);
+    const tpColors = levelColors(tpKind);
+    const slColors = levelColors(slKind);
+    posEnRef.current = candleRef.current.createPriceLine({ price:position.entry, color:'#2196F3', lineWidth:1, lineStyle:LS.Dashed, axisLabelVisible:true, title:'' });
+    posTPRef.current = candleRef.current.createPriceLine({ price:position.tp,    color:tpColors.line, lineWidth:1, lineStyle:LS.Solid,  axisLabelVisible:false, title:'' });
+    posSLRef.current = candleRef.current.createPriceLine({ price:position.sl,    color:slColors.line, lineWidth:1, lineStyle:LS.Solid,  axisLabelVisible:false, title:'' });
   }, [position]);
 
-  // ── Drag handler for TV-style draggable price lines ───────────────────────
-  function startPriceDrag(e, field) {
-    e.preventDefault();
-    e.stopPropagation();
-    isDraggingRef.current = true;
-    dragFieldRef.current  = field;
-
-    function onMove(ev) {
-      if (!dragFieldRef.current || !candleRef.current || !containerRef.current) return;
-      const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
-      const rect    = containerRef.current.getBoundingClientRect();
-      const y       = clientY - rect.top;
-      const price   = candleRef.current.coordinateToPrice(y);
-      if (price == null || price <= 0) return;
-      const p = Math.round(price * 100) / 100;
+  // ── Drag handler for position lines ────────────────────────────────────────
+  function startDrag(e, field) {
+    e.preventDefault(); e.stopPropagation();
+    const onMove = me => {
+      if (!containerRef.current || !candleRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const y = me.clientY - rect.top;
+      const raw = candleRef.current.coordinateToPrice(y);
+      if (raw === null) return;
+      const p = Math.round(raw * 100) / 100;
       setPosition(prev => {
         if (!prev) return prev;
-        const next = { ...prev, [dragFieldRef.current]: p };
-        posRef.current = next;
-        return next;
+        if (field === 'tp')    return {...prev, tp: p};
+        if (field === 'sl')    return {...prev, sl: p};
+        if (field === 'entry') {
+          const d = p - prev.entry;
+          return {...prev, entry:p, tp:Math.round((prev.tp+d)*100)/100, sl:Math.round((prev.sl+d)*100)/100};
+        }
+        return prev;
       });
-      _updatePosCoords();
-    }
-
-    function onUp() {
-      isDraggingRef.current = false;
-      dragFieldRef.current  = null;
-      // Commit: redraw the price lines now drag is done
-      setPosition(prev => prev ? { ...prev } : prev);
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup',   onUp);
-      window.removeEventListener('touchmove', onMove);
-      window.removeEventListener('touchend',  onUp);
-    }
-
-    window.addEventListener('mousemove', onMove, { passive:false });
-    window.addEventListener('mouseup',   onUp);
-    window.addEventListener('touchmove', onMove, { passive:false });
-    window.addEventListener('touchend',  onUp);
+      setPosVersion(v => v + 1);
+    };
+    const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   }
 
-  // ── Update Y-coordinates for position overlay boxes ───────────────────────
-  function _updatePosCoords() {
-    const pos = posRef.current;
-    if (!pos || !candleRef.current) return;
-    try {
-      const tpY    = candleRef.current.priceToCoordinate(pos.tp);
-      const slY    = candleRef.current.priceToCoordinate(pos.sl);
-      const entryY = candleRef.current.priceToCoordinate(pos.entry);
-      setPosYCoords({ tp: tpY, sl: slY, entry: entryY });
-    } catch {}
-  }
+  // ── Chart creation (once on mount) ─────────────────────────────────────────
 
   // ── Chart creation (once on mount) ─────────────────────────────────────────
   useEffect(() => {
@@ -1852,9 +2006,10 @@ function ChartPanel() {
         const d = param.seriesData.get(series);
         if (d) setOhlcByTf(p => ({ ...p, [activeTfRef.current]: d }));
       }
-      _updatePosCoords();
+      if (posDataRef.current) setPosVersion(v => v + 1);
     });
-    chart.timeScale().subscribeVisibleTimeRangeChange(() => _updatePosCoords());
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => { if (posDataRef.current) setPosVersion(v => v + 1); });
+    try { chart.priceScale('right').subscribeVisiblePriceRangeChange(() => { if (posDataRef.current) setPosVersion(v => v + 1); }); } catch {}
     // EMA series on main chart
     const e50  = chart.addLineSeries({ color:'#2196F3', lineWidth:1, title:'EMA50',  lastValueVisible:false, priceLineVisible:false });
     const e200 = chart.addLineSeries({ color:'#FF6D00', lineWidth:2, title:'EMA200', lastValueVisible:false, priceLineVisible:false });
@@ -2179,7 +2334,7 @@ function ChartPanel() {
 
       es.onmessage = evt => {
         if (!active) return;
-        try { handleMsg(JSON.parse(evt.data)); } catch {}
+        try { handleMsg(JSON.parse(evt.data)); } catch(e) { console.warn('[sse] parse error:', e); }
       };
     }
 
@@ -2270,11 +2425,11 @@ function ChartPanel() {
             } catch {}
             // Update position P&L
             try {
-              const pos = posRef.current;
+              const pos = posDataRef.current;
               if (pos) {
                 const mult = pos.dir === 'long' ? 1 : -1;
                 setOpenPnl((c.close - pos.entry) * pos.qty * mult);
-                _updatePosCoords();
+                setPosVersion(v => v + 1);
               }
             } catch {}
             // Fast incremental update — only last indicator values
@@ -2448,23 +2603,6 @@ function ChartPanel() {
         <button className={`tv-ind-btn${indicators.vcad ? ' on' : ''}`}  onClick={() => toggleInd('vcad')}>
           <IcoVCAD />VCAD
         </button>
-        <div className="tv-sep" />
-        <button
-          className={`tv-pos-btn${position ? ' has-pos' : ''}`}
-          title="Set TP / SL position"
-          onClick={() => {
-            if (!position) {
-              const lastPrice = priceInfo.price;
-              const ep = lastPrice ? lastPrice.toFixed(2) : '';
-              const tpDef = lastPrice ? (lastPrice * 1.005).toFixed(2) : '';
-              const slDef = lastPrice ? (lastPrice * 0.995).toFixed(2) : '';
-              setPosForm({ dir:'long', entry:ep, tp:tpDef, sl:slDef, qty:'1' });
-            }
-            setShowPosModal(true);
-          }}
-        >
-          <IcoPos />TP/SL
-        </button>
         {currOhlc && (
           <div className="tv-ohlc">
             <span className="tv-ohlc-item"><span className="tv-ohlc-lbl">O</span><span className="tv-ohlc-val">{fmtP(currOhlc.open)}</span></span>
@@ -2473,6 +2611,22 @@ function ChartPanel() {
             <span className="tv-ohlc-item"><span className="tv-ohlc-lbl">C</span><span className="tv-ohlc-val">{fmtP(currOhlc.close)}</span></span>
           </div>
         )}
+        <div className="tv-sep" />
+        <button
+          className={`tv-pos-btn long${position?.dir === 'long' ? ' on' : ''}`}
+          title="Long Position Tool"
+          onClick={() => openPositionTool('long')}
+        >
+          <IcoPos />Long
+        </button>
+        <button
+          className={`tv-pos-btn short${position?.dir === 'short' ? ' on' : ''}`}
+          title="Short Position Tool"
+          onClick={() => openPositionTool('short')}
+        >
+          <IcoPos />Short
+        </button>
+        <div className="tv-sep" />
         <button className="tv-gear" title="Indicator Settings" onClick={() => setShowSettings(true)}>
           <IcoGear />
         </button>
@@ -2489,114 +2643,127 @@ function ChartPanel() {
         {error && !loading && <div className="tv-err-msg">{error}</div>}
         <div ref={containerRef} style={{ width:'100%', height:'100%' }} />
 
-        {/* ── TV-Style Draggable Position Overlay ── */}
+        {/* ── Position Overlay ── */}
         {position && (() => {
-          const { tp, sl, entry, dir, qty } = position;
-          const isLong  = dir === 'long';
-          const { tp: tpY, sl: slY, entry: entryY } = posYCoords;
+          const ser = candleRef.current;
+          if (!ser) return null;
+          const rawTpY = ser.priceToCoordinate(position.tp);
+          const rawSlY = ser.priceToCoordinate(position.sl);
+          const rawEnY = ser.priceToCoordinate(position.entry);
+          // Bail only if entry is off-screen; TP/SL are clamped to edges
+          if (rawEnY == null) return null;
 
-          const tpPct  = entry ? ((tp - entry)    / entry * 100 * (isLong?1:-1)) : 0;
-          const slPct  = entry ? ((entry - sl)    / entry * 100 * (isLong?1:-1)) : 0;
-          const tpAmt  = Math.abs((tp - entry)    * qty * (isLong?1:-1));
-          const slAmt  = Math.abs((entry - sl)    * qty * (isLong?1:-1));
-          const rr     = slAmt > 0 ? (tpAmt / slAmt).toFixed(2) : '∞';
+          // Use getBoundingClientRect for reliable height in flex layouts
+          const H = containerRef.current?.offsetHeight || containerRef.current?.clientHeight || 600;
+          const clamp = y => Math.max(0, Math.min(H, y));
+          const enY = clamp(rawEnY);
+          // If TP/SL off-screen, pin to top or bottom edge based on price vs entry
+          const tpY = rawTpY != null ? clamp(rawTpY) : (position.tp > position.entry ? 0 : H);
+          const slY = rawSlY != null ? clamp(rawSlY) : (position.sl > position.entry ? 0 : H);
+
+          const isLong = position.dir === 'long';
+          const mult   = isLong ? 1 : -1;
+
+          // ── Direction-based zone colors ───────────────────────────────────────
+          // LONG:  zone ABOVE entry → GREEN (profit going up)
+          //        zone BELOW entry → RED   (loss going down)
+          // SHORT: zone ABOVE entry → RED   (loss if price rises)
+          //        zone BELOW entry → GREEN (profit if price falls)
+          const tpAbove     = tpY < enY;   // smaller Y = higher on screen = higher price
+          const slAbove     = slY < enY;
+          const tpIsProfit  = isLong ? tpAbove  : !tpAbove;
+          const slIsProfit  = isLong ? !slAbove :  slAbove;
+          const tpZoneClass = tpIsProfit ? 'tv-pos-profit' : 'tv-pos-loss';
+          const slZoneClass = slIsProfit ? 'tv-pos-profit' : 'tv-pos-loss';
+          const tpLineColor = tpIsProfit ? '#26a69a' : '#ef5350';
+          const slLineColor = slIsProfit ? '#26a69a' : '#ef5350';
+          const tpTagStyle  = tpIsProfit
+            ? { background:'rgba(38,166,154,.92)', border:'1px solid #26a69a', color:'#fff' }
+            : { background:'rgba(239,83,80,.92)',  border:'1px solid #ef5350', color:'#fff' };
+          const slTagStyle  = slIsProfit
+            ? { background:'rgba(38,166,154,.92)', border:'1px solid #26a69a', color:'#fff' }
+            : { background:'rgba(239,83,80,.92)',  border:'1px solid #ef5350', color:'#fff' };
+
+          // ── Zone bounds — bounded strictly between entry↔TP and entry↔SL ────
+          // maxZoneH: neither zone can exceed the full TP-to-SL span
+          const fullSpanH   = Math.abs(tpY - slY);
+          const tpZoneTop   = Math.min(tpY, enY);
+          const tpZoneH     = Math.min(Math.max(Math.abs(tpY - enY), 3), fullSpanH);
+          const slZoneTop   = Math.min(slY, enY);
+          const slZoneH     = Math.min(Math.max(Math.abs(slY - enY), 3), fullSpanH);
+
+          // ── Calculations ─────────────────────────────────────────────────────
+          const tpPct = (position.tp - position.entry) / position.entry * 100 * mult;
+          const slPct = (position.entry - position.sl) / position.entry * 100 * mult;
+          const tpAmt = Math.abs((position.tp - position.entry) * position.qty);
+          const slAmt = Math.abs((position.entry - position.sl) * position.qty);
+          const rr    = slAmt > 0 ? (tpAmt / slAmt).toFixed(2) : '∞';
           const pnlPos = openPnl >= 0;
 
-          // Fill regions (clamp to visible range)
-          const greenTop = tpY !== null && entryY !== null ? Math.min(tpY, entryY) : null;
-          const greenH   = tpY !== null && entryY !== null ? Math.abs(tpY - entryY) : 0;
-          const redTop   = slY !== null && entryY !== null ? Math.min(slY, entryY) : null;
-          const redH     = slY !== null && entryY !== null ? Math.abs(slY - entryY) : 0;
-
-          // Center info box: position between entry and tp (or sl if short)
-          const topLine  = isLong ? (tpY ?? entryY ?? 0) : (slY ?? entryY ?? 0);
-          const botLine  = isLong ? (entryY ?? 0) : (entryY ?? 0);
-          const centerY  = ((topLine + botLine) / 2);
+          // P&L info box: midpoint between outer lines, clamped to stay visible
+          const outerTop = Math.min(tpY, slY);
+          const outerBot = Math.max(tpY, slY);
+          const infoY = Math.max(44, Math.min((outerTop + outerBot) / 2, H - 44));
+          const infoX = containerRef.current ? Math.round(containerRef.current.offsetWidth * 0.42) : 200;
 
           return (
-            <div className="tv-pos-drag-wrap">
+            <div className="tv-pos-overlay">
 
-              {/* Green fill: entry → TP */}
-              {greenTop !== null && greenH > 0 && (
-                <div className="tv-pos-fill" style={{ top:greenTop, height:greenH, background:'rgba(38,166,154,.12)' }} />
-              )}
-              {/* Red fill: entry → SL */}
-              {redTop !== null && redH > 0 && (
-                <div className="tv-pos-fill" style={{ top:redTop, height:redH, background:'rgba(239,83,80,.12)' }} />
-              )}
+              {/* TP zone — green for profit side, red for loss side (direction-aware) */}
+              <div className={`tv-pos-zone ${tpZoneClass}`}
+                style={{ top:tpZoneTop, height:tpZoneH }} />
 
-              {/* ── TP line ── */}
-              {tpY !== null && (
-                <div className="tv-pos-line-row" style={{ top: tpY }}>
-                  <div className="tv-pos-line" style={{ background:'#26a69a' }} />
-                  {/* drag handle */}
-                  <div className="tv-pos-handle" style={{ borderColor:'#26a69a' }}
-                    onMouseDown={e => startPriceDrag(e, 'tp')} onTouchStart={e => startPriceDrag(e, 'tp')} />
-                  {/* wide hit area */}
-                  <div className="tv-pos-hit" onMouseDown={e => startPriceDrag(e, 'tp')} onTouchStart={e => startPriceDrag(e, 'tp')} />
-                  {/* right-side label */}
-                  <div className="tv-pos-rhs" style={{ background:'rgba(38,166,154,.92)', border:'1px solid #26a69a', color:'#fff', top:0 }}
-                    onMouseDown={e => startPriceDrag(e, 'tp')} onTouchStart={e => startPriceDrag(e, 'tp')}>
-                    <div className="tv-pos-rhs-price">Target: {tp.toFixed(2)}</div>
-                    <div className="tv-pos-rhs-sub">+{Math.abs(tpPct).toFixed(3)}%  ·  +${tpAmt.toFixed(2)}</div>
-                  </div>
+              {/* SL zone — red for loss side, green for profit side (direction-aware) */}
+              <div className={`tv-pos-zone ${slZoneClass}`}
+                style={{ top:slZoneTop, height:slZoneH }} />
+
+              {/* TP line + drag handle + compact tag */}
+              <div className="tv-pos-row" style={{ top:tpY, borderTop:`1.5px solid ${tpLineColor}` }}>
+                <div className="tv-pos-hit" onMouseDown={e => startDrag(e,'tp')} />
+                <div className="tv-pos-knob" style={{ borderColor:tpLineColor }} onMouseDown={e => startDrag(e,'tp')} />
+                <div className="tv-pos-tag" style={tpTagStyle} onMouseDown={e => startDrag(e,'tp')}>
+                  <span className="tv-pos-tag-b">Target: {position.tp.toFixed(2)}</span>
+                  <span className="tv-pos-tag-s">{tpPct>=0?'+':''}{tpPct.toFixed(3)}%&nbsp;·&nbsp;+${tpAmt.toFixed(2)}</span>
                 </div>
-              )}
+              </div>
 
-              {/* ── Entry line ── */}
-              {entryY !== null && (
-                <div className="tv-pos-line-row" style={{ top: entryY }}>
-                  <div className="tv-pos-line-dashed" />
-                  {/* drag handle */}
-                  <div className="tv-pos-handle" style={{ borderColor:'#2196F3' }}
-                    onMouseDown={e => startPriceDrag(e, 'entry')} onTouchStart={e => startPriceDrag(e, 'entry')} />
-                  {/* wide hit area */}
-                  <div className="tv-pos-hit" onMouseDown={e => startPriceDrag(e, 'entry')} onTouchStart={e => startPriceDrag(e, 'entry')} />
-                  {/* right-side label */}
-                  <div className="tv-pos-rhs" style={{ background:'rgba(33,150,243,.85)', border:'1px solid #2196F3', color:'#fff', top:0 }}
-                    onMouseDown={e => startPriceDrag(e, 'entry')} onTouchStart={e => startPriceDrag(e, 'entry')}>
-                    <div className="tv-pos-rhs-price">Entry: {entry.toFixed(2)}</div>
-                    <div className="tv-pos-rhs-sub">{isLong ? '▲ LONG' : '▼ SHORT'}  ·  Qty: {qty}</div>
-                  </div>
+              {/* Entry line + drag handle + compact tag */}
+              <div className="tv-pos-row" style={{ top:enY, borderTop:'1px dashed rgba(33,150,243,.85)' }}>
+                <div className="tv-pos-hit" onMouseDown={e => startDrag(e,'entry')} />
+                <div className="tv-pos-knob" style={{ borderColor:'#2196F3' }} onMouseDown={e => startDrag(e,'entry')} />
+                <div className="tv-pos-tag tv-pos-tag-en" onMouseDown={e => startDrag(e,'entry')}>
+                  <span className="tv-pos-tag-b">Entry: {position.entry.toFixed(2)}</span>
+                  <span className="tv-pos-tag-s">{isLong?'▲ LONG':'▼ SHORT'}&nbsp;·&nbsp;Qty:{position.qty}</span>
                 </div>
-              )}
+              </div>
 
-              {/* ── SL line ── */}
-              {slY !== null && (
-                <div className="tv-pos-line-row" style={{ top: slY }}>
-                  <div className="tv-pos-line" style={{ background:'#ef5350' }} />
-                  {/* drag handle */}
-                  <div className="tv-pos-handle" style={{ borderColor:'#ef5350' }}
-                    onMouseDown={e => startPriceDrag(e, 'sl')} onTouchStart={e => startPriceDrag(e, 'sl')} />
-                  {/* wide hit area */}
-                  <div className="tv-pos-hit" onMouseDown={e => startPriceDrag(e, 'sl')} onTouchStart={e => startPriceDrag(e, 'sl')} />
-                  {/* right-side label */}
-                  <div className="tv-pos-rhs" style={{ background:'rgba(239,83,80,.92)', border:'1px solid #ef5350', color:'#fff', top:0 }}
-                    onMouseDown={e => startPriceDrag(e, 'sl')} onTouchStart={e => startPriceDrag(e, 'sl')}>
-                    <div className="tv-pos-rhs-price">Stop: {sl.toFixed(2)}</div>
-                    <div className="tv-pos-rhs-sub">-{Math.abs(slPct).toFixed(3)}%  ·  -${slAmt.toFixed(2)}</div>
-                  </div>
+              {/* SL line + drag handle + compact tag */}
+              <div className="tv-pos-row" style={{ top:slY, borderTop:`1.5px solid ${slLineColor}` }}>
+                <div className="tv-pos-hit" onMouseDown={e => startDrag(e,'sl')} />
+                <div className="tv-pos-knob" style={{ borderColor:slLineColor }} onMouseDown={e => startDrag(e,'sl')} />
+                <div className="tv-pos-tag" style={slTagStyle} onMouseDown={e => startDrag(e,'sl')}>
+                  <span className="tv-pos-tag-b">Stop: {position.sl.toFixed(2)}</span>
+                  <span className="tv-pos-tag-s">{(-Math.abs(slPct)).toFixed(3)}%&nbsp;·&nbsp;-${slAmt.toFixed(2)}</span>
                 </div>
-              )}
+              </div>
 
-              {/* ── Center P&L box ── */}
-              {entryY !== null && (
-                <div className="tv-pos-center" style={{ top: centerY, transform:'translate(-50%,-50%)' }}>
-                  <button className="tv-pos-close-btn" onClick={() => setPosition(null)} title="Close position">✕</button>
-                  <div className={`tv-pos-center-pnl ${pnlPos ? 'tv-pos-pnl-pos' : 'tv-pos-pnl-neg'}`}>
-                    Open P&amp;L: {pnlPos?'+':''}{openPnl.toFixed(2)}
-                  </div>
-                  <div className="tv-pos-center-row">
-                    <span>Qty: {qty}</span>
-                    <span>R/R: {rr}</span>
-                    <span style={{color: isLong?'#26a69a':'#ef5350', fontWeight:700}}>{isLong?'▲ LONG':'▼ SHORT'}</span>
-                  </div>
+              {/* Compact floating P&L box */}
+              <div className="tv-pos-info" style={{ top:infoY, left:infoX }}>
+                <div className={`tv-pos-info-pnl ${pnlPos?'tv-pos-pnl-pos':'tv-pos-pnl-neg'}`}>
+                  Open P&amp;L: {pnlPos?'+':''}{openPnl.toFixed(2)}
                 </div>
-              )}
+                <div className="tv-pos-info-row">
+                  <span>Qty:{position.qty}</span>
+                  <span>R/R:{rr}</span>
+                  <span style={{color:isLong?'#26a69a':'#ef5350',fontWeight:700}}>{isLong?'▲L':'▼S'}</span>
+                </div>
+                <button className="tv-pos-x" onClick={() => setPosition(null)}>✕</button>
+              </div>
 
             </div>
           );
         })()}
+
       </div>
 
       {/* ── RSI Sub-pane ── */}
@@ -2626,117 +2793,71 @@ function ChartPanel() {
       </div>
 
 
-      {/* ── Position Setup Modal ── */}
+
+      {/* ── Position Modal ── */}
       {showPosModal && (() => {
-        const ep  = parseFloat(posForm.entry) || 0;
-        const tp  = parseFloat(posForm.tp)    || 0;
-        const sl  = parseFloat(posForm.sl)    || 0;
-        const qty = parseFloat(posForm.qty)   || 1;
-        const isLong = posForm.dir === 'long';
-        const tpPct   = ep ? ((tp - ep) / ep * 100 * (isLong?1:-1)) : 0;
-        const slPct   = ep ? ((ep - sl) / ep * 100 * (isLong?1:-1)) : 0;
-        const tpAmt   = ep && tp ? Math.abs((tp - ep) * qty * (isLong?1:-1)) : 0;
-        const slAmt   = ep && sl ? Math.abs((ep - sl) * qty * (isLong?1:-1)) : 0;
-        const rr      = slAmt > 0 ? (tpAmt / slAmt).toFixed(2) : '—';
-        function savePos() {
-          if (!ep || !tp || !sl) return;
-          const p = { dir: posForm.dir, entry: ep, tp, sl, qty };
-          setPosition(p);
+        const ep  = parseFloat(posForm.entry)||0;
+        const tp  = parseFloat(posForm.tp)||0;
+        const sl  = parseFloat(posForm.sl)||0;
+        const qty = parseFloat(posForm.qty)||1;
+        const isL = posForm.dir === 'long';
+        const mult = isL ? 1 : -1;
+        const tpPct = ep ? (tp-ep)/ep*100*mult : 0;
+        const slPct = ep ? (ep-sl)/ep*100*mult : 0;
+        const tpAmt = ep&&tp ? Math.abs((tp-ep)*qty) : 0;
+        const slAmt = ep&&sl ? Math.abs((ep-sl)*qty) : 0;
+        const rr    = slAmt>0 ? (tpAmt/slAmt).toFixed(2) : '—';
+        function savePos(){
+          if(!ep||!tp||!sl) return;
+          setPosition({
+            dir:posForm.dir,
+            entry:ep,
+            tp,
+            sl,
+            qty,
+            anchorTime: posForm.anchorTime ?? getActiveAnchorTime(),
+          });
           setOpenPnl(0);
           setShowPosModal(false);
         }
         return (
-          <div className="tv-pos-modal-wrap" onClick={e => { if (e.target === e.currentTarget) setShowPosModal(false); }}>
-            <div className="tv-pos-modal">
-              <div className="tv-pos-modal-hd">
-                <span className="tv-pos-modal-title">Set Position</span>
-                <button className="tv-pos-modal-close" onClick={() => setShowPosModal(false)}>✕</button>
+          <div className="tv-pos-mwrap" onClick={e=>{if(e.target===e.currentTarget)setShowPosModal(false);}}>
+            <div className="tv-pos-mdl">
+              <div className="tv-pos-mdl-hd">
+                <span className="tv-pos-mdl-ttl">{isL ? 'Long Position Tool' : 'Short Position Tool'}</span>
+                <button className="tv-pos-mdl-cls" onClick={()=>setShowPosModal(false)}>✕</button>
               </div>
-
-              {/* Direction */}
-              <div className="tv-pos-dir">
-                <button className={`tv-pos-dir-btn long${posForm.dir==='long'?' active':''}`} onClick={() => setPosForm(p=>({...p, dir:'long'}))}>▲ LONG</button>
-                <button className={`tv-pos-dir-btn short${posForm.dir==='short'?' active':''}`} onClick={() => setPosForm(p=>({...p, dir:'short'}))}>▼ SHORT</button>
+              <div className={`tv-pos-kind ${isL ? 'long' : 'short'}`}>{isL ? '▲ LONG POSITION' : '▼ SHORT POSITION'}</div>
+              <div className="tv-pos-fld">
+                <label className="tv-pos-fld-lbl">Entry Price</label>
+                <input className="tv-pos-inp" type="number" step="0.01" value={posForm.entry} onChange={e=>setPosForm(p=>({...p,entry:e.target.value}))} />
               </div>
-
-              {/* Entry */}
-              <div className="tv-pos-field">
-                <label className="tv-pos-label">Entry Price</label>
-                <input className="tv-pos-input" type="number" step="0.01"
-                  value={posForm.entry}
-                  onChange={e => setPosForm(p=>({...p, entry:e.target.value}))}
-                  placeholder={priceInfo.price ? priceInfo.price.toFixed(2) : 'e.g. 2640.00'}
-                />
-              </div>
-
-              {/* TP + SL side by side */}
-              <div className="tv-pos-grid2">
-                <div className="tv-pos-field">
-                  <label className="tv-pos-label" style={{color:'#26a69a'}}>Take Profit</label>
-                  <input className="tv-pos-input" type="number" step="0.01"
-                    value={posForm.tp}
-                    onChange={e => setPosForm(p=>({...p, tp:e.target.value}))}
-                    placeholder="TP price"
-                  />
+              <div className="tv-pos-g2">
+                <div className="tv-pos-fld">
+                  <label className="tv-pos-fld-lbl" style={{color:'#26a69a'}}>Take Profit</label>
+                  <input className="tv-pos-inp" type="number" step="0.01" value={posForm.tp} onChange={e=>setPosForm(p=>({...p,tp:e.target.value}))} />
                 </div>
-                <div className="tv-pos-field">
-                  <label className="tv-pos-label" style={{color:'#ef5350'}}>Stop Loss</label>
-                  <input className="tv-pos-input" type="number" step="0.01"
-                    value={posForm.sl}
-                    onChange={e => setPosForm(p=>({...p, sl:e.target.value}))}
-                    placeholder="SL price"
-                  />
+                <div className="tv-pos-fld">
+                  <label className="tv-pos-fld-lbl" style={{color:'#ef5350'}}>Stop Loss</label>
+                  <input className="tv-pos-inp" type="number" step="0.01" value={posForm.sl} onChange={e=>setPosForm(p=>({...p,sl:e.target.value}))} />
                 </div>
               </div>
-
-              {/* Qty */}
-              <div className="tv-pos-field">
-                <label className="tv-pos-label">Quantity (oz / units)</label>
-                <input className="tv-pos-input" type="number" step="0.01" min="0.01"
-                  value={posForm.qty}
-                  onChange={e => setPosForm(p=>({...p, qty:e.target.value}))}
-                />
+              <div className="tv-pos-fld">
+                <label className="tv-pos-fld-lbl">Quantity (oz)</label>
+                <input className="tv-pos-inp" type="number" step="0.01" min="0.01" value={posForm.qty} onChange={e=>setPosForm(p=>({...p,qty:e.target.value}))} />
               </div>
-
-              {/* Calculated stats */}
-              <div className="tv-pos-stats">
-                <div className="tv-pos-stat">
-                  <div className="tv-pos-stat-lbl">TP Distance</div>
-                  <div className={`tv-pos-stat-val ${tpPct>=0?'g':'r'}`}>{tpPct>=0?'+':''}{tpPct.toFixed(3)}%</div>
-                </div>
-                <div className="tv-pos-stat">
-                  <div className="tv-pos-stat-lbl">SL Distance</div>
-                  <div className="tv-pos-stat-val r">-{Math.abs(slPct).toFixed(3)}%</div>
-                </div>
-                <div className="tv-pos-stat">
-                  <div className="tv-pos-stat-lbl">Max Profit</div>
-                  <div className="tv-pos-stat-val g">+${tpAmt.toFixed(2)}</div>
-                </div>
-                <div className="tv-pos-stat">
-                  <div className="tv-pos-stat-lbl">Max Loss</div>
-                  <div className="tv-pos-stat-val r">-${slAmt.toFixed(2)}</div>
-                </div>
-                <div className="tv-pos-stat">
-                  <div className="tv-pos-stat-lbl">Risk / Reward</div>
-                  <div className="tv-pos-stat-val">{rr}</div>
-                </div>
-                <div className="tv-pos-stat">
-                  <div className="tv-pos-stat-lbl">Direction</div>
-                  <div className={`tv-pos-stat-val ${isLong?'g':'r'}`}>{isLong?'▲ LONG':'▼ SHORT'}</div>
-                </div>
+              <div className="tv-pos-sts">
+                <div className="tv-pos-st"><div className="tv-pos-stl">TP Distance</div><div className={`tv-pos-stv ${tpPct>=0?'g':'r'}`}>{tpPct>=0?'+':''}{tpPct.toFixed(3)}%</div></div>
+                <div className="tv-pos-st"><div className="tv-pos-stl">SL Distance</div><div className="tv-pos-stv r">-{Math.abs(slPct).toFixed(3)}%</div></div>
+                <div className="tv-pos-st"><div className="tv-pos-stl">Max Profit</div><div className="tv-pos-stv g">+${tpAmt.toFixed(2)}</div></div>
+                <div className="tv-pos-st"><div className="tv-pos-stl">Max Loss</div><div className="tv-pos-stv r">-${slAmt.toFixed(2)}</div></div>
+                <div className="tv-pos-st"><div className="tv-pos-stl">Risk/Reward</div><div className="tv-pos-stv">{rr}</div></div>
+                <div className="tv-pos-st"><div className="tv-pos-stl">Direction</div><div className={`tv-pos-stv ${isL?'g':'r'}`}>{isL?'▲ LONG':'▼ SHORT'}</div></div>
               </div>
-
-              <div className="tv-pos-actions">
-                <button className="tv-pos-cancel-btn" onClick={() => setShowPosModal(false)}>Cancel</button>
-                {position && (
-                  <button className="tv-pos-cancel-btn" style={{color:'#ef5350',borderColor:'#ef5350'}}
-                    onClick={() => { setPosition(null); setShowPosModal(false); }}>
-                    Close Position
-                  </button>
-                )}
-                <button className="tv-pos-set-btn" onClick={savePos}>
-                  {position ? 'Update' : 'Set Position'}
-                </button>
+              <div className="tv-pos-acts">
+                <button className="tv-pos-cc" onClick={()=>setShowPosModal(false)}>Cancel</button>
+                {position && <button className="tv-pos-rm" onClick={()=>{setPosition(null);setShowPosModal(false);}}>Remove</button>}
+                <button className="tv-pos-ok" onClick={savePos}>{position?'Update':'Set Position'}</button>
               </div>
             </div>
           </div>
@@ -2850,7 +2971,7 @@ function LiveSignalsPanel() {
       const r = await fetch('/signals?limit=100');
       const d = await r.json();
       setSignals(d.signals || []);
-    } catch {}
+    } catch(e) { console.error('[signals] Failed to load:', e); }
     setLoading(false);
   }, []);
 
@@ -3034,24 +3155,766 @@ function LiveSignalsPanel() {
 }
 
 
-function App() {
-  const [clock,          setClock]          = useState('');
-  const [backtestResult, setBacktestResult] = useState(() => {
-    // Restore last backtest from localStorage on page load
+/* ─────────────────────────────────────────────────────────────────────────────
+   XAU SCALP STRATEGY WORKSPACE
+───────────────────────────────────────────────────────────────────────────── */
+
+function XauCondCard({ icon, name, active, value, badge }) {
+  return (
+    <div className={`xau-cond-card ${active ? 'active' : 'inactive'}`}>
+      <div className="xau-cond-icon">{icon}</div>
+      <div className="xau-cond-name">{name}</div>
+      <div className={`xau-cond-value ${active ? 'active' : 'inactive'}`}>{value || '—'}</div>
+      <div className={`xau-cond-badge ${active ? 'ok' : 'no'}`}>{badge}</div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   XAU Scalp — Backtest Panel
+───────────────────────────────────────────────────────────────────────────── */
+function XauBacktestPanel() {
+  const today     = new Date().toISOString().slice(0, 10);
+  const monthAgo  = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+
+  const [startDate,  setStartDate]  = useState(monthAgo);
+  const [endDate,    setEndDate]    = useState(today);
+  const [balance,    setBalance]    = useState(10000);
+  const [riskPct,    setRiskPct]    = useState(1.0);
+  const [maxHold,    setMaxHold]    = useState(200);
+  const [loading,    setLoading]    = useState(false);
+  const [result,     setResult]     = useState(() => {
+    try { const s = localStorage.getItem('strategy:xau-scalp:backtest'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  const [error, setError] = useState('');
+
+  async function runBacktest() {
+    setLoading(true); setError('');
     try {
-      const saved = localStorage.getItem('sean0_last_backtest');
+      const r = await fetch('/api/xau-scalp/backtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start_date: startDate, end_date: endDate, starting_balance: balance, risk_per_trade_pct: riskPct, max_hold_bars: maxHold }),
+      });
+      const d = await r.json();
+      if (d.error) { setError(d.error); return; }
+      setResult(d);
+      try { localStorage.setItem('strategy:xau-scalp:backtest', JSON.stringify(d)); } catch {}
+    } catch (e) {
+      setError('Network error — is the server running?');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const m   = result?.metrics || {};
+  const pnlPos = (m.totalPnl ?? 0) >= 0;
+
+  // ── SVG equity curve ──────────────────────────────────────────────────────
+  function EquityCurve({ curve }) {
+    if (!curve || curve.length < 2) return <div className="chart-empty">Run a backtest to see the equity curve</div>;
+    const W = 800, H = 120, PAD = 10;
+    const vals  = curve.map(p => p.equity);
+    const minV  = Math.min(...vals);
+    const maxV  = Math.max(...vals);
+    const range = maxV - minV || 1;
+    const pts   = curve.map((p, i) => {
+      const x = PAD + (i / (curve.length - 1)) * (W - PAD * 2);
+      const y = H - PAD - ((p.equity - minV) / range) * (H - PAD * 2);
+      return `${x},${y}`;
+    }).join(' ');
+    const color = vals[vals.length - 1] >= vals[0] ? '#10a37f' : '#ef4444';
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ height: 120 }}>
+        <polyline points={pts} fill="none" stroke={color} strokeWidth="2" />
+        <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="rgba(255,255,255,.1)" strokeWidth="1" />
+      </svg>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+      {/* ── Settings Card ── */}
+      <div className="card">
+        <div className="card-hd">
+          <span className="card-title">Backtest · XAU SCALP · M1</span>
+          {result && (
+            <button className="btn btn-ghost btn-sm" onClick={() => { setResult(null); try { localStorage.removeItem('strategy:xau-scalp:backtest'); } catch {} }}>
+              Clear
+            </button>
+          )}
+        </div>
+        <div className="card-body">
+          <div className="form-grid">
+            <div className="fg">
+              <label className="fg-label">Start Date</label>
+              <input className="input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            </div>
+            <div className="fg">
+              <label className="fg-label">End Date</label>
+              <input className="input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
+            <div className="fg">
+              <label className="fg-label">Starting Balance ($)</label>
+              <input className="input" type="number" value={balance} onChange={e => setBalance(+e.target.value)} min="1000" />
+            </div>
+            <div className="fg">
+              <label className="fg-label">Risk Per Trade <span className="fg-accent">{riskPct}%</span></label>
+              <div className="slider-row">
+                <input type="range" min="0.5" max="5" step="0.5" value={riskPct} onChange={e => setRiskPct(+e.target.value)} style={{ flex: 1 }} />
+                <span className="slider-val">{riskPct}%</span>
+              </div>
+            </div>
+            <div className="fg">
+              <label className="fg-label">Max Hold Bars (M1) <span className="fg-accent">{maxHold}</span></label>
+              <div className="slider-row">
+                <input type="range" min="50" max="500" step="50" value={maxHold} onChange={e => setMaxHold(+e.target.value)} style={{ flex: 1 }} />
+                <span className="slider-val">{maxHold}</span>
+              </div>
+            </div>
+          </div>
+          {error && <div style={{ color: 'var(--loss)', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+          <button className="btn btn-primary" onClick={runBacktest} disabled={loading} style={{ width: '100%' }}>
+            {loading ? <><span className="spin" /> Running XAU backtest…</> : '▶  Run XAU Scalp Backtest'}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Results ── */}
+      {result && !result.error && (
+        <>
+          {/* Metrics */}
+          <div className="card">
+            <div className="card-hd">
+              <span className="card-title">Results — {m.startDate} → {m.endDate}</span>
+              <span className="badge badge-gray">{m.totalCandles?.toLocaleString()} M1 candles</span>
+            </div>
+            <div className="card-body">
+              <div className="xau-bt-grid">
+                <div className="xau-bt-mc"><div className="xau-bt-mc-lbl">Total Trades</div><div className="xau-bt-mc-val">{m.totalTrades ?? '—'}</div></div>
+                <div className="xau-bt-mc"><div className="xau-bt-mc-lbl">Win Rate</div><div className={`xau-bt-mc-val ${(m.winRate??0)>=50?'g':'r'}`}>{m.winRate ?? '—'}%</div></div>
+                <div className="xau-bt-mc"><div className="xau-bt-mc-lbl">Wins / Losses</div><div className="xau-bt-mc-val"><span style={{color:'var(--win)'}}>{m.wins??0}</span> / <span style={{color:'var(--loss)'}}>{m.losses??0}</span></div></div>
+                <div className="xau-bt-mc"><div className="xau-bt-mc-lbl">Timeouts</div><div className="xau-bt-mc-val a">{m.timeouts??0}</div></div>
+                <div className="xau-bt-mc"><div className="xau-bt-mc-lbl">Total P&L</div><div className={`xau-bt-mc-val ${pnlPos?'g':'r'}`}>{pnlPos?'+':''}{m.totalPnl?.toFixed(2)}</div></div>
+                <div className="xau-bt-mc"><div className="xau-bt-mc-lbl">Return</div><div className={`xau-bt-mc-val ${pnlPos?'g':'r'}`}>{pnlPos?'+':''}{m.totalPnlPct?.toFixed(2)}%</div></div>
+                <div className="xau-bt-mc"><div className="xau-bt-mc-lbl">Avg R:R</div><div className="xau-bt-mc-val a">1:{m.avgRR?.toFixed(2)}</div></div>
+                <div className="xau-bt-mc"><div className="xau-bt-mc-lbl">Profit Factor</div><div className={`xau-bt-mc-val ${(m.profitFactor??0)>=1?'g':'r'}`}>{m.profitFactor ?? '∞'}</div></div>
+              </div>
+
+              {/* Equity curve */}
+              <div className="xau-equity-wrap">
+                <EquityCurve curve={result.equity_curve} />
+              </div>
+            </div>
+          </div>
+
+          {/* Trade table */}
+          {result.trades?.length > 0 && (
+            <div className="card">
+              <div className="card-hd">
+                <span className="card-title">Trade Log</span>
+                <span className="badge badge-gray">{result.trades.length} trades</span>
+              </div>
+              <div className="tbl-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>#</th><th>Time</th><th>Entry</th>
+                      <th>SL</th><th>TP</th><th>R:R</th>
+                      <th>Score</th><th>Strength</th><th>Outcome</th><th>P&amp;L</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.trades.map((t, i) => {
+                      const oc = t.outcome === 'WIN' ? 'badge-green' : t.outcome === 'LOSS' ? 'badge-red' : 'badge-gray';
+                      const sc = t.strength === 'STRONG' ? 'badge-green' : 'badge-gray';
+                      return (
+                        <tr key={i}>
+                          <td className="td-muted">{i + 1}</td>
+                          <td className="td-mono td-muted">{t.entry_timestamp?.slice(0, 16)}</td>
+                          <td className="td-mono">{t.entry?.toFixed(2)}</td>
+                          <td className="td-loss">{t.stop_loss?.toFixed(2)}</td>
+                          <td className="td-win">{t.take_profit?.toFixed(2)}</td>
+                          <td className="td-mono">1:{t.risk_reward?.toFixed(2)}</td>
+                          <td className="td-mono">{t.score}/5</td>
+                          <td><span className={`badge ${sc}`}>{t.strength}</span></td>
+                          <td><span className={`badge ${oc}`}>{t.outcome}</span></td>
+                          <td className={t.pnl >= 0 ? 'td-win' : 'td-loss'}>{t.pnl >= 0 ? '+' : ''}{t.pnl?.toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   XAU Scalp — Decision Log Panel
+───────────────────────────────────────────────────────────────────────────── */
+function XauSignalLogPanel() {
+  const [entries, setEntries] = useState([]);
+  const [filter,  setFilter]  = useState('all'); // all | signal | nosignal
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch('/api/xau-scalp/log?limit=200');
+        if (!r.ok || cancelled) return;
+        const d = await r.json();
+        setEntries(d.log || []);
+      } catch {}
+    };
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  const COND_LABELS = ['T', 'Z', 'S', 'R', 'V'];
+  const COND_KEYS   = ['uptrend', 'demandZone', 'liquiditySweep', 'rejection', 'volume'];
+  const COND_TIPS   = ['Uptrend', 'Demand Zone', 'Liq. Sweep', 'Rejection', 'Volume Spike'];
+
+  const filtered = entries.filter(e =>
+    filter === 'all' ? true :
+    filter === 'signal' ? e.decision === 'SIGNAL' :
+    e.decision !== 'SIGNAL'
+  );
+
+  return (
+    <div className="card">
+      <div className="card-hd">
+        <span className="card-title">Decision Log · XAU SCALP</span>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[['all','All'],['signal','Signals Only'],['nosignal','No Signal']].map(([v, l]) => (
+            <button key={v} className={`btn btn-ghost btn-sm${filter===v?' active':''}`}
+              style={filter===v?{borderColor:'var(--accent)',color:'var(--accent)'}:{}}
+              onClick={() => setFilter(v)}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 16, padding: '8px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, color: 'var(--muted)' }}>
+        {COND_KEYS.map((k, i) => (
+          <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span className="xau-log-dot on" />
+            {COND_TIPS[i]} ({COND_LABELS[i]})
+          </span>
+        ))}
+      </div>
+
+      <div className="xau-log-wrap">
+        {filtered.length === 0 && (
+          <div style={{ color: 'var(--muted)', textAlign: 'center', padding: '32px 0' }}>
+            {entries.length === 0 ? 'Waiting for first M1 candle close…' : 'No entries match filter'}
+          </div>
+        )}
+        {filtered.map((e, i) => {
+          const isSignal = e.decision === 'SIGNAL';
+          const conds    = e.conditions || {};
+          return (
+            <div key={i} className={`xau-log-entry${isSignal ? ' signal' : ''}`}>
+              <span className="xau-log-ts">{e.candleTime || '—'}</span>
+              <span className="xau-log-price">{e.price?.toFixed(2)}</span>
+              <span className="xau-log-conds" title={COND_TIPS.join(' | ')}>
+                {COND_KEYS.map((k, ci) => (
+                  <span key={k} className={`xau-log-dot ${conds[k] ? 'on' : 'off'}`} title={COND_TIPS[ci]} />
+                ))}
+              </span>
+              <span className="xau-log-score">{e.score ?? 0}/5</span>
+              <span className={`xau-log-decision ${isSignal ? 'signal' : 'no'}`}>
+                {isSignal ? `⚡ ${e.strength}` : '— no signal'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
+function XauScalpWorkspace() {
+  const [conditions,    setConditions]    = useState({});
+  const [latestSignal,  setLatestSignal]  = useState(null);
+  const [signalHistory, setSignalHistory] = useState([]);
+  const [stats,         setStats]         = useState({});
+  const [livePrice,     setLivePrice]     = useState(null);
+  const [openPrice,     setOpenPrice]     = useState(null);
+  const [activeTab,     setActiveTab]     = useState(() => {
+    try { return localStorage.getItem('strategy:xau-scalp:tab') || 'signals'; } catch { return 'signals'; }
+  });
+
+  const mainChartRef  = useRef(null);
+  const mainSeriesRef = useRef(null);
+  const volChartRef   = useRef(null);
+  const volSeriesRef  = useRef(null);
+  const priceLinesRef = useRef({});
+  const chartContRef  = useRef(null);
+  const volContRef    = useRef(null);
+  const chartInited   = useRef(false);
+
+  const setTab = (t) => {
+    setActiveTab(t);
+    try { localStorage.setItem('strategy:xau-scalp:tab', t); } catch {}
+  };
+
+  // ── Draw signal price lines ──────────────────────────────────────────────
+  function drawSignalLines(sig, series) {
+    if (!series) return;
+    const pl = priceLinesRef.current;
+    Object.values(pl).forEach(ref => { try { series.removePriceLine(ref); } catch {} });
+    priceLinesRef.current = {};
+    if (!sig) return;
+    const LS = window.LightweightCharts.LineStyle;
+    priceLinesRef.current.entry = series.createPriceLine({ price: sig.entryPrice,  color: '#26a69a', lineWidth: 1, lineStyle: LS.Dashed, title: 'ENTRY' });
+    priceLinesRef.current.sl    = series.createPriceLine({ price: sig.stopLoss,    color: '#ef5350', lineWidth: 1, lineStyle: LS.Dashed, title: 'SL'    });
+    priceLinesRef.current.tp    = series.createPriceLine({ price: sig.takeProfit,  color: '#f0b429', lineWidth: 1, lineStyle: LS.Dashed, title: 'TP'    });
+    priceLinesRef.current.be    = series.createPriceLine({ price: sig.breakEvenAt, color: '#b2b5be', lineWidth: 1, lineStyle: LS.Dotted, title: 'BE'    });
+  }
+
+  // ── Init chart on first visit to chart tab ───────────────────────────────
+  useEffect(() => {
+    if (activeTab !== 'chart') return;
+    if (chartInited.current) return;
+    chartInited.current = true;
+
+    const LC = window.LightweightCharts;
+    if (!LC || !chartContRef.current) return;
+
+    const baseOpts = {
+      layout:     { background: { color: '#131722' }, textColor: '#8b949e' },
+      grid:       { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
+      rightPriceScale: { borderColor: '#1e222d' },
+      timeScale:  { borderColor: '#1e222d', timeVisible: true, secondsVisible: false },
+      crosshair:  { mode: 1 },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true },
+      handleScale:  { mouseWheel: true, pinch: true },
+    };
+
+    const chart  = LC.createChart(chartContRef.current, { ...baseOpts, height: 380 });
+    const series = chart.addCandlestickSeries({
+      upColor: '#26a69a', downColor: '#ef5350',
+      borderUpColor: '#26a69a', borderDownColor: '#ef5350',
+      wickUpColor:   '#26a69a', wickDownColor:   '#ef5350',
+    });
+    mainChartRef.current  = chart;
+    mainSeriesRef.current = series;
+
+    if (volContRef.current) {
+      const vChart  = LC.createChart(volContRef.current, { ...baseOpts, height: 80, rightPriceScale: { visible: false }, timeScale: { visible: false } });
+      const vSeries = vChart.addHistogramSeries({ priceScaleId: 'vol', color: '#26a69a', priceFormat: { type: 'volume' } });
+      volChartRef.current  = vChart;
+      volSeriesRef.current = vSeries;
+      chart.timeScale().subscribeVisibleLogicalRangeChange(lr => {
+        if (lr) vChart.timeScale().setVisibleLogicalRange(lr);
+      });
+    }
+
+    // Load historical candles
+    fetch('/api/candles/M1').then(r => r.json()).then(d => {
+      const raw     = d.candles || d;
+      const candles = raw.map(c => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }));
+      if (candles.length) {
+        series.setData(candles);
+        chart.timeScale().fitContent();
+        setOpenPrice(p => p ?? candles[0].open);
+      }
+      if (volSeriesRef.current) {
+        const vols = raw.map(c => ({ time: c.time, value: c.volume || 0, color: c.close >= c.open ? 'rgba(38,166,154,.6)' : 'rgba(239,83,80,.5)' }));
+        volSeriesRef.current.setData(vols);
+      }
+      // Redraw any active signal lines
+      if (latestSignal) drawSignalLines(latestSignal, series);
+    }).catch(() => {});
+  }, [activeTab]);
+
+  // ── Poll /api/xau-scalp/status every 3s ─────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch('/api/xau-scalp/status');
+        if (!r.ok || cancelled) return;
+        const d = await r.json();
+        setConditions(d.conditions || {});
+        setLatestSignal(d.latestSignal || null);
+        setStats(d.stats || {});
+        if (d.livePrice?.price) {
+          setLivePrice(d.livePrice.price);
+          setOpenPrice(p => p ?? d.livePrice.price);
+        }
+        if (d.latestSignal && mainSeriesRef.current) {
+          drawSignalLines(d.latestSignal, mainSeriesRef.current);
+        }
+      } catch {}
+    };
+    poll();
+    const id = setInterval(poll, 3000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  // ── Poll signal history every 10s ───────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch('/api/xau-scalp/signals/history?limit=20');
+        if (!r.ok || cancelled) return;
+        const d = await r.json();
+        setSignalHistory(d.signals || d || []);
+      } catch {}
+    };
+    poll();
+    const id = setInterval(poll, 10000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  // ── SSE live ticks/candles ───────────────────────────────────────────────
+  useEffect(() => {
+    let es = null, reconnTimer = null;
+    const connect = () => {
+      es = new EventSource('/api/stream/M1');
+      es.onmessage = evt => {
+        try {
+          const ev = JSON.parse(evt.data);
+          if (ev.type === 'tick') {
+            if (ev.price) {
+              setLivePrice(ev.price);
+              setOpenPrice(p => p ?? ev.price);
+            }
+            const m1 = ev.candles && ev.candles.M1;
+            if (m1 && mainSeriesRef.current) {
+              mainSeriesRef.current.update({ time: m1.time, open: m1.open, high: m1.high, low: m1.low, close: m1.close });
+              if (volSeriesRef.current && m1.volume !== undefined)
+                volSeriesRef.current.update({ time: m1.time, value: m1.volume, color: m1.close >= m1.open ? 'rgba(38,166,154,.6)' : 'rgba(239,83,80,.5)' });
+            }
+          } else if (ev.type === 'candle' && ev.timeframe === 'M1') {
+            const c = ev.candle;
+            if (c && mainSeriesRef.current)
+              mainSeriesRef.current.update({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close });
+          }
+        } catch {}
+      };
+      es.onerror = () => { es.close(); reconnTimer = setTimeout(connect, 5000); };
+    };
+    connect();
+    return () => { if (reconnTimer) clearTimeout(reconnTimer); if (es) es.close(); };
+  }, []);
+
+  // ── Derived display values ───────────────────────────────────────────────
+  const chgAmt  = livePrice && openPrice ? livePrice - openPrice : 0;
+  const chgPct  = openPrice ? (chgAmt / openPrice * 100).toFixed(2) : '0.00';
+  const chgSign = chgAmt >= 0 ? '+' : '';
+
+  const ut = conditions.uptrend         || {};
+  const dz = conditions.demandZone      || {};
+  const lq = conditions.liquiditySweep  || {};
+  const rj = conditions.rejectionCandle || {};
+  const vl = conditions.volumeSpike     || {};
+
+  const signalAge  = latestSignal ? Date.now() - latestSignal.timestamp : Infinity;
+  const showBanner = latestSignal && signalAge < 300_000;
+
+  const xauTabs = [
+    { id: 'signals',  icon: '⚡', label: 'Live Signals' },
+    { id: 'chart',    icon: '📈', label: 'M1 Chart'     },
+    { id: 'history',  icon: '📋', label: 'History'      },
+    { id: 'backtest', icon: '📊', label: 'Backtest'     },
+    { id: 'log',      icon: '🗒️', label: 'Signal Log'   },
+  ];
+
+  return (
+    <div>
+      {/* ── Sub-tabs ── */}
+      <div style={{ display:'flex', alignItems:'center', gap:'2px', padding:'0 20px', height:'40px', borderBottom:'1px solid var(--border)', background:'var(--surface)' }}>
+        {xauTabs.map(t => (
+          <button key={t.id} className={`nav-tab${activeTab === t.id ? ' active' : ''}`}
+            style={{ fontSize:'12px' }} onClick={() => setTab(t.id)}>
+            <span className="nav-tab-icon">{t.icon}</span>{t.label}
+          </button>
+        ))}
+      </div>
+
+      <main className="main">
+
+        {/* ── Live Signals Tab ── */}
+        {activeTab === 'signals' && (
+          <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
+
+            {/* Strategy header */}
+            <div className="xau-strat-header">
+              <div>
+                <div className="xau-strat-title">⚡ XAU SCALP STRATEGY</div>
+                <div className="xau-strat-sub">M1 · XAUUSD · Long-only · Order-block pullbacks</div>
+              </div>
+              <div className="xau-strat-right">
+                <div className="xau-live-badge">LIVE</div>
+                <div className="xau-price-live">{livePrice ? livePrice.toFixed(2) : '—'}</div>
+                {livePrice && (
+                  <div className={`xau-price-change ${chgAmt >= 0 ? 'up' : 'dn'}`}>
+                    {chgSign}{chgAmt.toFixed(2)} ({chgPct}%)
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Signal banner */}
+            {showBanner && (
+              <div className={`xau-signal-banner ${latestSignal.strength.toLowerCase()}`}>
+                ⚡ {latestSignal.strength} BUY SIGNAL &nbsp;·&nbsp;
+                Entry: {latestSignal.entryPrice.toFixed(2)} &nbsp;|&nbsp;
+                SL: {latestSignal.stopLoss.toFixed(2)} &nbsp;|&nbsp;
+                TP: {latestSignal.takeProfit.toFixed(2)} &nbsp;|&nbsp;
+                R:R 1:{latestSignal.riskReward.toFixed(1)}
+              </div>
+            )}
+
+            {/* 5 Condition Cards */}
+            <div className="xau-cond-grid">
+              <XauCondCard icon="📈" name="Uptrend" active={ut.active}
+                value={ut.active ? `${(ut.strength||'').toUpperCase()} — ${ut.higherHighs||0}HH ${ut.higherLows||0}HL` : 'No uptrend'}
+                badge={ut.active ? '✅ ACTIVE' : '❌ INACTIVE'} />
+              <XauCondCard icon="🎯" name="Demand Zone" active={dz.active}
+                value={dz.active && dz.zone ? `${dz.zone.zoneLow?.toFixed(1)} – ${dz.zone.zoneHigh?.toFixed(1)}` : 'No zone'}
+                badge={dz.active ? '✅ IN ZONE' : '❌ INACTIVE'} />
+              <XauCondCard icon="💧" name="Liq. Sweep" active={lq.active}
+                value={lq.active ? `Swept −${(lq.sweep||{}).depth||0} pips` : 'No sweep'}
+                badge={lq.active ? '✅ SWEPT' : '❌ INACTIVE'} />
+              <XauCondCard icon="🕯️" name="Rejection" active={rj.active}
+                value={rj.active ? 'Rejection found' : 'No rejection'}
+                badge={rj.active ? '✅ ACTIVE' : '❌ INACTIVE'} />
+              <XauCondCard icon="📊" name="Volume Spike" active={vl.active}
+                value={`${vl.ratio||0}× avg${vl.active ? ` (${(vl.strength||'').replace('_',' ')})` : ''}`}
+                badge={vl.active ? '✅ SPIKE' : '❌ LOW VOL'} />
+            </div>
+
+            {/* Latest Signal Detail */}
+            {latestSignal && (
+              <div className="xau-signal-card">
+                <div className="xau-signal-card-hd">
+                  <div className={`xau-signal-card-title ${latestSignal.strength.toLowerCase()}`}>
+                    {latestSignal.strength === 'STRONG' ? '⚡ STRONG LONG SIGNAL' : '⚡ MEDIUM LONG SIGNAL'}
+                  </div>
+                  <div className="xau-signal-time">
+                    {new Date(latestSignal.timestamp).toUTCString().slice(5, 22)} UTC
+                  </div>
+                </div>
+                <div className="xau-signal-grid">
+                  {[
+                    ['Entry',        latestSignal.entryPrice?.toFixed(2),  'g'],
+                    ['Stop Loss',    latestSignal.stopLoss?.toFixed(2),    'r'],
+                    ['Take Profit',  latestSignal.takeProfit?.toFixed(2),  'g'],
+                    ['R:R',          `1:${latestSignal.riskReward?.toFixed(1)}`, 'a'],
+                    ['Risk (pips)',  `${latestSignal.riskPips} pips`,      ''],
+                    ['Reward (pips)',`${latestSignal.rewardPips} pips`,    ''],
+                    ['ATR',          latestSignal.atrValue?.toFixed(2),    ''],
+                    ['Break Even',   latestSignal.breakEvenAt?.toFixed(2), ''],
+                  ].map(([lbl, val, cls], i) => (
+                    <div key={i}>
+                      <div className="xau-signal-field-lbl">{lbl}</div>
+                      <div className={`xau-signal-field-val${cls ? ' '+cls : ''}`}>{val || '—'}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="xau-cond-list">
+                  {[
+                    [latestSignal.conditions?.uptrend,          `Uptrend (${latestSignal.trendStrength||'—'})`],
+                    [latestSignal.conditions?.inDemandZone,     `Demand Zone (${latestSignal.zone?.strength||'—'})`],
+                    [latestSignal.conditions?.liquiditySweep,   `Liquidity Sweep (−${latestSignal.sweepDepth||0} pips)`],
+                    [latestSignal.conditions?.rejectionCandle,  'Rejection Candle'],
+                    [latestSignal.conditions?.volumeSpike,      `Volume Spike (${latestSignal.volumeRatio||0}× average)`],
+                  ].map(([ok, label], i) => (
+                    <div key={i} className="xau-cond-row">
+                      <span style={{ fontSize: '14px' }}>{ok ? '✅' : '❌'}</span>
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Stats Bar */}
+            <div className="xau-stats-bar">
+              <div className="xau-stat-card"><div className="xau-stat-lbl">Total Signals</div><div className="xau-stat-val">{stats.totalSignals||0}</div></div>
+              <div className="xau-stat-card"><div className="xau-stat-lbl">Strong Signals</div><div className="xau-stat-val g">{stats.strongSignals||0}</div></div>
+              <div className="xau-stat-card"><div className="xau-stat-lbl">Medium Signals</div><div className="xau-stat-val a">{stats.mediumSignals||0}</div></div>
+              <div className="xau-stat-card"><div className="xau-stat-lbl">M1 Candles</div><div className="xau-stat-val">{stats.candleCount||0}</div></div>
+              <div className="xau-stat-card">
+                <div className="xau-stat-lbl">Last Signal</div>
+                <div className="xau-stat-val" style={{ fontSize: '14px' }}>
+                  {stats.lastSignalTime ? new Date(stats.lastSignalTime).toUTCString().slice(5, 17) : '—'}
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* ── M1 Chart Tab ── */}
+        {activeTab === 'chart' && (
+          <div className="card" style={{ overflow: 'hidden' }}>
+            <div className="card-hd">
+              <span className="card-title">XAUUSD · M1 · Live</span>
+              {livePrice && (
+                <span style={{ fontFamily: 'monospace', fontSize: '13px', color: 'var(--text)', fontWeight: 700 }}>
+                  {livePrice.toFixed(2)}
+                  <span style={{ marginLeft: 8, fontSize: 11, color: chgAmt >= 0 ? 'var(--win)' : 'var(--loss)' }}>
+                    {chgSign}{chgAmt.toFixed(2)}
+                  </span>
+                </span>
+              )}
+            </div>
+            <div ref={chartContRef} style={{ height: '380px', background: '#131722' }} />
+            <div ref={volContRef}   style={{ height: '80px',  background: '#131722', borderTop: '1px solid #1e222d' }} />
+          </div>
+        )}
+
+        {/* ── Backtest Tab ── */}
+        {activeTab === 'backtest' && <XauBacktestPanel />}
+
+        {/* ── Signal Log Tab ── */}
+        {activeTab === 'log' && <XauSignalLogPanel />}
+
+        {/* ── History Tab ── */}
+        {activeTab === 'history' && (
+          <div className="card">
+            <div className="card-hd">
+              <span className="card-title">Signal History</span>
+              <span className="badge badge-gray">{signalHistory.length} signals</span>
+            </div>
+            <div className="tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time (UTC)</th><th>Type</th><th>Entry</th>
+                    <th>Stop</th><th>Target</th><th>R:R</th>
+                    <th>Strength</th><th>Outcome</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {signalHistory.length === 0 && (
+                    <tr><td colSpan="8" className="sig-empty">No signals yet — waiting for entry conditions</td></tr>
+                  )}
+                  {signalHistory.map((s, i) => {
+                    const t  = new Date(s.timestamp).toUTCString().slice(5, 17);
+                    const oc = s.outcome === 'WIN' ? 'badge-green' : s.outcome === 'LOSS' ? 'badge-red' : 'badge-gray';
+                    const sc = s.strength === 'STRONG' ? 'badge-green' : 'badge-gray';
+                    return (
+                      <tr key={i}>
+                        <td className="td-mono td-muted">{t}</td>
+                        <td className="td-buy">LONG</td>
+                        <td className="td-mono">{s.entryPrice?.toFixed(2)}</td>
+                        <td className="td-loss">{s.stopLoss?.toFixed(2)}</td>
+                        <td className="td-win">{s.takeProfit?.toFixed(2)}</td>
+                        <td className="td-mono">{s.riskReward?.toFixed(1)}</td>
+                        <td><span className={`badge ${sc}`}>{s.strength}</span></td>
+                        <td><span className={`badge ${oc}`}>{s.outcome || 'PENDING'}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+      </main>
+    </div>
+  );
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Strategy Registry
+───────────────────────────────────────────────────────────────────────────── */
+const StrategyRegistry = {
+  'rsi-ema': {
+    id: 'rsi-ema', icon: '📊', name: 'RSI EMA',
+    timeframe: '5m / 15m / 1H',
+    tabs: [
+      { id: 'backtest', icon: '📊', label: 'Backtest'        },
+      { id: 'signals',  icon: '⚡', label: 'Signal History'  },
+    ],
+    defaultTab: 'backtest',
+  },
+  'xau-scalp': {
+    id: 'xau-scalp', icon: '⚡', name: 'XAU SCALP',
+    timeframe: 'M1',
+    externalUrl: '/dashboard/xau-scalp',
+    tabs: [], // managed internally by XauScalpWorkspace
+    defaultTab: 'signals',
+  },
+};
+
+function App() {
+  const [clock, setClock] = useState('');
+  const routeStrategy = (() => {
+    try {
+      const path = window.location.pathname;
+      if (path === '/dashboard/rsi-ema') return 'rsi-ema';
+      if (path === '/index.html') return 'rsi-ema';
+      return null;
+    } catch {
+      return null;
+    }
+  })();
+
+  // ── Active strategy — persisted across page reloads ─────────────────────
+  const [activeStrategy, setActiveStrategy] = useState(() => {
+    try { return routeStrategy || localStorage.getItem('activeStrategy') || 'rsi-ema'; } catch { return routeStrategy || 'rsi-ema'; }
+  });
+
+  // ── RSI-EMA tab state — isolated to this strategy ───────────────────────
+  const [rsiTab, setRsiTab] = useState(() => {
+    try {
+      const saved = localStorage.getItem('strategy:rsi-ema:tab');
+      // Only allow valid tabs; ignore 'chart' and 'live' which were removed
+      return (saved && ['backtest', 'signals'].includes(saved)) ? saved : 'backtest';
+    } catch { return 'backtest'; }
+  });
+
+  // ── RSI-EMA backtest result — isolated ──────────────────────────────────
+  const [backtestResult, setBacktestResult] = useState(() => {
+    try {
+      const saved = localStorage.getItem('strategy:rsi-ema:backtest');
       return saved ? JSON.parse(saved) : null;
     } catch { return null; }
   });
-  const [activeTab,      setActiveTab]      = useState('live');
 
-  // Persist backtest result to localStorage whenever it changes
-  const handleBacktestComplete = useCallback((data) => {
-    setBacktestResult(data);
-    try { localStorage.setItem('sean0_last_backtest', JSON.stringify(data)); } catch {}
+  const handleStrategyChange = useCallback((id) => {
+    if (id === 'xau-scalp') {
+      window.location.href = '/dashboard/xau-scalp';
+      return;
+    }
+    setActiveStrategy(id);
+    try { localStorage.setItem('activeStrategy', id); } catch {}
   }, []);
 
-  // Load a historical report (from MongoDB) — merges into same state
+  useEffect(() => {
+    if (!routeStrategy) return;
+    setActiveStrategy(routeStrategy);
+    try { localStorage.setItem('activeStrategy', routeStrategy); } catch {}
+  }, [routeStrategy]);
+
+  const handleRsiTabChange = useCallback((tab) => {
+    setRsiTab(tab);
+    try { localStorage.setItem('strategy:rsi-ema:tab', tab); } catch {}
+  }, []);
+
+  const handleBacktestComplete = useCallback((data) => {
+    setBacktestResult(data);
+    try { localStorage.setItem('strategy:rsi-ema:backtest', JSON.stringify(data)); } catch {}
+  }, []);
+
   const handleHistoryLoad = useCallback((reportDoc) => {
     const result = {
       metrics:      reportDoc.metrics      || {},
@@ -3060,105 +3923,113 @@ function App() {
       mongo_id:     reportDoc._id,
     };
     setBacktestResult(result);
-    try { localStorage.setItem('sean0_last_backtest', JSON.stringify(result)); } catch {}
-    // Switch to backtest tab so user sees the loaded data
-    setActiveTab('backtest');
+    try { localStorage.setItem('strategy:rsi-ema:backtest', JSON.stringify(result)); } catch {}
+    handleRsiTabChange('backtest');
+  }, []);
+
+  // Market status
+  const [marketStatus, setMarketStatus] = useState(null);
+  useEffect(() => {
+    const check = () => fetch('/api/market/status').then(r => r.json()).then(setMarketStatus).catch(() => {});
+    check();
+    const id = setInterval(check, 30000);
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
-    const tick = () => {
-      const now = new Date();
-      setClock(now.toUTCString().slice(5, 22) + ' UTC');
-    };
+    const tick = () => setClock(new Date().toUTCString().slice(5, 22) + ' UTC');
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
 
+  const strat = StrategyRegistry[activeStrategy];
+
   return (
     <div>
-      {/* ── Header ── */}
-      <header className="hdr">
-        <div className="hdr-brand">
-          <div className="hdr-dot" />
-          SEAN0-ALGO
-          <span style={{ color: 'var(--muted)', fontWeight: 400 }}>· XAUUSD</span>
+      {/* ── Main Nav ── */}
+      <nav id="main-nav">
+        <div className="nav-brand">SEAN ALGO</div>
+        <div className="nav-links">
+          <a href="/dashboard/rsi-ema" className="nav-item active" id="nav-rsi">RSI EMA</a>
+          <a href="/dashboard/xau-scalp" className="nav-item" id="nav-xau">XAU SCALP</a>
+          <a href="/dashboard/crypto" className="nav-item" id="nav-crypto">CRYPTO</a>
+          <a href="/dashboard/backtest-eth-ict" className="nav-item" id="nav-ict">ICT ETH</a>
+          <a href="/dashboard/backtest-xau-ict" className="nav-item" id="nav-ict-xau">ICT XAU</a>
+          <a href="/dashboard/live-bot" className="nav-item nav-live" id="nav-bot">
+            <span className="bot-dot" id="bot-status-dot"></span>
+            LIVE BOT
+          </a>
         </div>
+      </nav>
 
-        {/* ── Nav Tabs — centered in header ── */}
-        <nav className="hdr-nav">
-          <button
-            className={`nav-tab${activeTab === 'chart' ? ' active' : ''}`}
-            onClick={() => setActiveTab('chart')}>
-            <span className="nav-tab-icon">&#128200;</span>Chart
-          </button>
-          <button
-            className={`nav-tab${activeTab === 'live' ? ' active' : ''}`}
-            onClick={() => setActiveTab('live')}>
-            <span className="nav-tab-icon">&#128251;</span>Live Bot
-          </button>
-          <button
-            className={`nav-tab${activeTab === 'backtest' ? ' active' : ''}`}
-            onClick={() => setActiveTab('backtest')}>
-            <span className="nav-tab-icon">&#128202;</span>Backtest
-          </button>
-          <button
-            className={`nav-tab${activeTab === 'signals' ? ' active' : ''}`}
-            onClick={() => setActiveTab('signals')}>
-            <span className="nav-tab-icon">&#9889;</span>Live Signals
-          </button>
-        </nav>
-
-        <div className="hdr-meta">
-          <span className="badge badge-gray">5m / 15m / 1H</span>
-          <span className="badge badge-green">OANDA</span>
-          <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{clock}</span>
+      {/* ── Market closed banner ── */}
+      {marketStatus && marketStatus.closed && (
+        <div style={{margin:'0 24px', marginTop:'12px', padding:'12px 20px', background:'linear-gradient(135deg,#1a1a2e,#16213e)', border:'1px solid #e2b340', borderRadius:'8px', color:'#e2b340', fontSize:'14px', fontWeight:600, textAlign:'center'}}>
+          🌙 {marketStatus.reason || 'Forex market closed'}
+          {marketStatus.nextOpen && (() => {
+            const diff = new Date(marketStatus.nextOpen) - new Date();
+            if (diff <= 0) return null;
+            const hrs = Math.floor(diff / 3600000);
+            const mins = Math.floor((diff % 3600000) / 60000);
+            return <span style={{fontSize:'12px', fontWeight:400, color:'#787b86', marginLeft:'8px'}}>· Opens in {hrs}h {mins}m</span>;
+          })()}
         </div>
-      </header>
+      )}
 
-      {/* ── Content ── */}
+      {/* ── Page title ── */}
+      <div style={{padding:'20px 24px 0', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+        <div>
+          <h1 style={{margin:0, fontSize:'18px', fontWeight:700, color:'#d1d4dc'}}>RSI EMA STRATEGY</h1>
+          <p style={{margin:'4px 0 0', fontSize:'13px', color:'#787b86'}}>Backtest results and signal history</p>
+        </div>
+      </div>
 
-        {/* ── Chart Tab — full-height, minimal padding ── */}
-        {activeTab === 'chart' && (
-          <main className="main-chart">
-            <ChartPanel />
-          </main>
-        )}
+      {/* ── RSI EMA tab bar ── */}
+      {activeStrategy === 'rsi-ema' && (
+        <div style={{ display:'flex', alignItems:'center', gap:'2px', padding:'12px 24px 0' }}>
+          {strat.tabs.map(t => (
+            <button key={t.id}
+              className={`nav-tab${rsiTab === t.id ? ' active' : ''}`}
+              style={{ fontSize: '12px' }}
+              onClick={() => handleRsiTabChange(t.id)}>
+              <span className="nav-tab-icon">{t.icon}</span>{t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-        {activeTab !== 'chart' && (
-          <main className="main">
+      {/* ── RSI EMA Workspace ── */}
+      {activeStrategy === 'rsi-ema' && (
+        <main className="main">
+          {rsiTab === 'backtest' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <BacktestPanel onBacktestComplete={handleBacktestComplete} initialResult={backtestResult} />
+              <BacktestHistoryPanel onLoad={handleHistoryLoad} />
+              <TradeHistoryPanel backtestResult={backtestResult} />
+            </div>
+          )}
+          {rsiTab === 'signals' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <LiveSignalsPanel />
+            </div>
+          )}
+        </main>
+      )}
 
-            {/* ── Live Bot Tab ── */}
-            {activeTab === 'live' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <BotControlPanel />
-                <LogsPanel />
-              </div>
-            )}
-
-            {/* ── Backtest Tab ── */}
-            {activeTab === 'backtest' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <BacktestPanel onBacktestComplete={handleBacktestComplete} initialResult={backtestResult} />
-                <BacktestHistoryPanel onLoad={handleHistoryLoad} />
-                <TradeHistoryPanel backtestResult={backtestResult} />
-              </div>
-            )}
-
-            {/* ── Live Signals Tab ── */}
-            {activeTab === 'signals' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <LiveSignalsPanel />
-              </div>
-            )}
-
-          </main>
-        )}
     </div>
   );
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+<script>
+(function(){
+  fetch('/api/bot/status').then(r=>r.json()).then(d=>{
+    const dot = document.getElementById('bot-status-dot');
+    if(dot) dot.classList.toggle('running', !!(d.rsiEma?.running || d.xauScalp?.running));
+  }).catch(()=>{});
+})();
 </script>
 </body>
 </html>

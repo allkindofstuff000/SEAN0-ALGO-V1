@@ -28,7 +28,7 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -40,17 +40,24 @@ try:
         load_backtest_report,
         save_bot_state,
         load_bot_state,
+        save_strategy_state,
+        load_strategy_state,
+        load_strategy_started_at,
         load_live_signals,
         update_signal_outcome,
     )
     _MONGO_AVAILABLE = True
-except Exception:
+except Exception as _mongo_exc:
     _MONGO_AVAILABLE = False
+    import logging as _log; _log.getLogger("dashboard").warning("[MONGO] import failed: %s", _mongo_exc)
     def save_backtest_report(**_):       return None
     def load_backtest_history(**_):      return []
     def load_backtest_report(_):         return None
     def save_bot_state(_):               return False
     def load_bot_state():                return None
+    def save_strategy_state(*_):         return False
+    def load_strategy_state(_):          return None
+    def load_strategy_started_at(_):     return None
     def load_live_signals(**_):          return []
     def update_signal_outcome(*_, **__): return False
 
@@ -72,6 +79,37 @@ except Exception as _eng_exc:
 
 _stream_engine: "OandaStreamEngine | None" = None
 
+# ── XAU Scalp strategy (isolated — does NOT touch existing RSI EMA code) ──────
+try:
+    from strategies.xau_scalp import XauScalpSignal as _XauScalpSignal
+    _XAU_SCALP_AVAILABLE = True
+except Exception as _xau_exc:
+    _XAU_SCALP_AVAILABLE = False
+    LOGGER = logging.getLogger("dashboard")
+    logging.basicConfig(level=logging.INFO)
+    logging.getLogger("dashboard").warning("[XAU-SCALP] import failed: %s", _xau_exc)
+
+_xau_scalp: "_XauScalpSignal | None" = None
+
+# ── Binance ETH engine (isolated — does NOT touch OANDA code) ─────────────────
+try:
+    from core.binance_engine import BinanceCandleEngine
+    _BINANCE_AVAILABLE = True
+except Exception as _bin_exc:
+    _BINANCE_AVAILABLE = False
+    logging.getLogger("dashboard").warning("[BINANCE] import failed: %s", _bin_exc)
+
+_binance_engine: "BinanceCandleEngine | None" = None
+
+# ── ETH strategies ────────────────────────────────────────────────────────────
+try:
+    from strategies.rsi_eth import RsiEthSignal as _RsiEthSignal
+    _RSI_ETH_AVAILABLE = True
+except Exception:
+    _RSI_ETH_AVAILABLE = False
+
+_rsi_eth: "_RsiEthSignal | None" = None
+
 # Live-bot decision log (written by main.py)
 LOG_PATH = ROOT / "logs" / "decision_trace.log"
 # Backtest trades CSV (written by backtest_forex_engine.run_backtest)
@@ -85,15 +123,67 @@ logging.basicConfig(
 )
 LOGGER = logging.getLogger("dashboard")
 
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+ENABLE_BINANCE_ETH = _env_flag("ENABLE_BINANCE_ETH", default=False)
+
+
+# ── Forex market hours ────────────────────────────────────────────────────────
+import datetime as _dt
+
+def is_market_open(now_utc: _dt.datetime | None = None) -> dict[str, Any]:
+    """Check if forex market is open. Closed Fri 22:00 UTC → Sun 22:00 UTC."""
+    if now_utc is None:
+        now_utc = _dt.datetime.now(_dt.timezone.utc)
+    wd = now_utc.weekday()  # Mon=0 … Sun=6
+    h, m = now_utc.hour, now_utc.minute
+    t = h * 60 + m  # minutes since midnight
+
+    # Closed: Friday 22:00 UTC → Sunday 22:00 UTC
+    closed = False
+    if wd == 4 and t >= 22 * 60:        # Friday after 22:00
+        closed = True
+    elif wd == 5:                        # Saturday (all day)
+        closed = True
+    elif wd == 6 and t < 22 * 60:        # Sunday before 22:00
+        closed = True
+
+    # Calculate next open time
+    next_open = None
+    if closed:
+        # Next Sunday 22:00 UTC
+        days_until_sunday = (6 - wd) % 7
+        if days_until_sunday == 0 and t >= 22 * 60:
+            days_until_sunday = 7
+        next_open_dt = (now_utc + _dt.timedelta(days=days_until_sunday)).replace(
+            hour=22, minute=0, second=0, microsecond=0
+        )
+        next_open = next_open_dt.isoformat()
+
+    return {
+        "open": not closed,
+        "closed": closed,
+        "reason": "Weekend — Forex market closed (Fri 22:00 → Sun 22:00 UTC)" if closed else None,
+        "nextOpen": next_open,
+    }
+
+
 # Prevent two backtest runs overlapping
-_backtest_lock = threading.Lock()
+_backtest_lock     = threading.Lock()
+_xau_backtest_lock = threading.Lock()
 
 # ── Bot process management ────────────────────────────────────────────────────
 _bot_process: subprocess.Popen | None = None
 _bot_lock = threading.Lock()
 _bot_start_time: float | None = None
 BOT_SERVICE_NAME = os.getenv("BOT_SERVICE_NAME", "").strip()
-SYSTEMCTL_PATH = shutil.which("systemctl") or "/bin/systemctl"
+SYSTEMCTL_PATH = shutil.which("systemctl")  # None on Windows / non-systemd hosts
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="SEAN0-ALGO Dashboard API", docs_url="/api/docs")
@@ -117,6 +207,14 @@ class BacktestRequest(BaseModel):
     starting_balance: float = 5000.0
     # 1-10 (%) → fraction sent to engine: 0.01–0.10
     risk_per_trade_pct: float = 5.0
+
+
+class XauBacktestRequest(BaseModel):
+    start_date: str | None = None
+    end_date: str | None = None
+    starting_balance: float = 10_000.0
+    risk_per_trade_pct: float = 1.0   # 0.5–5 %
+    max_hold_bars: int = 200          # M1 bars to wait for TP/SL before TIMEOUT
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -157,7 +255,7 @@ def _run_systemctl(action: str, extra_args: list[str] | None = None) -> subproce
         base_cmd.extend(extra_args)
     base_cmd.append(BOT_SERVICE_NAME)
 
-    if os.geteuid() == 0:
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
         command = base_cmd
     elif shutil.which("sudo"):
         command = ["sudo", *base_cmd]
@@ -584,8 +682,38 @@ async def _init_candle_engine() -> None:
         await engine.start(loop)
         _stream_engine = engine
         LOGGER.info("[ENGINE] candle engine started")
+
+        # Start XAU Scalp strategy (subscribes to same stream — no second OANDA conn)
+        if _XAU_SCALP_AVAILABLE:
+            global _xau_scalp
+            _xau_scalp = _XauScalpSignal(engine)
+            await _xau_scalp.initialize()
+            LOGGER.info("[XAU-SCALP] strategy engine started")
     except Exception as exc:
         LOGGER.error("[ENGINE] startup failed: %s", exc)
+
+    # ── Start Binance ETH engine only when explicitly enabled ──
+    global _binance_engine, _rsi_eth
+    if not ENABLE_BINANCE_ETH:
+        LOGGER.info("[BINANCE] ETH engine disabled by config (set ENABLE_BINANCE_ETH=true to enable)")
+        _binance_engine = None
+        _rsi_eth = None
+    elif _BINANCE_AVAILABLE:
+        try:
+            _binance_engine = BinanceCandleEngine.from_env()
+            loop = asyncio.get_event_loop()
+            await _binance_engine.start(loop)
+            LOGGER.info("[BINANCE] ETH candle engine started")
+
+            # Start RSI EMA ETH strategy
+            if _RSI_ETH_AVAILABLE and _binance_engine:
+                _rsi_eth = _RsiEthSignal(_binance_engine)
+                await _rsi_eth.initialize()
+                LOGGER.info("[RSI-ETH] strategy started")
+
+        except Exception as exc:
+            LOGGER.error("[BINANCE] startup failed: %s", exc)
+            _binance_engine = None
 
 
 @app.on_event("startup")
@@ -625,6 +753,22 @@ async def _auto_resume_bot() -> None:
                     LOGGER.info("[BOT] startup: auto-start subprocess pid=%s", _bot_process.pid)
     except Exception as exc:
         LOGGER.warning("[BOT] startup auto-resume failed: %s", exc)
+
+    # Auto-resume ETH strategies from MongoDB
+    try:
+        if _rsi_eth is not None:
+            rsi_eth_intent = load_strategy_state("rsi-eth")
+            if rsi_eth_intent == "running":
+                if _rsi_eth._paused:
+                    await _rsi_eth.resume()
+                    LOGGER.info("[RSI-ETH] auto-resumed from MongoDB state")
+            else:
+                # Default: start paused — user must click Start
+                if _rsi_eth._initialized and not _rsi_eth._paused:
+                    _rsi_eth.stop()
+                    LOGGER.info("[RSI-ETH] stopped on startup (last intent=%s)", rsi_eth_intent)
+    except Exception as exc:
+        LOGGER.warning("[ETH] startup auto-resume failed: %s", exc)
 
 
 # ── Chart API ────────────────────────────────────────────────────────────────
@@ -699,7 +843,7 @@ def get_chart_candles(granularity: str = "M5", count: int = 200) -> dict[str, An
 
     # Serve from engine cache if available and populated
     if _stream_engine is not None:
-        cached = _stream_engine.store.get_candles(gran)
+        cached = _stream_engine.store.get_all(gran)
         if cached:
             return {"candles": cached[-count:], "granularity": gran, "source": "engine"}
 
@@ -738,9 +882,9 @@ async def stream_candle_updates(timeframe: str) -> StreamingResponse:
             # Send init with stored historical candles immediately
             if _stream_engine._history_loaded:
                 if tf == "ALL":
-                    init_payload = {t: _stream_engine.store.get_candles(t) for t in _TF_MAP}
+                    init_payload = {t: _stream_engine.store.get_all(t) for t in _TF_MAP}
                 else:
-                    init_payload = {tf: _stream_engine.store.get_candles(tf)}
+                    init_payload = {tf: _stream_engine.store.get_all(tf)}
                 yield f"data: {_json.dumps({'type': 'init', 'candles': init_payload})}\n\n"
 
             # Also send current stream status
@@ -834,20 +978,894 @@ async def stream_chart_candles(granularity: str = "M5") -> StreamingResponse:
     )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# XAU SCALP STRATEGY — API Routes  (completely isolated from RSI EMA routes)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/xau-scalp/status", tags=["xau-scalp"])
+async def xau_scalp_status():
+    """Current conditions + latest signal + live price."""
+    if _xau_scalp is None:
+        return {"initialized": False, "error": "XAU Scalp strategy not available"}
+    return _xau_scalp.get_status()
+
+
+@app.get("/api/xau-scalp/signal/latest", tags=["xau-scalp"])
+async def xau_scalp_latest():
+    """Most recent signal object."""
+    if _xau_scalp is None:
+        return {"signal": None}
+    return {"signal": _xau_scalp.get_latest_signal()}
+
+
+@app.get("/api/xau-scalp/signals/history", tags=["xau-scalp"])
+async def xau_scalp_history(limit: int = 20):
+    """Last N signals."""
+    if _xau_scalp is None:
+        return {"signals": []}
+    return {"signals": _xau_scalp.get_signal_history(limit=min(limit, 100))}
+
+
+@app.get("/api/xau-scalp/stats", tags=["xau-scalp"])
+async def xau_scalp_stats():
+    """Strategy performance statistics."""
+    if _xau_scalp is None:
+        return {}
+    return _xau_scalp.get_strategy_stats()
+
+
+@app.get("/api/xau-scalp/conditions", tags=["xau-scalp"])
+async def xau_scalp_conditions():
+    """Real-time status of all 5 strategy conditions."""
+    if _xau_scalp is None:
+        return {}
+    return _xau_scalp.get_current_conditions()
+
+
+@app.get("/api/xau-scalp/stream", tags=["xau-scalp"])
+async def xau_scalp_stream():
+    """SSE stream: status updates every 2 s + signal alerts."""
+    import json as _json
+
+    async def _gen():
+        while True:
+            try:
+                data: dict = {}
+                if _xau_scalp:
+                    data = _xau_scalp.get_status()
+                yield f"data: {_json.dumps(data, default=str)}\n\n"
+            except Exception:
+                pass
+            await asyncio.sleep(2)
+
+    return StreamingResponse(_gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/xau-scalp/backtest", tags=["xau-scalp"])
+def xau_scalp_backtest(req: XauBacktestRequest) -> dict[str, Any]:
+    """Run the XAU Scalp strategy over M1 historical candles."""
+    if not _xau_backtest_lock.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="XAU backtest already running. Please wait.")
+    try:
+        from strategies.xau_scalp.backtester import run_backtest  # noqa: PLC0415
+
+        now_utc       = pd.Timestamp.now(tz="UTC")
+        today         = now_utc.normalize()
+        yesterday_end = today - pd.Timedelta(seconds=1)
+
+        if req.start_date:
+            start_utc = pd.Timestamp(req.start_date).tz_localize("UTC")
+        else:
+            start_utc = today - pd.Timedelta(days=30)
+
+        if req.end_date:
+            end_utc = pd.Timestamp(req.end_date).tz_localize("UTC") + pd.Timedelta(days=1)
+        else:
+            end_utc = yesterday_end
+
+        end_utc = min(end_utc, yesterday_end)
+
+        if end_utc <= start_utc:
+            return {"error": "End date must be after start date.", "metrics": {}, "trades": [], "equity_curve": []}
+
+        risk_frac = max(0.005, min(0.05, req.risk_per_trade_pct / 100.0))
+
+        trades, metrics, equity_curve = run_backtest(
+            start_utc        = start_utc,
+            end_utc          = end_utc,
+            starting_balance = req.starting_balance,
+            risk_per_trade   = risk_frac,
+            max_hold_bars    = req.max_hold_bars,
+        )
+
+        # Sanitise NaN / Inf before serialisation (reuse top-level _safe_num)
+        trades_out = [
+            {k: _safe_num(v) for k, v in t.items()} for t in trades
+        ]
+        metrics_out = {k: _safe_num(v) for k, v in metrics.items()}
+
+        LOGGER.info(
+            "XAU Scalp backtest complete  trades=%s  win_rate=%.1f%%  balance=$%.2f",
+            metrics_out.get("totalTrades", 0),
+            metrics_out.get("winRate", 0.0) or 0.0,
+            metrics_out.get("finalBalance", 0.0) or 0.0,
+        )
+
+        # ── Persist to MongoDB ────────────────────────────────────────────────
+        mongo_id = save_backtest_report(
+            metrics=metrics_out,
+            trades=trades_out,
+            equity_curve=equity_curve,
+            params={
+                "strategy":          "xau-scalp",
+                "start_date":        req.start_date,
+                "end_date":          req.end_date,
+                "starting_balance":  req.starting_balance,
+                "risk_per_trade_pct": req.risk_per_trade_pct,
+                "max_hold_bars":     req.max_hold_bars,
+            },
+        )
+
+        return {
+            "metrics": metrics_out,
+            "trades": trades_out,
+            "equity_curve": equity_curve,
+            "mongo_id": mongo_id,
+        }
+
+    except Exception as exc:
+        LOGGER.error("XAU backtest error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        _xau_backtest_lock.release()
+
+
+@app.get("/api/xau-scalp/log", tags=["xau-scalp"])
+async def xau_scalp_log(limit: int = 100) -> dict[str, Any]:
+    """Return the XAU Scalp decision log (latest N candle evaluations)."""
+    if _xau_scalp is None:
+        return {"log": [], "error": "XAU Scalp strategy not running."}
+    return {"log": _xau_scalp.get_decision_log(limit=min(limit, 100))}
+
+
 # ── Static files (React SPA) ──────────────────────────────────────────────────
 # Serve index.html with no-cache headers so browser always gets the latest build
 from fastapi.responses import FileResponse
 
+# ── Unified bot status ─────────────────────────────────────────────────────
+@app.get("/api/bot/status", tags=["bot"])
+def api_bot_status() -> dict[str, Any]:
+    """Unified status for all strategy bots."""
+    # RSI EMA bot status
+    rsi_running = False
+    rsi_pid = None
+    if _use_systemd_bot():
+        try:
+            svc = _service_status()
+            rsi_running = bool(svc.get("running"))
+            rsi_pid = svc.get("pid")
+        except Exception as exc:
+            LOGGER.warning("[BOT] systemd status lookup failed: %s", exc)
+    elif _bot_process is not None and _bot_process.poll() is None:
+        rsi_running = True
+        rsi_pid = _bot_process.pid
+
+    # XAU Scalp strategy status
+    xau_running = _xau_scalp is not None and getattr(_xau_scalp, "_initialized", False) and not getattr(_xau_scalp, "_paused", False)
+
+    market = is_market_open()
+
+    # ETH strategies
+    rsi_eth_running = _rsi_eth is not None and getattr(_rsi_eth, "_initialized", False) and not getattr(_rsi_eth, "_paused", False)
+    rsi_eth_status = _rsi_eth.get_status() if _rsi_eth is not None else {}
+
+    # Load uptime started_at from MongoDB
+    rsi_started = load_strategy_started_at("rsi-ema") if rsi_running else None
+    xau_started = load_strategy_started_at("xau-scalp") if xau_running else None
+    eth_started = load_strategy_started_at("rsi-eth") if rsi_eth_running else None
+
+    return {
+        "rsiEma": {"running": rsi_running, "pid": rsi_pid, "startedAt": rsi_started},
+        "xauScalp": {"running": xau_running, "pid": None, "paused": getattr(_xau_scalp, "_paused", False) if _xau_scalp else False, "startedAt": xau_started},
+        "rsiEth": {
+            "running": rsi_eth_running,
+            "paused": getattr(_rsi_eth, "_paused", False) if _rsi_eth else False,
+            "startedAt": eth_started,
+            "session": rsi_eth_status.get("session"),
+            "market_regime": rsi_eth_status.get("market_regime"),
+            "regime_details": rsi_eth_status.get("regime_details", {}),
+            "strategy_behavior": rsi_eth_status.get("strategy_behavior"),
+            "market_open": rsi_eth_status.get("market_open", True),
+        },
+        "anyRunning": rsi_running or xau_running or rsi_eth_running,
+        "market": market,
+    }
+
+
+@app.get("/api/market/status", tags=["market"])
+def api_market_status() -> dict[str, Any]:
+    """Check if forex market is currently open."""
+    return is_market_open()
+
+
+@app.post("/api/bot/rsi-ema/start", tags=["bot"])
+def api_rsi_start() -> dict[str, Any]:
+    """Start the RSI EMA bot (alias to /bot/start)."""
+    result = bot_start()
+    save_strategy_state("rsi-ema", "running")
+    return result
+
+
+@app.post("/api/bot/rsi-ema/stop", tags=["bot"])
+def api_rsi_stop() -> dict[str, Any]:
+    """Stop the RSI EMA bot (alias to /bot/stop)."""
+    result = bot_stop()
+    save_strategy_state("rsi-ema", "stopped")
+    return result
+
+
+@app.post("/api/bot/xau-scalp/start", tags=["bot"])
+async def api_xau_start() -> dict[str, Any]:
+    """Start (resume) the XAU Scalp strategy."""
+    if _xau_scalp is None:
+        raise HTTPException(status_code=503, detail="XAU Scalp strategy not available.")
+    if _xau_scalp._initialized and not _xau_scalp._paused:
+        return {"status": "already_running", "message": "XAU Scalp is already running."}
+    await _xau_scalp.resume()
+    save_strategy_state("xau-scalp", "running")
+    LOGGER.info("[XAU-SCALP] strategy resumed via API")
+    return {"status": "started", "message": "XAU Scalp strategy resumed."}
+
+
+@app.post("/api/bot/xau-scalp/stop", tags=["bot"])
+def api_xau_stop() -> dict[str, Any]:
+    """Stop (pause) the XAU Scalp strategy."""
+    if _xau_scalp is None:
+        raise HTTPException(status_code=503, detail="XAU Scalp strategy not available.")
+    if _xau_scalp._paused:
+        return {"status": "already_stopped", "message": "XAU Scalp is already stopped."}
+    _xau_scalp.stop()
+    save_strategy_state("xau-scalp", "stopped")
+    LOGGER.info("[XAU-SCALP] strategy stopped via API")
+    return {"status": "stopped", "message": "XAU Scalp strategy stopped."}
+
+
+@app.get("/api/bot/log-stream", tags=["bot"])
+async def api_bot_log_stream():
+    """Unified SSE log stream merging RSI EMA logs + XAU Scalp decision log."""
+    async def event_generator():
+        # FIX: Start from end of file — only show NEW logs, not the entire history
+        last_log_line = 0
+        last_xau_ts = 0
+        last_rsi_eth_ts = 0
+        first_poll = True
+        yield f"data: {_json.dumps({'type':'connected','message':'Unified log stream connected'})}\n\n"
+        while True:
+            events = []
+            # RSI EMA logs from file — only send NEW lines since last poll
+            try:
+                if LOG_PATH.exists():
+                    lines = LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
+                    if first_poll:
+                        last_log_line = max(0, len(lines) - 5)
+                        first_poll = False
+                    for line in lines[last_log_line:]:
+                        if line.strip():
+                            parsed = _parse_log_line(line)
+                            msg = parsed.get("message", line)
+                            # Try to parse JSON from the message to extract structured fields
+                            raw_data = {}
+                            try:
+                                import json as _jj
+                                jd = _jj.loads(msg) if msg.strip().startswith("{") else None
+                                if jd:
+                                    # RSI EMA logs have two formats:
+                                    # 1. Strategy eval: signal_score, direction, session, breakdown, regime_details
+                                    # 2. Market snapshot: event_type=market_snapshot, live_price
+                                    is_snapshot = jd.get("event_type") == "market_snapshot"
+                                    brkdwn = jd.get("breakdown", {})
+                                    regime_d = jd.get("regime_details", {})
+                                    price = jd.get("live_price") or jd.get("latest_closed_entry_close_price") or jd.get("latest_closed_trend_close_price") or ""
+                                    raw_data = {
+                                        "decision": jd.get("decision", ""),
+                                        "direction": jd.get("direction", ""),
+                                        "reason": jd.get("reason", jd.get("event_type", "")),
+                                        "live_price": price,
+                                        "signal_score": jd.get("signal_score"),
+                                        "score_threshold": jd.get("score_threshold", 80),
+                                        "symbol": jd.get("symbol", "XAUUSD"),
+                                        "session": jd.get("session", ""),
+                                        "market_regime": jd.get("market_regime", regime_d.get("regime", "")),
+                                        "strategy_behavior": jd.get("strategy_behavior", regime_d.get("strategy_behavior", "")),
+                                        "event_type": jd.get("event_type", ""),
+                                        "rsi_ok": jd.get("rsi_filter"),
+                                        "ema_ok": jd.get("trend_alignment"),
+                                        "atr_ok": jd.get("atr_expansion"),
+                                        "trend_bias": regime_d.get("trend_bias", jd.get("direction", "")),
+                                        "conditions": {
+                                            "rsi_ok": jd.get("rsi_filter"),
+                                            "trend_alignment": jd.get("trend_alignment"),
+                                            "atr_expansion": jd.get("atr_expansion"),
+                                            "price_trigger": jd.get("price_trigger"),
+                                            "session_filter": jd.get("session_filter"),
+                                            "trend_bias": regime_d.get("trend_bias", ""),
+                                        },
+                                    }
+                                    # Build readable message
+                                    if jd.get("decision") == "SIGNAL":
+                                        msg = f"SIGNAL {jd.get('direction','')} @ {price}"
+                                    elif is_snapshot:
+                                        msg = f"@ {price}"
+                                    else:
+                                        score_v = jd.get("signal_score", 0)
+                                        thresh = jd.get("score_threshold", 80)
+                                        sess = jd.get("session", "")
+                                        reason = jd.get("reason", "")
+                                        msg = f"{jd.get('decision','')} @ {price} — {reason}" if reason else f"@ {price} score:{score_v}/{thresh}"
+                            except Exception:
+                                raw_data = {"message": msg}
+                            t_str = parsed.get("timestamp", "")
+                            if t_str and len(t_str) > 10:
+                                t_str = t_str[11:19]  # extract HH:MM:SS
+                            events.append({
+                                "strategy": "RSI-EMA",
+                                "level": "SIGNAL" if raw_data.get("decision") == "SIGNAL" else parsed.get("level", "INFO"),
+                                "message": msg,
+                                "time": t_str,
+                                "raw": raw_data,
+                            })
+                    last_log_line = len(lines)
+            except Exception:
+                pass
+            # XAU Scalp decision log — only last 5 entries on first connect
+            try:
+                if _xau_scalp is not None:
+                    import datetime as _dt
+                    log_entries = _xau_scalp.get_decision_log(limit=5)
+                    for entry in log_entries:
+                        ts = entry.get("ts", 0)
+                        if ts > last_xau_ts:
+                            last_xau_ts = ts
+                            t_str = _dt.datetime.utcfromtimestamp(ts / 1000).strftime("%H:%M:%S") if ts else ""
+                            decision = entry.get("decision", "")
+                            reason = entry.get("reason", "")
+                            price = entry.get("price", "")
+                            events.append({
+                                "strategy": "XAU-SCALP",
+                                "level": "SIGNAL" if decision == "SIGNAL" else "INFO",
+                                "message": f"{decision} @ {price} — {reason}",
+                                "time": t_str,
+                                "raw": _json.dumps(entry),
+                                "entry": entry,
+                            })
+            except Exception:
+                pass
+            # RSI-ETH decision log
+            try:
+                if _rsi_eth is not None:
+                    import datetime as _dt
+                    for entry in _rsi_eth.get_decision_log(limit=5):
+                        ts = entry.get("ts", 0)
+                        if ts > last_rsi_eth_ts:
+                            last_rsi_eth_ts = ts
+                            t_str = _dt.datetime.utcfromtimestamp(ts / 1000).strftime("%H:%M:%S") if ts else ""
+                            conds = entry.get("conditions", {})
+                            events.append({
+                                "strategy": "ETH-RSI-15",
+                                "level": "SIGNAL" if entry.get("decision") == "SIGNAL" else "INFO",
+                                "message": f"{entry.get('decision','')} @ {entry.get('price','')} — {entry.get('reason','')}",
+                                "time": t_str,
+                                "raw": {
+                                    "decision": entry.get("decision", ""),
+                                    "direction": entry.get("direction", ""),
+                                    "reason": entry.get("reason", ""),
+                                    "live_price": entry.get("price"),
+                                    "signal_score": entry.get("score"),
+                                    "score_threshold": 80,
+                                    "symbol": "ETHUSDT",
+                                    "session": "24/7",
+                                    "market_regime": "",
+                                    "strategy_behavior": "",
+                                    "conditions": conds,
+                                },
+                            })
+            except Exception:
+                pass
+            for evt in events:
+                yield f"data: {_json.dumps(evt)}\n\n"
+            await asyncio.sleep(3)
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
+@app.get("/dashboard/live-bot", include_in_schema=False)
+def serve_live_bot_dashboard():
+    """Live Bot control + unified log page."""
+    return FileResponse(
+        str(STATIC_DIR / "live_bot.html"),
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
+    )
+
+
+@app.get("/dashboard/xau-scalp", include_in_schema=False)
+def serve_xau_scalp_dashboard():
+    """Dedicated XAU Scalp Strategy dashboard page."""
+    return FileResponse(
+        str(STATIC_DIR / "xau_scalp.html"),
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
+    )
+
+
+@app.get("/dashboard/rsi-ema", include_in_schema=False)
+def serve_rsi_ema_dashboard():
+    """Dedicated RSI EMA dashboard page."""
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    scalp_marker = "XAU SCALP STRATEGY WORKSPACE"
+    registry_marker = "Strategy Registry"
+    scalp_idx = html.find(scalp_marker)
+    registry_idx = html.find(registry_marker, scalp_idx if scalp_idx != -1 else 0)
+    if scalp_idx != -1 and registry_idx != -1 and scalp_idx < registry_idx:
+        block_start = html.rfind("/*", 0, scalp_idx)
+        block_end = html.rfind("/*", 0, registry_idx)
+        if block_start != -1 and block_end != -1 and block_start < block_end:
+            html = html[:block_start] + html[block_end:]
+
+    bootstrap = """
+<script>
+try {
+  localStorage.setItem('activeStrategy', 'rsi-ema');
+  if (!localStorage.getItem('strategy:rsi-ema:tab')) {
+    localStorage.setItem('strategy:rsi-ema:tab', 'chart');
+  }
+  localStorage.removeItem('strategy:xau-scalp:tab');
+} catch (e) {}
+</script>
+""".strip()
+    html = html.replace("<body>", f"<body>\n{bootstrap}", 1)
+
+    return HTMLResponse(
+        content=html,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard_redirect():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/dashboard/rsi-ema", status_code=307)
+
+
+# ── RSI ETH Strategy API ──────────────────────────────────────────────────────
+
+@app.get("/api/rsi-eth/status", tags=["rsi-eth"])
+def rsi_eth_status() -> dict[str, Any]:
+    if _rsi_eth is None:
+        return {"initialized": False, "error": "RSI ETH not available"}
+    return _rsi_eth.get_status()
+
+@app.get("/api/rsi-eth/signal/latest", tags=["rsi-eth"])
+def rsi_eth_latest():
+    if _rsi_eth is None:
+        return {"signal": None}
+    return {"signal": _rsi_eth.get_latest_signal()}
+
+@app.get("/api/rsi-eth/signals/history", tags=["rsi-eth"])
+def rsi_eth_history(limit: int = 20):
+    if _rsi_eth is None:
+        return {"signals": []}
+    return {"signals": _rsi_eth.get_signal_history(min(limit, 100))}
+
+@app.get("/api/rsi-eth/log", tags=["rsi-eth"])
+def rsi_eth_log(limit: int = 100):
+    if _rsi_eth is None:
+        return {"log": []}
+    return {"log": _rsi_eth.get_decision_log(min(limit, 100))}
+
+@app.post("/api/rsi-eth/start", tags=["rsi-eth"])
+async def rsi_eth_start():
+    if _rsi_eth is None:
+        raise HTTPException(503, "RSI ETH not available")
+    if _rsi_eth._initialized and not _rsi_eth._paused:
+        return {"status": "already_running"}
+    await _rsi_eth.resume()
+    save_strategy_state("rsi-eth", "running")
+    return {"status": "started"}
+
+@app.post("/api/rsi-eth/stop", tags=["rsi-eth"])
+def rsi_eth_stop():
+    if _rsi_eth is None:
+        raise HTTPException(503, "RSI ETH not available")
+    if _rsi_eth._paused:
+        return {"status": "already_stopped"}
+    _rsi_eth.stop()
+    save_strategy_state("rsi-eth", "stopped")
+    return {"status": "stopped"}
+
+
+# ── ETH Backtesting ───────────────────────────────────────────────────────────
+
+class EthBacktestRequest(BaseModel):
+    strategy: str = "rsi-eth"
+    start_date: str | None = None
+    end_date: str | None = None
+    starting_balance: float = 10_000.0
+    risk_per_trade_pct: float = 0.75
+
+_eth_backtest_lock = threading.Lock()
+
+@app.post("/api/eth/backtest", tags=["eth"])
+def eth_backtest(req: EthBacktestRequest) -> dict[str, Any]:
+    """Run RSI-ETH backtest using Binance historical data."""
+    if not _eth_backtest_lock.acquire(blocking=False):
+        raise HTTPException(429, "ETH backtest already running.")
+    try:
+        from core.binance_client import fetch_history
+
+        now_utc = pd.Timestamp.now(tz="UTC")
+        today = now_utc.normalize()
+
+        if req.start_date:
+            start_utc = pd.Timestamp(req.start_date).tz_localize("UTC")
+        else:
+            start_utc = today - pd.Timedelta(days=30)
+
+        if req.end_date:
+            end_utc = pd.Timestamp(req.end_date).tz_localize("UTC") + pd.Timedelta(days=1)
+        else:
+            end_utc = today
+
+        if end_utc <= start_utc:
+            return {"error": "End date must be after start date.", "metrics": {}, "trades": [], "equity_curve": []}
+
+        from_ms = int(start_utc.timestamp() * 1000)
+        to_ms = int(end_utc.timestamp() * 1000)
+        symbol = os.getenv("ETH_SYMBOL", "ETHUSDT")
+
+        LOGGER.info("[ETH-BT] Fetching %s M15 candles %s → %s", symbol, req.start_date, req.end_date)
+        candles = fetch_history(symbol=symbol, interval="15m", from_ms=from_ms, to_ms=to_ms)
+
+        if not candles:
+            return {"error": "No candle data returned from Binance.", "metrics": {}, "trades": [], "equity_curve": []}
+
+        risk_frac = max(0.005, min(0.05, req.risk_per_trade_pct / 100.0))
+
+        from strategies.rsi_eth.backtester import run_backtest
+
+        trades, metrics, equity_curve = run_backtest(
+            candles=candles,
+            starting_balance=req.starting_balance,
+            risk_per_trade=risk_frac,
+        )
+
+        # Sanitise
+        trades_out = [{k: _safe_num(v) for k, v in t.items()} for t in trades]
+        metrics_out = {}
+        for k, v in metrics.items():
+            if isinstance(v, dict):
+                metrics_out[k] = v
+            else:
+                metrics_out[k] = _safe_num(v)
+
+        LOGGER.info("[ETH-BT] %s complete — %d trades, %.1f%% win rate",
+                     req.strategy, metrics_out.get("totalTrades", 0), metrics_out.get("winRate", 0))
+
+        mongo_id = save_backtest_report(
+            metrics=metrics_out, trades=trades_out, equity_curve=equity_curve,
+            params={"strategy": req.strategy, "start_date": req.start_date, "end_date": req.end_date,
+                    "starting_balance": req.starting_balance, "risk_per_trade_pct": req.risk_per_trade_pct},
+        )
+
+        return {"metrics": metrics_out, "trades": trades_out, "equity_curve": equity_curve, "mongo_id": mongo_id}
+
+    except Exception as exc:
+        LOGGER.error("[ETH-BT] error: %s", exc, exc_info=True)
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        _eth_backtest_lock.release()
+
+
+# ── ICT Minimal Backtest ──────────────────────────────────────────────────────
+
+_ict_backtest_lock = threading.Lock()
+_ict_backtest_cache: dict[str, Any] = {}
+
+@app.post("/api/backtest/eth-ict-minimal/run", tags=["ict-backtest"])
+def ict_minimal_run(days: int = 30) -> dict[str, Any]:
+    """Run all 6 ICT variants on last N days of ETH/USDT 5M data."""
+    if not _ict_backtest_lock.acquire(blocking=False):
+        raise HTTPException(429, "ICT backtest already running.")
+    try:
+        from core.binance_client import fetch_history
+        from strategies.ict_eth_minimal.backtester import run_all_variants
+
+        now_ms = int(time.time() * 1000)
+        from_ms = now_ms - days * 86400 * 1000
+
+        LOGGER.info("[ICT-BT] Fetching %d days of ETH 5M + 15M data…", days)
+        m5 = fetch_history(symbol="ETHUSDT", interval="5m", from_ms=from_ms, to_ms=now_ms)
+        m15 = fetch_history(symbol="ETHUSDT", interval="15m", from_ms=from_ms, to_ms=now_ms)
+        LOGGER.info("[ICT-BT] Fetched %d 5M + %d 15M candles", len(m5), len(m15))
+
+        if len(m5) < 300:
+            return {"error": f"Only {len(m5)} candles — need 300+", "variants": {}, "best": None}
+
+        result = run_all_variants(m5, m15)
+        _ict_backtest_cache["last"] = result
+        _ict_backtest_cache["ts"] = time.time()
+
+        if result.get("best"):
+            b = result["best"]
+            LOGGER.info("[ICT-BT] Best: %s (%s) — %.1f%% WR, %.1f trades/day, PF %.2f",
+                        b["id"], b["name"], b["winRate"], b["tradesPerDay"], b["profitFactor"])
+
+        # Save to MongoDB
+        try:
+            save_backtest_report(
+                metrics=result.get("best", {}),
+                trades=result["best"]["trades"] if result.get("best") else [],
+                equity_curve=result["best"]["equityCurve"] if result.get("best") else [],
+                params={"strategy": "ict-eth-minimal", "days": days,
+                        "bestVariant": result["best"]["id"] if result.get("best") else None},
+            )
+        except Exception:
+            pass
+
+        return result
+    except Exception as exc:
+        LOGGER.error("[ICT-BT] error: %s", exc, exc_info=True)
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        _ict_backtest_lock.release()
+
+@app.get("/api/backtest/eth-ict-minimal/last", tags=["ict-backtest"])
+def ict_minimal_last() -> dict[str, Any]:
+    """Get last cached ICT backtest result."""
+    if "last" not in _ict_backtest_cache:
+        return {"error": "No results yet — run a backtest first", "variants": {}, "best": None}
+    return _ict_backtest_cache["last"]
+
+@app.get("/dashboard/backtest-eth-ict", include_in_schema=False)
+def serve_ict_backtest():
+    return FileResponse(
+        str(STATIC_DIR / "ict_backtest.html"),
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
+    )
+
+# ── XAU ICT Minimal Backtest ──────────────────────────────────────────────────
+
+_xau_ict_backtest_lock = threading.Lock()
+_xau_ict_backtest_cache: dict[str, Any] = {}
+
+@app.post("/api/backtest/xau-ict-minimal/run", tags=["ict-backtest"])
+def xau_ict_minimal_run(days: int = 30) -> dict[str, Any]:
+    """Run all 6 ICT variants on last N days of XAU/USD M5 data (OANDA)."""
+    if not _xau_ict_backtest_lock.acquire(blocking=False):
+        raise HTTPException(429, "XAU ICT backtest already running.")
+    try:
+        from strategies.ict_xau_minimal.backtester import run_xau_ict_backtest
+
+        LOGGER.info("[XAU-ICT-BT] Running %d-day ICT backtest on XAU/USD…", days)
+        result = run_xau_ict_backtest(days=days)
+        _xau_ict_backtest_cache["last"] = result
+        _xau_ict_backtest_cache["ts"] = time.time()
+
+        if result.get("best"):
+            b = result["best"]
+            LOGGER.info("[XAU-ICT-BT] Best: %s (%s) — %.1f%% WR, %.1f trades/day",
+                        b["id"], b["name"], b["winRate"], b["tradesPerDay"])
+
+        try:
+            save_backtest_report(
+                metrics=result.get("best", {}),
+                trades=result["best"]["trades"] if result.get("best") else [],
+                equity_curve=result["best"]["equityCurve"] if result.get("best") else [],
+                params={"strategy": "ict-xau-minimal", "days": days,
+                        "bestVariant": result["best"]["id"] if result.get("best") else None},
+            )
+        except Exception:
+            pass
+
+        return result
+    except Exception as exc:
+        LOGGER.error("[XAU-ICT-BT] error: %s", exc, exc_info=True)
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        _xau_ict_backtest_lock.release()
+
+@app.get("/api/backtest/xau-ict-minimal/last", tags=["ict-backtest"])
+def xau_ict_minimal_last() -> dict[str, Any]:
+    """Get last cached XAU ICT backtest result."""
+    if "last" not in _xau_ict_backtest_cache:
+        return {"error": "No results yet — run a backtest first", "variants": {}, "best": None}
+    return _xau_ict_backtest_cache["last"]
+
+@app.get("/dashboard/backtest-xau-ict", include_in_schema=False)
+def serve_xau_ict_backtest():
+    return FileResponse(
+        str(STATIC_DIR / "ict_backtest_xau.html"),
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
+    )
+
+# ── ETH / Binance API routes ──────────────────────────────────────────────────
+
+@app.get("/api/eth/status", tags=["eth"])
+def eth_status() -> dict[str, Any]:
+    """ETH engine status."""
+    if _binance_engine is None:
+        return {"available": False, "error": "Binance engine not running"}
+    return {**_binance_engine.get_status(), "available": True}
+
+
+@app.get("/api/eth/price", tags=["eth"])
+def eth_price() -> dict[str, Any]:
+    """Current ETH price."""
+    if _binance_engine is None:
+        return {"price": 0, "time": 0}
+    return _binance_engine.get_price()
+
+
+@app.get("/api/eth/candles/{timeframe}", tags=["eth"])
+def eth_candles(timeframe: str, count: int = 200) -> dict[str, Any]:
+    """Get ETH candles for a specific timeframe (M1/M5/M15/H1)."""
+    tf = timeframe.upper()
+    if tf not in ("M1", "M5", "M15", "H1"):
+        raise HTTPException(400, "Invalid timeframe. Use: M1, M5, M15, H1")
+    if _binance_engine is None:
+        return {"candles": [], "timeframe": tf, "error": "Binance engine not running"}
+    candles = _binance_engine.store.get_all(tf)
+    if count:
+        candles = candles[-count:]
+    return {"candles": candles, "timeframe": tf, "count": len(candles)}
+
+
+@app.get("/api/eth/stream/{timeframe}", tags=["eth"])
+async def eth_stream(timeframe: str):
+    """SSE endpoint for real-time ETH candle updates (same pattern as OANDA stream)."""
+    tf = timeframe.upper()
+    if tf not in ("M1", "M5", "M15", "H1", "ALL"):
+        raise HTTPException(400, "Invalid timeframe")
+
+    if _binance_engine is None:
+        async def _error_gen():
+            yield f"data: {_json.dumps({'type': 'error', 'detail': 'Binance engine not running'})}\n\n"
+        return StreamingResponse(_error_gen(), media_type="text/event-stream")
+
+    sub_id, queue = _binance_engine.subscribe()
+
+    async def event_gen():
+        try:
+            # Send init with all candle data
+            init_payload = {
+                "type": "init",
+                "symbol": _binance_engine.symbol,
+                "candles": {
+                    t: _binance_engine.store.get_all(t)
+                    for t in ("M1", "M5", "M15", "H1")
+                },
+            }
+            yield f"data: {_json.dumps(init_payload, default=str)}\n\n"
+
+            while True:
+                try:
+                    raw = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    evt = _json.loads(raw)
+                    evt_tf = evt.get("timeframe", "")
+                    # Filter by requested timeframe (or pass all if ALL)
+                    if tf == "ALL" or evt_tf == tf or evt.get("type") in ("init", "status"):
+                        yield f"data: {raw}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+        finally:
+            _binance_engine.unsubscribe(sub_id)
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
+@app.get("/dashboard/crypto", include_in_schema=False)
+def serve_crypto_dashboard():
+    """Crypto (ETH/USDT) dashboard page."""
+    return FileResponse(
+        str(STATIC_DIR / "crypto.html"),
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
+    )
+
+
 @app.get("/", include_in_schema=False)
 def serve_index():
-    return FileResponse(
-        str(STATIC_DIR / "index.html"),
-        media_type="text/html",
+    return RedirectResponse(
+        url="/dashboard/rsi-ema",
+        status_code=307,
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate",
             "Pragma": "no-cache",
         },
     )
+
+# ── RSI ETH Optimizer (read-only parameter testing) ───────────────────────────
+_optimizer_running = False
+_optimizer_result = None
+
+@app.post("/api/rsi-eth/optimizer/run")
+async def rsi_eth_optimizer_run():
+    """Run RSI EMA parameter optimizer on historical ETH data."""
+    global _optimizer_running, _optimizer_result
+    if _optimizer_running:
+        return {"error": "Optimizer already running", "status": "running"}
+
+    _optimizer_running = True
+    _optimizer_result = None
+
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+
+        def _run():
+            global _optimizer_result, _optimizer_running
+            try:
+                from core.binance_client import fetch_history
+
+                LOGGER.info("[OPTIMIZER] Fetching 30 days of ETH candles...")
+
+                now_ms = int(time.time() * 1000)
+                days_30_ms = 30 * 24 * 60 * 60 * 1000
+                from_ms = now_ms - days_30_ms
+
+                candles_5m = fetch_history("ETHUSDT", "5m", from_ms, now_ms)
+                candles_15m = fetch_history("ETHUSDT", "15m", from_ms, now_ms)
+
+                LOGGER.info("[OPTIMIZER] Fetched %d 5M + %d 15M candles. Starting optimization...",
+                           len(candles_5m), len(candles_15m))
+
+                from strategies.rsi_eth.optimizer import run_optimizer
+                result = run_optimizer(candles_5m, candles_15m)
+
+                _optimizer_result = result
+                LOGGER.info("[OPTIMIZER] Complete — %d combos tested in %.1fs, %d meet target",
+                           result["totalCombinations"], result["elapsedSeconds"], result["meetsTarget"])
+            except Exception as exc:
+                LOGGER.error("[OPTIMIZER] error: %s", exc, exc_info=True)
+                _optimizer_result = {"error": str(exc)}
+            finally:
+                _optimizer_running = False
+
+        import threading
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+
+        return {"status": "started", "message": "Optimizer started — fetching 30 days of data..."}
+
+    except Exception as exc:
+        _optimizer_running = False
+        return {"error": str(exc)}
+
+@app.get("/api/rsi-eth/optimizer/status")
+async def rsi_eth_optimizer_status():
+    """Get optimizer status and results."""
+    if _optimizer_running:
+        return {"status": "running"}
+    if _optimizer_result is not None:
+        return {"status": "complete", "result": _optimizer_result}
+    return {"status": "idle"}
+
 
 app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
 

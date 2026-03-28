@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CRYPTO — ETH/USDT — SEAN ALGO</title>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root {
+    --bg:       #212121;
+    --surface:  #2f2f2f;
+    --surface2: #262626;
+    --border:   #424242;
+    --text:     #ececec;
+    --muted:    #8e8ea0;
+    --green:    #10a37f;
+    --red:      #ef5350;
+    --amber:    #f59e0b;
+    --blue:     #2196F3;
+    --teal:     #1D9E75;
+    --radius:   10px;
+    --font:     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; }
+
+  /* ── Top nav ── */
+  .nav { display:flex; align-items:center; gap:0; padding:0 20px; height:52px; background:var(--bg); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:100; backdrop-filter:blur(8px); }
+  .nav-brand { display:flex; align-items:center; gap:9px; font-size:14px; font-weight:700; color:var(--text); text-decoration:none; flex-shrink:0; margin-right:14px; }
+  .nav-dot   { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  .nav-item  { color:var(--muted); text-decoration:none; font-size:12px; font-weight:600; letter-spacing:.5px; padding:10px 14px; border-radius:6px; transition:.15s; }
+  .nav-item:hover { color:var(--text); background:rgba(255,255,255,.05); }
+  .nav-item.active { color:var(--text); background:rgba(255,255,255,.08); }
+  .nav-live  { display:flex; align-items:center; gap:6px; margin-left:auto; }
+  .nav-live .pulse-dot { width:6px; height:6px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; }
+
+  /* ── Tabs ── */
+  .stab-bar { display:flex; gap:2px; padding:8px 16px 0; background:var(--bg); }
+  .stab { background:none; border:none; color:var(--muted); font:600 12px var(--font); padding:8px 14px; border-radius:6px 6px 0 0; cursor:pointer; transition:.15s; display:flex; align-items:center; gap:5px; }
+  .stab:hover { color:var(--text); background:rgba(255,255,255,.04); }
+  .stab.active { color:var(--text); background:var(--surface); border-bottom:2px solid var(--teal); }
+  .tab-panel { display:none; padding:16px; }
+  .tab-panel.active { display:block; }
+
+  /* ── Strategy header ── */
+  .strat-header { display:flex; justify-content:space-between; align-items:flex-start; padding:12px 16px; background:var(--surface); border-radius:var(--radius); margin:8px 16px; }
+  .strat-title { font-size:16px; font-weight:700; letter-spacing:.5px; }
+  .strat-sub   { font-size:11px; color:var(--muted); margin-top:3px; }
+  .strat-right { text-align:right; }
+  .live-badge  { display:inline-block; background:var(--teal); color:#fff; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; letter-spacing:1px; }
+  .price-live  { font-size:22px; font-weight:700; font-family:'Courier New',monospace; margin-top:4px; }
+  .price-change { font-size:12px; font-family:monospace; }
+  .price-change.up { color:var(--green); }
+  .price-change.dn { color:var(--red); }
+
+  /* ── Chart ── */
+  .chart-card    { background:var(--surface); border-radius:var(--radius); overflow:hidden; margin:0 16px 16px; position:relative; }
+  .chart-hd      { display:flex; align-items:center; gap:10px; padding:8px 14px; border-bottom:1px solid var(--border); }
+  .chart-hd-title { font-size:12px; font-weight:700; color:var(--muted); letter-spacing:.5px; }
+  .overlay-toolbar { display:flex; align-items:center; gap:5px; padding:6px 12px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .tf-btn { padding:3px 10px; border-radius:20px; font-size:11px; font-weight:500; border:0.5px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.4); color:rgba(255,255,255,0.5); cursor:pointer; }
+  .tf-btn:hover { background:rgba(255,255,255,.1); color:var(--text); }
+  .tf-btn.active { background:#2196F3; color:#fff; border-color:#2196F3; }
+  .ov-btn { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); color:var(--muted); font:600 10px var(--font); padding:3px 8px; border-radius:4px; cursor:pointer; transition:.15s; }
+  .ov-btn:hover { color:var(--text); border-color:#4b5563; background:rgba(255,255,255,.03); }
+  .ov-btn.active { background:rgba(33,150,243,0.15); border-color:#2196F3; color:#2196F3; }
+
+  /* ── Single view chart ── */
+  #chart-container { position:relative; }
+  #single-view-wrapper { position:relative; }
+  #chart-main { width:100%; height:calc(100vh - 280px); min-height:420px; position:relative; }
+  #chart-vol  { width:100%; height:80px; border-top:1px solid var(--border); }
+
+  /* ── Split view layout ── */
+  #split-view-wrapper { display:none; gap:2px; height:calc(100vh - 232px); min-height:420px; padding:4px; background:#0d1117; }
+  #split-view-wrapper.active { display:flex; }
+  .chart-pane { flex:1; position:relative; background:#131722; border:0.5px solid #1e222d; border-radius:4px; overflow:hidden; }
+  .pane-chart-div { width:100%; height:100%; }
+  .pane-label { position:absolute; top:8px; left:8px; z-index:10; font-size:11px; font-weight:700; color:rgba(255,255,255,0.4); pointer-events:none; letter-spacing:1px; }
+  .pane-ohlc { position:absolute; top:8px; right:8px; z-index:10; font-size:10px; color:rgba(255,255,255,0.5); font-family:monospace; pointer-events:none; white-space:nowrap; }
+
+  /* ── Fullscreen ── */
+  #chart-container.fullscreen { position:fixed !important; top:0 !important; left:0 !important; width:100vw !important; height:100vh !important; z-index:9999 !important; background:#131722 !important; border-radius:0 !important; border:none !important; overflow:auto !important; }
+  #chart-container.fullscreen #chart-main { height:calc(100vh - 96px); min-height:unset; }
+  #chart-container.fullscreen #split-view-wrapper { height:calc(100vh - 96px); min-height:unset; }
+
+  /* ── TF switcher (single view) ── */
+  .tf-switcher { position:absolute; top:8px; left:8px; z-index:10; display:flex; gap:4px; }
+
+  /* ── Crypto badge ── */
+  .crypto-badge { display:inline-flex; align-items:center; gap:6px; background:rgba(29,158,117,.1); border:1px solid rgba(29,158,117,.3); border-radius:8px; padding:8px 16px; margin:8px 16px 0; font-size:12px; font-weight:600; color:var(--teal); }
+  .crypto-badge .dot { width:6px; height:6px; border-radius:50%; background:var(--teal); animation:pulse 2s infinite; }
+
+  /* ── Responsive ── */
+  .mono { font-family: 'Courier New', monospace; }
+</style>
+</head>
+<body>
+
+<!-- ── Navigation ── -->
+<nav class="nav">
+  <a class="nav-brand" href="/"><div class="nav-dot"></div>SEAN ALGO</a>
+  <a href="/dashboard/rsi-ema" class="nav-item">RSI EMA</a>
+  <a href="/dashboard/xau-scalp" class="nav-item">XAU SCALP</a>
+  <a href="/dashboard/crypto" class="nav-item active">CRYPTO</a>
+  <a href="/dashboard/backtest-eth-ict" class="nav-item">ICT ETH</a>
+  <a href="/dashboard/backtest-xau-ict" class="nav-item">ICT XAU</a>
+  <a href="/dashboard/live-bot" class="nav-item nav-live">
+    <span class="pulse-dot" id="bot-status-dot"></span>
+    LIVE BOT
+  </a>
+</nav>
+
+<!-- ── Tab bar ── -->
+<div class="stab-bar">
+  <button class="stab active" data-tab="chart">📈 Chart</button>
+  <button class="stab" data-tab="backtest">📊 Backtest</button>
+  <button class="stab" data-tab="signals">📋 Signals</button>
+  <button class="stab" data-tab="optimizer">🔬 Optimizer</button>
+</div>
+
+<!-- ── Crypto 24/7 badge ── -->
+<div class="crypto-badge">
+  <span class="dot"></span>
+  CRYPTO — ETH/USDT · Bybit · 24/7 Market — Always Open
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     TAB: CHART
+══════════════════════════════════════════════════ -->
+<div class="tab-panel active" id="tab-chart">
+
+  <!-- Strategy header -->
+  <div class="strat-header">
+    <div>
+      <div class="strat-title">💎 ETH/USDT</div>
+      <div class="strat-sub">Multi-timeframe chart · ICT overlays · Bybit live feed</div>
+    </div>
+    <div class="strat-right">
+      <div class="live-badge">LIVE</div>
+      <div class="price-live mono" id="live-price">—</div>
+      <div class="price-change" id="price-change">—</div>
+    </div>
+  </div>
+
+  <!-- Strategy condition cards (RSI EMA) -->
+  <div style="display:flex; gap:8px; margin:8px 16px; flex-wrap:wrap;">
+    <div style="flex:1; min-width:100px; background:var(--surface); border-radius:6px; padding:8px 12px; border-left:3px solid var(--muted);">
+      <div style="font-size:10px; color:var(--muted);">TREND</div>
+      <div style="font-size:13px; font-weight:700;" id="cond-rsi-trend">—</div>
+    </div>
+    <div style="flex:1; min-width:100px; background:var(--surface); border-radius:6px; padding:8px 12px; border-left:3px solid var(--muted);">
+      <div style="font-size:10px; color:var(--muted);">RSI (14)</div>
+      <div style="font-size:13px; font-weight:700;" id="cond-rsi-val">—</div>
+    </div>
+    <div style="flex:1; min-width:100px; background:var(--surface); border-radius:6px; padding:8px 12px; border-left:3px solid var(--muted);">
+      <div style="font-size:10px; color:var(--muted);">ATR</div>
+      <div style="font-size:13px; font-weight:700;" id="cond-rsi-atr">—</div>
+    </div>
+    <div style="flex:1; min-width:100px; background:var(--surface); border-radius:6px; padding:8px 12px; border-left:3px solid var(--muted);">
+      <div style="font-size:10px; color:var(--muted);">PRICE</div>
+      <div style="font-size:13px; font-weight:700;" id="cond-rsi-price">—</div>
+    </div>
+  </div>
+
+  <!-- ── Chart container (chart-card + split view) ── -->
+  <div id="chart-container" class="chart-card">
+
+    <!-- Chart header -->
+    <div class="chart-hd">
+      <span class="chart-hd-title" id="chart-hd-title">ETHUSDT · M1 · Live</span>
+      <span id="chart-ohlc" style="font-family:monospace;font-size:11px;color:var(--muted)"></span>
+    </div>
+
+    <!-- Unified overlay toolbar -->
+    <div id="overlay-toolbar" class="overlay-toolbar">
+      <button class="ov-btn active" data-overlay="structure"    onclick="toggleAllOverlays('structure',this)">📐 Structure</button>
+      <button class="ov-btn active" data-overlay="fvg"          onclick="toggleAllOverlays('fvg',this)">🟩 FVG</button>
+      <button class="ov-btn active" data-overlay="orderblock"   onclick="toggleAllOverlays('orderblock',this)">🟦 Order Block</button>
+      <button class="ov-btn active" data-overlay="liquidity"    onclick="toggleAllOverlays('liquidity',this)">💧 Liquidity</button>
+      <button class="ov-btn active" data-overlay="displacement" onclick="toggleAllOverlays('displacement',this)">⚡ Displacement</button>
+      <button class="ov-btn"        data-overlay="cisd"         onclick="toggleAllOverlays('cisd',this)">🔄 CISD</button>
+      <button class="ov-btn"        data-overlay="signal"       onclick="toggleAllOverlays('signal',this)">🎯 Signal</button>
+      <button class="ov-btn"        data-overlay="swing"        onclick="toggleAllOverlays('swing',this)">📊 Swing</button>
+      <button class="ov-btn"        data-overlay="sd"           onclick="toggleAllOverlays('sd',this)">📦 S/D</button>
+      <div style="margin-left:auto;display:flex;gap:5px;align-items:center">
+        <button class="ov-btn active" id="view-single" onclick="setViewMode('single')">Single</button>
+        <button class="ov-btn"        id="view-split"  onclick="setViewMode('split')">Split</button>
+        <button class="ov-btn"        id="fs-btn"      onclick="toggleFullscreen()" title="Fullscreen">⛶</button>
+        <button class="ov-btn"        onclick="clearAllOverlays()">Clear all</button>
+      </div>
+    </div>
+
+    <!-- ── SINGLE VIEW ── -->
+    <div id="single-view-wrapper">
+      <div style="position:relative">
+        <div class="tf-switcher" id="tf-switcher">
+          <button class="tf-btn active" onclick="switchTF('M1')"  id="tf-M1">1M</button>
+          <button class="tf-btn"        onclick="switchTF('M5')"  id="tf-M5">5M</button>
+          <button class="tf-btn"        onclick="switchTF('M15')" id="tf-M15">15M</button>
+          <button class="tf-btn"        onclick="switchTF('H1')"  id="tf-H1">1H</button>
+        </div>
+        <div id="chart-main"></div>
+      </div>
+      <div id="chart-vol"></div>
+    </div>
+
+    <!-- ── SPLIT VIEW (3 panes: 15M | 5M | 1M) ── -->
+    <div id="split-view-wrapper">
+      <div class="chart-pane" id="pane-15m">
+        <div class="pane-label">15M</div>
+        <div class="pane-chart-div" id="chart-15m"></div>
+        <div class="pane-ohlc" id="ohlc-15m"></div>
+      </div>
+      <div class="chart-pane" id="pane-5m">
+        <div class="pane-label">5M</div>
+        <div class="pane-chart-div" id="chart-5m"></div>
+        <div class="pane-ohlc" id="ohlc-5m"></div>
+      </div>
+      <div class="chart-pane" id="pane-1m">
+        <div class="pane-label">1M</div>
+        <div class="pane-chart-div" id="chart-1m"></div>
+        <div class="pane-ohlc" id="ohlc-1m"></div>
+      </div>
+    </div>
+
+  </div><!-- /#chart-container -->
+
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     TAB: BACKTEST
+══════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-backtest">
+
+  <div style="background:var(--surface); border-radius:var(--radius); padding:16px; margin:0 0 16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <span style="font-size:14px; font-weight:700;">Backtest · ETH/USDT · M15</span>
+      <button onclick="clearEthBacktest()" id="eth-bt-clear" style="display:none; background:none; border:1px solid var(--border); color:var(--muted); font-size:11px; padding:4px 10px; border-radius:4px; cursor:pointer;">Clear</button>
+    </div>
+
+    <!-- Strategy: ETH RSI 15 TF -->
+    <div style="margin-bottom:12px; font-size:12px; color:var(--teal); font-weight:600;">Strategy: ETH RSI 15 TF</div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+      <div><label style="font-size:11px; color:var(--muted); display:block; margin-bottom:4px;">Start Date</label>
+        <input type="date" id="eth-bt-start" style="width:100%; background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:8px; border-radius:6px; font-size:13px;" /></div>
+      <div><label style="font-size:11px; color:var(--muted); display:block; margin-bottom:4px;">End Date</label>
+        <input type="date" id="eth-bt-end" style="width:100%; background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:8px; border-radius:6px; font-size:13px;" /></div>
+      <div><label style="font-size:11px; color:var(--muted); display:block; margin-bottom:4px;">Starting Balance ($)</label>
+        <input type="number" id="eth-bt-balance" value="10000" min="1000" step="1000" style="width:100%; background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:8px; border-radius:6px; font-size:13px;" /></div>
+      <div><label style="font-size:11px; color:var(--muted); display:block; margin-bottom:4px;">Risk Per Trade <span style="color:var(--teal)" id="eth-bt-risk-lbl">0.75%</span></label>
+        <input type="range" id="eth-bt-risk" min="0.25" max="3" step="0.25" value="0.75" style="width:100%;"
+          oninput="document.getElementById('eth-bt-risk-lbl').textContent=this.value+'%'" /></div>
+    </div>
+
+    <div id="eth-bt-error" style="display:none; color:var(--red); font-size:12px; padding:8px; background:rgba(239,83,80,.08); border:1px solid rgba(239,83,80,.2); border-radius:6px; margin-bottom:10px;"></div>
+    <button id="eth-bt-run" onclick="runEthBacktest()" style="width:100%; padding:10px; background:var(--teal); color:#fff; border:none; border-radius:6px; font:600 13px var(--font); cursor:pointer;">
+      ▶  Run ETH Backtest
+    </button>
+  </div>
+
+  <!-- Results -->
+  <div id="eth-bt-results" style="display:none;">
+    <!-- Metrics -->
+    <div style="background:var(--surface); border-radius:var(--radius); padding:16px; margin-bottom:16px;">
+      <div style="font-size:13px; font-weight:600; margin-bottom:10px;" id="eth-bt-title">Results</div>
+      <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:16px;">
+        <div style="text-align:center;"><div style="font-size:11px; color:var(--muted);">Trades</div><div style="font-size:18px; font-weight:700;" id="ebm-trades">—</div></div>
+        <div style="text-align:center;"><div style="font-size:11px; color:var(--muted);">Win Rate</div><div style="font-size:18px; font-weight:700;" id="ebm-winrate">—</div></div>
+        <div style="text-align:center;"><div style="font-size:11px; color:var(--muted);">P&L</div><div style="font-size:18px; font-weight:700;" id="ebm-pnl">—</div></div>
+        <div style="text-align:center;"><div style="font-size:11px; color:var(--muted);">Profit Factor</div><div style="font-size:18px; font-weight:700;" id="ebm-pf">—</div></div>
+      </div>
+      <!-- Equity curve -->
+      <div style="background:rgba(0,0,0,.3); border-radius:8px; padding:14px; min-height:210px;">
+        <div id="eq-empty" style="height:100px; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px;">Run a backtest to see the equity curve</div>
+        <svg id="eq-svg" viewBox="0 0 800 210" style="width:100%; height:210px; display:none;"></svg>
+      </div>
+    </div>
+
+    <!-- Trade table -->
+    <div style="background:var(--surface); border-radius:var(--radius); overflow:hidden;">
+      <div style="padding:10px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:13px; font-weight:600;">Trade Log</span>
+        <span id="eth-bt-trade-count" style="font-size:11px; color:var(--muted);"></span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+          <thead><tr style="border-bottom:1px solid var(--border);">
+            <th style="padding:8px; text-align:left; color:var(--muted);">#</th>
+            <th style="padding:8px; text-align:left; color:var(--muted);">Time</th>
+            <th style="padding:8px; text-align:left; color:var(--muted);">Dir</th>
+            <th style="padding:8px; text-align:left; color:var(--muted);">Entry</th>
+            <th style="padding:8px; text-align:left; color:var(--muted);">SL</th>
+            <th style="padding:8px; text-align:left; color:var(--muted);">TP</th>
+            <th style="padding:8px; text-align:left; color:var(--muted);">R:R</th>
+            <th style="padding:8px; text-align:left; color:var(--muted);">Result</th>
+            <th style="padding:8px; text-align:left; color:var(--muted);">P&L</th>
+          </tr></thead>
+          <tbody id="eth-bt-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Saved backtest history from MongoDB -->
+  <div style="background:var(--surface); border-radius:var(--radius); padding:16px; margin-top:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <span style="font-size:13px; font-weight:700;">Saved Backtest History</span>
+      <button onclick="loadEthBtHistory()" style="background:none; border:1px solid var(--border); color:var(--muted); font-size:11px; padding:4px 10px; border-radius:4px; cursor:pointer;">↻ Refresh</button>
+    </div>
+    <div id="eth-bt-history-body" style="font-size:12px; color:var(--muted);">Loading saved results…</div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     TAB: SIGNALS
+══════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-signals">
+  <div style="background:var(--surface); border-radius:var(--radius); padding:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <span style="font-size:14px; font-weight:700;">ETH Signal History</span>
+      <button onclick="loadEthSignals()" style="background:none; border:1px solid var(--border); color:var(--muted); font-size:11px; padding:4px 10px; border-radius:4px; cursor:pointer;">↻ Refresh</button>
+    </div>
+    <div style="display:flex; gap:6px; margin-bottom:12px;">
+      <button class="tf-btn active" onclick="filterSignals('all', this)">All</button>
+      <button class="tf-btn" onclick="filterSignals('rsi_eth', this)">RSI EMA</button>
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <thead><tr style="border-bottom:1px solid var(--border);">
+          <th style="padding:8px; text-align:left; color:var(--muted);">Time</th>
+          <th style="padding:8px; text-align:left; color:var(--muted);">Strategy</th>
+          <th style="padding:8px; text-align:left; color:var(--muted);">Dir</th>
+          <th style="padding:8px; text-align:left; color:var(--muted);">Entry</th>
+          <th style="padding:8px; text-align:left; color:var(--muted);">SL</th>
+          <th style="padding:8px; text-align:left; color:var(--muted);">TP</th>
+          <th style="padding:8px; text-align:left; color:var(--muted);">Strength</th>
+        </tr></thead>
+        <tbody id="eth-sig-tbody"><tr><td colspan="7" style="padding:24px; text-align:center; color:var(--muted);">No signals yet — strategies will generate signals on M15 candle closes</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════
+     TAB: OPTIMIZER
+══════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-optimizer">
+  <div style="background:var(--surface); border-radius:var(--radius); padding:16px; margin-bottom:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <div>
+        <div style="font-size:16px; font-weight:700;">🔬 ETH RSI 15 TF Parameter Optimizer</div>
+        <div style="font-size:11px; color:var(--muted); margin-top:3px;">Testing parameter combinations on 30 days of ETH/USDT data · READ-ONLY</div>
+      </div>
+      <button id="opt-run-btn" onclick="runOptimizer()" style="background:var(--teal); border:none; color:#fff; font:600 12px var(--font); padding:8px 20px; border-radius:6px; cursor:pointer;">▶ Run Optimizer</button>
+    </div>
+    <div id="opt-status" style="font-size:12px; color:var(--muted); padding:8px 12px; background:rgba(255,255,255,.03); border-radius:6px;">
+      Ready — Click "Run Optimizer" to test 2,000+ parameter combinations
+    </div>
+  </div>
+
+  <!-- Baseline comparison -->
+  <div id="opt-baseline" style="display:none; background:var(--surface); border-radius:var(--radius); padding:16px; margin-bottom:16px;">
+    <div style="font-size:13px; font-weight:700; margin-bottom:10px;">📊 Baseline vs Best Found</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div style="background:rgba(239,83,80,.08); border:1px solid rgba(239,83,80,.2); border-radius:8px; padding:12px;">
+        <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">CURRENT (Baseline)</div>
+        <div style="font-size:11px;"><span style="color:var(--red); font-weight:700;" id="opt-bl-wr">31.2%</span> win rate · <span id="opt-bl-trades">64</span> trades · PF <span id="opt-bl-pf">1.02</span></div>
+      </div>
+      <div style="background:rgba(29,158,117,.08); border:1px solid rgba(29,158,117,.2); border-radius:8px; padding:12px;">
+        <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">BEST FOUND</div>
+        <div style="font-size:11px;"><span style="color:var(--green); font-weight:700;" id="opt-best-wr">—</span> win rate · <span id="opt-best-trades">—</span> trades · PF <span id="opt-best-pf">—</span></div>
+        <div style="font-size:10px; color:var(--green); margin-top:3px;" id="opt-improvement">—</div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:var(--muted); margin-top:8px;" id="opt-summary">—</div>
+  </div>
+
+  <!-- Top 10 results table with ranking tabs -->
+  <div id="opt-results" style="display:none; background:var(--surface); border-radius:var(--radius); padding:16px; margin-bottom:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div style="font-size:13px; font-weight:700;">🏆 Top 10 Parameter Sets</div>
+      <div style="display:flex; gap:4px;" id="opt-rank-tabs">
+        <button class="tf-btn" onclick="switchOptRank('sweetspot', this)" style="font-size:10px;">🎯 Sweet Spot (≥50% + ≥20 trades)</button>
+        <button class="tf-btn" onclick="switchOptRank('balanced', this)" style="font-size:10px;">⚖️ Balanced (≥50% + ≥10 trades)</button>
+        <button class="tf-btn" onclick="switchOptRank('winrate', this)" style="font-size:10px;">📊 Pure Win Rate</button>
+      </div>
+    </div>
+    <div id="opt-rank-info" style="font-size:10px; color:var(--muted); margin-bottom:8px;"></div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:11px;">
+        <thead><tr style="border-bottom:1px solid var(--border);">
+          <th style="padding:6px 8px; text-align:left; color:var(--muted);">#</th>
+          <th style="padding:6px 8px; text-align:left; color:var(--muted);">TF</th>
+          <th style="padding:6px 8px; text-align:left; color:var(--muted);">RSI</th>
+          <th style="padding:6px 8px; text-align:left; color:var(--muted);">OB/OS</th>
+          <th style="padding:6px 8px; text-align:left; color:var(--muted);">EMA</th>
+          <th style="padding:6px 8px; text-align:left; color:var(--muted);">Entry</th>
+          <th style="padding:6px 8px; text-align:left; color:var(--muted);">ATR×</th>
+          <th style="padding:6px 8px; text-align:left; color:var(--muted);">TP R:R</th>
+          <th style="padding:6px 8px; text-align:left; color:var(--muted);">Trades</th>
+          <th style="padding:6px 8px; text-align:left; color:var(--muted);">Win%</th>
+          <th style="padding:6px 8px; text-align:left; color:var(--muted);">PF</th>
+          <th style="padding:6px 8px; text-align:left; color:var(--muted);">P&L</th>
+          <th style="padding:6px 8px; text-align:left; color:var(--muted);">Target</th>
+        </tr></thead>
+        <tbody id="opt-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Best config diff -->
+  <div id="opt-config-diff" style="display:none; background:var(--surface); border-radius:var(--radius); padding:16px;">
+    <div style="font-size:13px; font-weight:700; margin-bottom:10px;">⚙️ Best Config — Changes Needed</div>
+    <pre id="opt-diff" style="background:rgba(0,0,0,.3); padding:12px; border-radius:6px; font-size:11px; color:var(--text); overflow-x:auto; line-height:1.6;"></pre>
+  </div>
+</div>
+
+<script>
+// ── Optimizer functions ──
+let optPolling = null;
+
+async function runOptimizer() {
+  const btn = document.getElementById('opt-run-btn');
+  const status = document.getElementById('opt-status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running...';
+  btn.style.opacity = '0.6';
+  status.innerHTML = '⏳ Fetching 30 days of ETH/USDT candle data from Bybit...';
+
+  try {
+    const res = await fetch('/api/rsi-eth/optimizer/run', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) {
+      status.innerHTML = '❌ ' + data.error;
+      btn.disabled = false;
+      btn.textContent = '▶ Run Optimizer';
+      btn.style.opacity = '1';
+      return;
+    }
+    status.innerHTML = '⏳ Optimizer running — testing 2,000+ parameter combinations...';
+    // Poll for results
+    optPolling = setInterval(pollOptimizer, 3000);
+  } catch (e) {
+    status.innerHTML = '❌ Network error: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = '▶ Run Optimizer';
+    btn.style.opacity = '1';
+  }
+}
+
+async function pollOptimizer() {
+  try {
+    const res = await fetch('/api/rsi-eth/optimizer/status');
+    const data = await res.json();
+    const status = document.getElementById('opt-status');
+
+    if (data.status === 'running') {
+      status.innerHTML = '⏳ Optimizer running — testing parameter combinations...';
+      return;
+    }
+
+    if (data.status === 'complete') {
+      clearInterval(optPolling);
+      const btn = document.getElementById('opt-run-btn');
+      btn.disabled = false;
+      btn.textContent = '▶ Run Again';
+      btn.style.opacity = '1';
+
+      const r = data.result;
+      if (r.error) {
+        status.innerHTML = '❌ Error: ' + r.error;
+        return;
+      }
+
+      status.innerHTML = `✅ Complete — ${r.totalCombinations} combinations tested in ${r.elapsedSeconds}s · ${r.meetsTarget} meet 50%+ target`;
+
+      // Store full result for tab switching
+      window._optResult = r;
+
+      // Show baseline comparison
+      document.getElementById('opt-baseline').style.display = 'block';
+      if (r.bestFound) {
+        const b = r.bestFound.best;
+        document.getElementById('opt-best-wr').textContent = b.winRate + '%';
+        document.getElementById('opt-best-trades').textContent = b.trades;
+        document.getElementById('opt-best-pf').textContent = b.pf;
+        const imp = (b.winRate - r.baseline.winRate).toFixed(1);
+        document.getElementById('opt-improvement').textContent =
+          imp > 0 ? `+${imp}% improvement · ${b.trades} trades in 30 days` : `${imp}% vs baseline`;
+        document.getElementById('opt-summary').textContent =
+          `Tested ${r.totalCombinations} combos · ${r.totalValid} valid (≥5 trades) · ${r.meetsTarget} meet ≥50% · ${r.sweetSpotCount || 0} sweet spot (≥50% + ≥20 trades) · ${r.candles5m} 5M + ${r.candles15m} 15M candles`;
+      }
+
+      // Default to sweet spot ranking
+      const ssData = r.top10_sweetspot || [];
+      if (ssData.length > 0) {
+        switchOptRank('sweetspot');
+      } else {
+        switchOptRank('balanced');
+      }
+
+      // Show config diff for best result
+      if (r.bestFound) renderConfigDiff(r.bestFound);
+    }
+  } catch (e) { /* ignore polling errors */ }
+}
+
+function switchOptRank(rank, btn) {
+  const r = window._optResult;
+  if (!r) return;
+
+  // Update tab buttons
+  document.querySelectorAll('#opt-rank-tabs .tf-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  else {
+    document.querySelectorAll('#opt-rank-tabs .tf-btn').forEach(b => {
+      if (rank === 'sweetspot' && b.textContent.includes('Sweet')) b.classList.add('active');
+      if (rank === 'balanced' && b.textContent.includes('Balanced')) b.classList.add('active');
+      if (rank === 'winrate' && b.textContent.includes('Win Rate')) b.classList.add('active');
+    });
+  }
+
+  let data, info;
+  if (rank === 'sweetspot') {
+    data = r.top10_sweetspot || [];
+    info = `${r.sweetSpotCount || 0} combos with ≥50% win rate AND ≥20 trades · Sorted by P&L`;
+  } else if (rank === 'balanced') {
+    data = r.top10_balanced || [];
+    info = `${r.balancedCount || 0} combos with ≥50% win rate AND ≥10 trades · Sorted by composite score`;
+  } else {
+    data = r.top10 || [];
+    info = `${r.meetsTarget || 0} combos with ≥50% win rate · Sorted by win rate (includes low trade count)`;
+  }
+
+  document.getElementById('opt-rank-info').textContent = info;
+  renderOptimizerTable(data);
+
+  // Update best found + config diff based on selected ranking
+  if (data.length > 0) {
+    const best = data[0];
+    const b = best.best;
+    document.getElementById('opt-best-wr').textContent = b.winRate + '%';
+    document.getElementById('opt-best-wr').style.color = b.winRate >= 50 ? 'var(--green)' : 'var(--red)';
+    document.getElementById('opt-best-trades').textContent = b.trades;
+    document.getElementById('opt-best-pf').textContent = b.pf;
+    const imp = (b.winRate - r.baseline.winRate).toFixed(1);
+    document.getElementById('opt-improvement').textContent =
+      imp > 0 ? `+${imp}% improvement · ${b.trades} trades in 30 days (${(b.trades/30).toFixed(1)}/day)` : `${imp}% vs baseline`;
+    renderConfigDiff(best);
+  }
+}
+
+function renderOptimizerTable(top10) {
+  const tbody = document.getElementById('opt-tbody');
+  document.getElementById('opt-results').style.display = 'block';
+  tbody.innerHTML = '';
+
+  const entryNames = { A: 'RSI Cross', B: 'EMA Cross', C: 'Both', D: 'EMA+RSI Dir', E: 'EMA200+RSI40' };
+
+  top10.forEach((row, idx) => {
+    const p = row.params;
+    const b = row.best;
+    const isWinner = idx === 0;
+    const meetsTarget = b.winRate >= 50;
+    const wrColor = b.winRate >= 50 ? 'var(--green)' : (b.winRate >= 40 ? 'var(--amber)' : 'var(--red)');
+
+    const tr = document.createElement('tr');
+    tr.style.cssText = `border-bottom:1px solid var(--border);${isWinner ? 'background:rgba(29,158,117,.08);' : ''}`;
+    tr.innerHTML = `
+      <td style="padding:6px 8px; font-weight:${isWinner ? '700' : '400'};">${idx + 1}</td>
+      <td style="padding:6px 8px;"><span style="background:rgba(255,255,255,.06); padding:2px 6px; border-radius:3px; font-size:10px;">${b.tf}</span></td>
+      <td style="padding:6px 8px;">${p.rsiPeriod}</td>
+      <td style="padding:6px 8px; font-size:10px;">${p.rsiOB}/${p.rsiOS}</td>
+      <td style="padding:6px 8px;">${p.emaFast}/${p.emaSlow}</td>
+      <td style="padding:6px 8px; font-size:10px;" title="${entryNames[p.entryOption] || p.entryOption}">${p.entryOption}</td>
+      <td style="padding:6px 8px;">${p.atrMult}</td>
+      <td style="padding:6px 8px;">${p.tpRatio}</td>
+      <td style="padding:6px 8px;">${b.trades}</td>
+      <td style="padding:6px 8px; color:${wrColor}; font-weight:700;">${b.winRate}%</td>
+      <td style="padding:6px 8px;">${b.pf}</td>
+      <td style="padding:6px 8px; color:${b.totalPnl >= 0 ? 'var(--green)' : 'var(--red)'};">${b.totalPnl >= 0 ? '+' : ''}${b.totalPnl}</td>
+      <td style="padding:6px 8px;">${meetsTarget ? '<span style="color:var(--green);">✓</span>' : '<span style="color:var(--red);">✗</span>'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderConfigDiff(best) {
+  document.getElementById('opt-config-diff').style.display = 'block';
+  const p = best.params;
+  const b = best.best;
+  const entryNames = { A: 'RSI Cross only', B: 'EMA Cross only', C: 'Both (current)', D: 'EMA Cross + RSI direction', E: 'Price vs EMA200 + RSI cross' };
+
+  const diff = `RSI EMA ETH — Optimized Parameters
+─────────────────────────────────────────
+Parameter        Current → Optimized
+─────────────────────────────────────────
+RSI_PERIOD:      14      → ${p.rsiPeriod}${p.rsiPeriod !== 14 ? '  ← changed' : ''}
+RSI_OVERBOUGHT:  70      → ${p.rsiOB}${p.rsiOB !== 70 ? '  ← changed' : ''}
+RSI_OVERSOLD:    30      → ${p.rsiOS}${p.rsiOS !== 30 ? '  ← changed' : ''}
+EMA_FAST:        50      → ${p.emaFast}${p.emaFast !== 50 ? '  ← changed' : ''}
+EMA_SLOW:        200     → ${p.emaSlow}${p.emaSlow !== 200 ? '  ← changed' : ''}
+ENTRY_OPTION:    C       → ${p.entryOption} (${entryNames[p.entryOption]})${p.entryOption !== 'C' ? '  ← changed' : ''}
+ATR_SL_MULT:     1.3     → ${p.atrMult}${p.atrMult !== 1.3 ? '  ← changed' : ''}
+TP_RATIO:        3.0     → ${p.tpRatio}${p.tpRatio !== 3.0 ? '  ← changed' : ''}
+TIMEFRAME:       M15     → ${b.tf}${b.tf !== 'M15' ? '  ← changed' : ''}
+─────────────────────────────────────────
+Expected: ${b.winRate}% win rate · PF ${b.pf} · ${b.trades} trades
+P&L:      ${b.totalPnl >= 0 ? '+' : ''}${b.totalPnl}`;
+
+  document.getElementById('opt-diff').textContent = diff;
+}
+</script>
+
+
+<!-- ── Overlay scripts (reuse existing XAU overlay modules) ── -->
+<script src="/src/overlays/OverlayConfig.js"></script>
+<script src="/src/overlays/primitives/Rectangle.js"></script>
+<script src="/src/overlays/primitives/DashedLine.js"></script>
+<script src="/src/overlays/StructureOverlay.js"></script>
+<script src="/src/overlays/FVGOverlay.js"></script>
+<script src="/src/overlays/OrderBlockOverlay.js"></script>
+<script src="/src/overlays/LiquidityOverlay.js"></script>
+<script src="/src/overlays/DisplacementOverlay.js"></script>
+<script src="/src/overlays/CISDOverlay.js"></script>
+<script src="/src/overlays/SignalOverlay.js"></script>
+<script src="/src/overlays/ICTEntryEngine.js"></script>
+<script src="/src/overlays/SwingDetectionOverlay.js?v=2"></script>
+<script src="/src/overlays/SupplyDemandOverlay.js?v=2"></script>
+<script src="/src/overlays/ChartOverlayEngine.js?v=3"></script>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+// CRYPTO DASHBOARD — ETH/USDT chart with ICT overlays (Bybit feed)
+// ══════════════════════════════════════════════════════════════════════════
+
+const LC = LightweightCharts;
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+const TAB_KEY = 'crypto:tab';
+let activeTab = sessionStorage.getItem(TAB_KEY) || 'chart';
+
+function switchTab(id) {
+  activeTab = id;
+  sessionStorage.setItem(TAB_KEY, id);
+  document.querySelectorAll('.stab').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + id));
+  if (id === 'chart' && !chartInited) initChart();
+}
+document.querySelectorAll('.stab').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// CHART ENGINE
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── Single-view chart instances ──────────────────────────────────────────
+let mainChart, mainSeries, volChart, volSeries;
+let overlayEngineMain = null;
+
+// ── Split-view chart instances ───────────────────────────────────────────
+let chart1m, series1m, overlayEngine1m = null;
+let chart5m, series5m, overlayEngine5m = null;
+let chart15m, series15m, overlayEngine15m = null;
+let splitInited = false;
+
+// ── State flags ───────────────────────────────────────────────────────────
+let chartInited = false;
+var currentTF = 'M1';
+var _viewMode = 'single';
+let eventSource = null;
+
+const candleStore = {
+  M1: [], M5: [], M15: [], H1: [],
+  current: { M1: null, M5: null, M15: null, H1: null },
+  livePrice: 0, liveTime: 0,
+};
+
+const ETH_OVERLAY_CONFIG = {
+  FVG_MIN_SIZE: 0.30, SWING_PIVOT_BARS: 5,
+  DISPLACEMENT_BODY_PCT: 0.72, DISPLACEMENT_MIN_SIZE: 0.80,
+  EQUAL_LEVEL_TOLERANCE: 0.50, SSL_LOOKBACK: 25, OB_MAX_DISPLAY: 4,
+};
+
+function normalizeCandle(c) {
+  return { time: Number(c.time), open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close), volume: Number(c.volume || 0), is_closed: c.is_closed ?? c.complete ?? true };
+}
+function dedupeCandles(arr) {
+  const map = new Map();
+  (arr || []).forEach(c => { const n = normalizeCandle(c); if (Number.isFinite(n.time)) map.set(n.time, n); });
+  return [...map.values()].sort((a, b) => a.time - b.time);
+}
+function toBar(c)  { return { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }; }
+function toVol(c)  { return { time: c.time, value: c.volume || 0, color: c.close >= c.open ? 'rgba(38,166,154,.6)' : 'rgba(239,83,80,.5)' }; }
+
+// ── Render helpers ────────────────────────────────────────────────────────
+function renderMainChartSeries() {
+  if (!mainSeries || !volSeries) return;
+  const closed = candleStore[currentTF] || [];
+  if (closed.length) { mainSeries.setData(closed.map(toBar)); volSeries.setData(closed.map(toVol)); }
+  const curr = candleStore.current[currentTF];
+  if (curr) { mainSeries.update(toBar(curr)); volSeries.update(toVol(curr)); }
+}
+function renderSplitChartSeries() {
+  if (!splitInited) return;
+  [['M15', series15m], ['M5', series5m], ['M1', series1m]].forEach(([tf, s]) => {
+    if (!s) return;
+    const closed = candleStore[tf] || [];
+    if (closed.length) s.setData(closed.map(toBar));
+    const curr = candleStore.current[tf];
+    if (curr) s.update(toBar(curr));
+  });
+}
+function setStoredCandles(tf, candles) {
+  candleStore[tf] = dedupeCandles(candles);
+  [overlayEngineMain, overlayEngine1m, overlayEngine5m, overlayEngine15m].forEach(e => { if (e) try { e.setCandles(tf, candleStore[tf]); } catch {} });
+}
+function upsertClosedCandle(tf, candle) {
+  const next = dedupeCandles([...(candleStore[tf] || []), candle]);
+  candleStore[tf] = next;
+  const norm = normalizeCandle(candle);
+  [overlayEngineMain, overlayEngine1m, overlayEngine5m, overlayEngine15m].forEach(e => { if (e) try { e.onCandleClose(norm, next, tf); } catch {} });
+  return norm;
+}
+
+// ── Chart options factory ─────────────────────────────────────────────────
+function makeChartOpts(extra = {}) {
+  return {
+    layout: { background: { color: '#161b22' }, textColor: '#8b949e' },
+    grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
+    rightPriceScale: { borderColor: '#30363d' },
+    timeScale: { borderColor: '#30363d', timeVisible: true, secondsVisible: false },
+    crosshair: { mode: 1 },
+    handleScroll: { mouseWheel: true, pressedMouseMove: true },
+    handleScale: { mouseWheel: true, pinch: true },
+    autoSize: true, ...extra,
+  };
+}
+function makeCandleSeries(chart) {
+  return chart.addCandlestickSeries({
+    upColor: '#26a69a', downColor: '#ef5350',
+    borderUpColor: '#26a69a', borderDownColor: '#ef5350',
+    wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+  });
+}
+
+// ── Init single-view chart ────────────────────────────────────────────────
+async function initChart() {
+  if (chartInited) return;
+  chartInited = true;
+
+  mainChart  = LC.createChart(document.getElementById('chart-main'), makeChartOpts());
+  mainSeries = makeCandleSeries(mainChart);
+
+  volChart  = LC.createChart(document.getElementById('chart-vol'), makeChartOpts({
+    rightPriceScale: { visible: false }, timeScale: { visible: false }, crosshair: { mode: 0 },
+  }));
+  volSeries = volChart.addHistogramSeries({ priceScaleId: 'vol', color: '#26a69a', priceFormat: { type: 'volume' } });
+
+  mainChart.subscribeCrosshairMove(p => {
+    if (!p.seriesData || !p.seriesData.has(mainSeries)) return;
+    const d = p.seriesData.get(mainSeries);
+    if (d) document.getElementById('chart-ohlc').textContent = `O ${d.open.toFixed(2)}  H ${d.high.toFixed(2)}  L ${d.low.toFixed(2)}  C ${d.close.toFixed(2)}`;
+  });
+  mainChart.timeScale().subscribeVisibleLogicalRangeChange(lr => { if (lr && volChart) volChart.timeScale().setVisibleLogicalRange(lr); });
+
+  if (typeof window.SEANChartOverlayEngine !== 'undefined') {
+    overlayEngineMain = new window.SEANChartOverlayEngine(mainChart, mainSeries, candleStore, {
+      ...ETH_OVERLAY_CONFIG, container: document.getElementById('chart-main'),
+    });
+    window.overlayEngineMain = overlayEngineMain;
+    await overlayEngineMain.initialize();
+    // Enable defaults and sync button classes
+    ['structure', 'fvg', 'orderblock', 'liquidity', 'displacement'].forEach(n => {
+      overlayEngineMain.toggleOverlay(n, true);
+      const btn = document.querySelector(`[data-overlay="${n}"]`);
+      if (btn) btn.classList.add('active');
+    });
+    console.log('[ETH] Overlay engine initialized');
+  }
+
+  connectStream();
+  mainChart.timeScale().fitContent();
+}
+
+// ── Init split-view charts (lazy) ─────────────────────────────────────────
+async function initSplitCharts() {
+  if (splitInited) return;
+  splitInited = true;
+  const opts = makeChartOpts();
+
+  chart15m = LC.createChart(document.getElementById('chart-15m'), opts);
+  series15m = makeCandleSeries(chart15m);
+  chart5m = LC.createChart(document.getElementById('chart-5m'), opts);
+  series5m = makeCandleSeries(chart5m);
+  chart1m = LC.createChart(document.getElementById('chart-1m'), opts);
+  series1m = makeCandleSeries(chart1m);
+
+  if (typeof window.SEANChartOverlayEngine !== 'undefined') {
+    overlayEngine15m = new window.SEANChartOverlayEngine(chart15m, series15m, candleStore, { ...ETH_OVERLAY_CONFIG, container: document.getElementById('pane-15m') });
+    overlayEngine5m  = new window.SEANChartOverlayEngine(chart5m,  series5m,  candleStore, { ...ETH_OVERLAY_CONFIG, container: document.getElementById('pane-5m') });
+    overlayEngine1m  = new window.SEANChartOverlayEngine(chart1m,  series1m,  candleStore, { ...ETH_OVERLAY_CONFIG, container: document.getElementById('pane-1m') });
+    await overlayEngine15m.initialize();
+    await overlayEngine5m.initialize();
+    await overlayEngine1m.initialize();
+    document.querySelectorAll('.ov-btn[data-overlay]').forEach(btn => {
+      const name = btn.dataset.overlay, visible = btn.classList.contains('active');
+      [overlayEngine15m, overlayEngine5m, overlayEngine1m].forEach(e => e.toggleOverlay(name, visible));
+    });
+  }
+  wireCrosshairSync();
+  renderSplitChartSeries();
+  [chart15m, chart5m, chart1m].forEach(c => c.timeScale().fitContent());
+}
+
+// ── Crosshair sync ────────────────────────────────────────────────────────
+function wireCrosshairSync() {
+  const sm = new Map([[chart15m, series15m], [chart5m, series5m], [chart1m, series1m]]);
+  function sync(src, p) {
+    for (const [c, s] of sm) { if (c === src) continue; if (!p.time) { try { c.clearCrosshairPosition(); } catch {} } else { try { c.setCrosshairPosition(p.point ? p.point.y : 0, p.time, s); } catch {} } }
+  }
+  chart15m.subscribeCrosshairMove(p => { sync(chart15m, p); updOHLC('15m', p, series15m); });
+  chart5m.subscribeCrosshairMove(p  => { sync(chart5m,  p); updOHLC('5m',  p, series5m); });
+  chart1m.subscribeCrosshairMove(p  => { sync(chart1m,  p); updOHLC('1m',  p, series1m); });
+}
+function updOHLC(tf, param, series) {
+  const el = document.getElementById('ohlc-' + tf);
+  if (!el) return;
+  if (!param || !param.seriesData) { el.textContent = ''; return; }
+  const d = param.seriesData.get(series);
+  if (!d || d.open == null) { el.textContent = ''; return; }
+  el.textContent = `O ${d.open.toFixed(2)}  H ${d.high.toFixed(2)}  L ${d.low.toFixed(2)}  C ${d.close.toFixed(2)}`;
+}
+
+// ── Overlay controls (all engines) ───────────────────────────────────────
+window.toggleAllOverlays = function(name, btn) {
+  btn.classList.toggle('active');
+  const visible = btn.classList.contains('active');
+  [overlayEngineMain, overlayEngine1m, overlayEngine5m, overlayEngine15m].forEach(e => { if (e) e.toggleOverlay(name, visible); });
+};
+window.clearAllOverlays = function() {
+  document.querySelectorAll('.ov-btn[data-overlay]').forEach(btn => btn.classList.remove('active'));
+  [overlayEngineMain, overlayEngine1m, overlayEngine5m, overlayEngine15m].forEach(e => { if (e) e.clearAll(); });
+};
+
+// ── View mode switching ───────────────────────────────────────────────────
+function setViewMode(mode) {
+  _viewMode = mode;
+  const single = document.getElementById('single-view-wrapper');
+  const split  = document.getElementById('split-view-wrapper');
+  const bS = document.getElementById('view-single');
+  const bP = document.getElementById('view-split');
+  const hd = document.getElementById('chart-hd-title');
+
+  if (mode === 'single') {
+    single.style.display = ''; split.classList.remove('active');
+    bS.classList.add('active'); bP.classList.remove('active');
+    hd.textContent = `ETHUSDT · ${currentTF} · Live`;
+    document.getElementById('tf-switcher').style.display = '';
+    if (mainChart) setTimeout(() => mainChart.timeScale().fitContent(), 50);
+  } else {
+    single.style.display = 'none'; split.classList.add('active');
+    bS.classList.remove('active'); bP.classList.add('active');
+    hd.textContent = 'ETHUSDT · 15M | 5M | 1M · Live';
+    initSplitCharts().then(() => {
+      setTimeout(() => { [chart15m, chart5m, chart1m].forEach(c => { if (c) c.timeScale().fitContent(); }); }, 80);
+    });
+  }
+}
+
+// ── Fullscreen ────────────────────────────────────────────────────────────
+function toggleFullscreen() {
+  const container = document.getElementById('chart-container');
+  const isFS = container.classList.toggle('fullscreen');
+  const nav = document.querySelector('.nav');
+  const badge = document.querySelector('.crypto-badge');
+  const tabs = document.querySelector('.stab-bar');
+  const header = document.querySelector('.strat-header');
+  if (nav) nav.style.display = isFS ? 'none' : '';
+  if (badge) badge.style.display = isFS ? 'none' : '';
+  if (tabs) tabs.style.display = isFS ? 'none' : '';
+  if (header) header.style.display = isFS ? 'none' : '';
+
+  if (isFS) document.addEventListener('keydown', exitOnEscape);
+  else document.removeEventListener('keydown', exitOnEscape);
+
+  setTimeout(() => {
+    if (_viewMode === 'single' && mainChart) {
+      const el = document.getElementById('chart-main');
+      if (el) mainChart.resize(el.offsetWidth, el.offsetHeight);
+    } else if (splitInited) {
+      [['chart-15m', chart15m], ['chart-5m', chart5m], ['chart-1m', chart1m]].forEach(([id, c]) => {
+        if (!c) return; const el = document.getElementById(id); if (el) c.resize(el.offsetWidth, el.offsetHeight);
+      });
+    }
+  }, 60);
+}
+function exitOnEscape(e) {
+  if (e.key === 'Escape') { const c = document.getElementById('chart-container'); if (c && c.classList.contains('fullscreen')) toggleFullscreen(); }
+}
+
+// ── TF switcher (single view) ─────────────────────────────────────────────
+function switchTF(tf) {
+  if (currentTF === tf && _viewMode === 'single') return;
+  currentTF = tf;
+  document.querySelectorAll('#tf-switcher .tf-btn').forEach(btn => btn.classList.toggle('active', btn.id === 'tf-' + tf));
+  const hd = document.getElementById('chart-hd-title');
+  if (hd) hd.textContent = `ETHUSDT · ${tf} · Live`;
+  renderMainChartSeries();
+  if (mainChart) mainChart.timeScale().fitContent();
+  if (overlayEngineMain) {
+    const candles = candleStore[tf] || [];
+    if (candles.length) try { overlayEngineMain.setCandles(tf, candles); } catch {}
+    setTimeout(() => { try { overlayEngineMain.recalculate(); overlayEngineMain.draw(); } catch {} }, 200);
+  }
+}
+
+
+// ── SSE Connection ──────────────────────────────────────────────────────────
+function connectStream() {
+  if (eventSource) { try { eventSource.close(); } catch {} }
+
+  eventSource = new EventSource('/api/eth/stream/ALL');
+
+  eventSource.onmessage = (evt) => {
+    try {
+      const msg = JSON.parse(evt.data);
+      handleMessage(msg);
+    } catch {}
+  };
+
+  eventSource.onerror = () => {
+    eventSource.close();
+    setTimeout(connectStream, 3000);
+  };
+}
+
+
+function handleMessage(msg) {
+  const type = msg.type;
+
+  if (type === 'init') {
+    const candles = msg.candles || {};
+    for (const [tf, arr] of Object.entries(candles)) {
+      if (candleStore[tf] !== undefined) setStoredCandles(tf, dedupeCandles(arr));
+    }
+    renderMainChartSeries();
+    renderSplitChartSeries();
+    if (mainChart) mainChart.timeScale().fitContent();
+    setTimeout(() => {
+      [overlayEngineMain, overlayEngine1m, overlayEngine5m, overlayEngine15m].forEach(e => { if (e) try { e.recalculate(); e.draw(); } catch {} });
+    }, 500);
+    return;
+  }
+
+  if (type === 'candle') {
+    const tf = msg.timeframe;
+    const c = normalizeCandle(msg.candle);
+    if (candleStore[tf] !== undefined) {
+      upsertClosedCandle(tf, c);
+      candleStore.current[tf] = null;
+      if (tf === currentTF && mainSeries) { mainSeries.update(toBar(c)); if (volSeries) volSeries.update(toVol(c)); }
+      if (splitInited) { const sm = { M15: series15m, M5: series5m, M1: series1m }; if (sm[tf]) sm[tf].update(toBar(c)); }
+    }
+    return;
+  }
+
+  if (type === 'tick') {
+    const tf = msg.timeframe;
+    const c = normalizeCandle(msg.candle);
+    candleStore.livePrice = msg.price || c.close;
+    candleStore.liveTime = c.time;
+    if (candleStore.current[tf] !== undefined) candleStore.current[tf] = c;
+    updatePrice(msg.price || c.close);
+    if (tf === currentTF && mainSeries && !msg.isClosed) { mainSeries.update(toBar(c)); if (volSeries) volSeries.update(toVol(c)); }
+    if (splitInited && !msg.isClosed) { const sm = { M15: series15m, M5: series5m, M1: series1m }; if (sm[tf]) sm[tf].update(toBar(c)); }
+    [overlayEngineMain, overlayEngine1m, overlayEngine5m, overlayEngine15m].forEach(e => { if (e) try { e.updateCurrentCandle(tf, c); } catch {} });
+    return;
+  }
+}
+
+
+// ── Price display ──────────────────────────────────────────────────────────
+let lastPrice = 0, openPrice = 0;
+
+function updatePrice(price) {
+  if (!price) return;
+  if (!openPrice) openPrice = price;
+  lastPrice = price;
+
+  const el = document.getElementById('live-price');
+  if (el) el.textContent = price.toFixed(2);
+
+  const chg = price - openPrice;
+  const chgEl = document.getElementById('price-change');
+  if (chgEl && openPrice) {
+    chgEl.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)} (${(chg/openPrice*100).toFixed(2)}%)`;
+    chgEl.className = 'price-change ' + (chg >= 0 ? 'up' : 'dn');
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// STRATEGY CONDITIONS
+// ══════════════════════════════════════════════════════════════════════════
+
+async function pollConditions() {
+  // RSI EMA conditions
+  try {
+    const r = await fetch('/api/rsi-eth/status');
+    const d = await r.json();
+    const c = d.conditions || {};
+    if (c.trend) {
+      const tEl = document.getElementById('cond-rsi-trend');
+      tEl.textContent = c.trend.bias === 'bull' ? 'BULLISH ↑' : c.trend.bias === 'bear' ? 'BEARISH ↓' : 'NEUTRAL';
+      tEl.style.color = c.trend.bias === 'bull' ? 'var(--green)' : c.trend.bias === 'bear' ? 'var(--red)' : 'var(--muted)';
+    }
+    if (c.rsi) {
+      const rEl = document.getElementById('cond-rsi-val');
+      rEl.textContent = c.rsi.value ?? '—';
+      rEl.style.color = c.rsi.active ? 'var(--green)' : 'var(--muted)';
+    }
+    if (c.atr) {
+      const aEl = document.getElementById('cond-rsi-atr');
+      aEl.textContent = c.atr.active ? `${c.atr.value} > ${c.atr.avg}` : `${c.atr.value ?? '—'}`;
+      aEl.style.color = c.atr.active ? 'var(--green)' : 'var(--muted)';
+    }
+    if (c.price) {
+      document.getElementById('cond-rsi-price').textContent = c.price.close ?? '—';
+    }
+  } catch {}
+}
+
+setInterval(pollConditions, 5000);
+pollConditions();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// BACKTEST ENGINE
+// ══════════════════════════════════════════════════════════════════════════
+
+let btStrategy = 'rsi-eth';
+
+async function runEthBacktest() {
+  const btn = document.getElementById('eth-bt-run');
+  const errEl = document.getElementById('eth-bt-error');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running ' + btStrategy + ' backtest…';
+  errEl.style.display = 'none';
+
+  try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 300000);
+    const r = await fetch('/api/eth/backtest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        strategy: btStrategy,
+        start_date: document.getElementById('eth-bt-start').value,
+        end_date: document.getElementById('eth-bt-end').value,
+        starting_balance: +document.getElementById('eth-bt-balance').value,
+        risk_per_trade_pct: +document.getElementById('eth-bt-risk').value,
+      }),
+      signal: controller.signal,
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: 'Server error ' + r.status }));
+      errEl.textContent = '⚠ ' + (err.detail || 'Backtest failed');
+      errEl.style.display = 'block';
+      return;
+    }
+    const d = await r.json();
+    if (d.error) { errEl.textContent = '⚠ ' + d.error; errEl.style.display = 'block'; return; }
+    renderEthBacktest(d);
+  } catch (e) {
+    errEl.textContent = e.name === 'AbortError' ? '⚠ Timed out — try shorter date range' : '⚠ Network error';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶  Run ETH Backtest';
+  }
+}
+
+function clearEthBacktest() {
+  document.getElementById('eth-bt-results').style.display = 'none';
+  document.getElementById('eth-bt-clear').style.display = 'none';
+}
+
+function renderEthBacktest(d) {
+  const m = d.metrics || {};
+  const pnlPos = (m.totalPnl || 0) >= 0;
+
+  document.getElementById('eth-bt-title').textContent = `Results — ${btStrategy.toUpperCase()} — ${m.totalCandles || 0} candles`;
+  document.getElementById('ebm-trades').textContent = m.totalTrades ?? '—';
+  const wrEl = document.getElementById('ebm-winrate');
+  wrEl.textContent = (m.winRate ?? '—') + '%';
+  wrEl.style.color = 'var(--green)';
+  const pnlEl = document.getElementById('ebm-pnl');
+  pnlEl.textContent = (pnlPos ? '+' : '') + (m.totalPnl?.toFixed(2) ?? '—');
+  pnlEl.style.color = pnlPos ? 'var(--green)' : 'var(--red)';
+  const pfEl = document.getElementById('ebm-pf');
+  pfEl.textContent = m.profitFactor === Infinity ? '∞' : (m.profitFactor?.toFixed(2) ?? '—');
+  pfEl.style.color = (m.profitFactor || 0) >= 1 ? 'var(--green)' : 'var(--red)';
+
+  // 3D Equity curve (same as XAU backtest)
+  const curve = d.equity_curve || [];
+  const eqEmpty = document.getElementById('eq-empty');
+  const eqSvg = document.getElementById('eq-svg');
+  const startBal = +document.getElementById('eth-bt-balance').value || 10000;
+
+  if (curve.length >= 2) {
+    const vals = curve.map(p => p.equity);
+    const minV = Math.min(...vals), maxV = Math.max(...vals), span = maxV - minV || 1;
+    const lastV = vals[vals.length - 1];
+    const lineColor = lastV >= startBal ? '#10a37f' : '#ef4444';
+    const darkColor = lastV >= startBal ? '#0a6b52' : '#7f1d1d';
+    const W = 800, H = 210, PX = 58, PY = 24, DX = 22, DY = 13;
+    const innerW = W - PX * 2 - DX, innerH = H - PY * 2 - DY;
+    const px = i => PX + (i / (curve.length - 1)) * innerW;
+    const py = v => H - PY - ((v - minV) / span) * innerH;
+    const pts = curve.map((p, i) => [px(i), py(p.equity)]);
+    const bpts = pts.map(([x, y]) => [x + DX, y - DY]);
+    const frontBottom = H - PY, backBottom = frontBottom - DY;
+    const rP = pts[pts.length - 1], rB = bpts[bpts.length - 1];
+    const floorD = `M${pts[0][0]},${frontBottom} L${bpts[0][0]},${backBottom} L${rB[0]},${backBottom} L${rP[0]},${frontBottom} Z`;
+    const leftWallD = `M${pts[0][0]},${pts[0][1]} L${bpts[0][0]},${bpts[0][1]} L${bpts[0][0]},${backBottom} L${pts[0][0]},${frontBottom} Z`;
+    const areaD = `M${pts[0][0]},${pts[0][1]}` + pts.slice(1).map(([x,y]) => `L${x},${y}`).join('') + ` L${rP[0]},${frontBottom} L${pts[0][0]},${frontBottom} Z`;
+    const polyPts = pts.map(([x,y]) => `${x},${y}`).join(' ');
+    const bPolyPts = bpts.map(([x,y]) => `${x},${y}`).join(' ');
+    const ribStep = Math.max(1, Math.floor(curve.length / 12));
+    const ribIdx = []; for (let i = 0; i < pts.length; i += ribStep) ribIdx.push(i);
+    if (ribIdx[ribIdx.length - 1] !== pts.length - 1) ribIdx.push(pts.length - 1);
+    const steps = 3;
+    const yLabels = Array.from({length: steps + 1}, (_, i) => {
+      const v = minV + (span / steps) * i;
+      return { y: py(v), label: '$' + Math.round(v).toLocaleString() };
+    }).reverse();
+    const baseLine = startBal >= minV && startBal <= maxV;
+
+    let svg = `<defs><linearGradient id="gFill3d" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${lineColor}" stop-opacity=".28"/><stop offset="100%" stop-color="${lineColor}" stop-opacity=".02"/></linearGradient><filter id="dotGlow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3.5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+    yLabels.forEach(yl => {
+      svg += `<line x1="${PX}" y1="${yl.y}" x2="${W - PX}" y2="${yl.y}" stroke="rgba(255,255,255,.04)" stroke-width="1"/>`;
+      svg += `<text x="${PX - 8}" y="${yl.y + 3}" fill="rgba(255,255,255,.3)" font-size="10" text-anchor="end" font-family="monospace">${yl.label}</text>`;
+    });
+    svg += `<path d="${floorD}" fill="rgba(255,255,255,.02)"/>`;
+    svg += `<path d="${leftWallD}" fill="rgba(255,255,255,.03)"/>`;
+    svg += `<polyline points="${bPolyPts}" fill="none" stroke="${darkColor}" stroke-width="1.5" opacity=".5"/>`;
+    ribIdx.forEach(i => { svg += `<line x1="${pts[i][0]}" y1="${pts[i][1]}" x2="${bpts[i][0]}" y2="${bpts[i][1]}" stroke="${darkColor}" stroke-width=".7" opacity=".35"/>`; });
+    svg += `<path d="${areaD}" fill="url(#gFill3d)"/>`;
+    svg += `<polyline points="${polyPts}" fill="none" stroke="${lineColor}" stroke-width="2.2"/>`;
+    if (baseLine) { const by = py(startBal); svg += `<line x1="${PX}" y1="${by}" x2="${W - PX}" y2="${by}" stroke="rgba(255,255,255,.15)" stroke-dasharray="4 4"/><text x="${W - PX + 6}" y="${by + 3}" fill="rgba(255,255,255,.3)" font-size="9" font-family="monospace">start</text>`; }
+    const endPt = pts[pts.length - 1];
+    svg += `<circle cx="${endPt[0]}" cy="${endPt[1]}" r="4" fill="${lineColor}" filter="url(#dotGlow)"/>`;
+    svg += `<text x="${endPt[0] + 8}" y="${endPt[1] + 4}" fill="${lineColor}" font-size="11" font-weight="700" font-family="monospace">$${Math.round(lastV).toLocaleString()}</text>`;
+    eqSvg.innerHTML = svg;
+    eqEmpty.style.display = 'none'; eqSvg.style.display = 'block';
+  } else {
+    eqEmpty.style.display = 'flex'; eqSvg.style.display = 'none';
+  }
+
+  // Trade table
+  const trades = d.trades || [];
+  document.getElementById('eth-bt-trade-count').textContent = trades.length + ' trades';
+  document.getElementById('eth-bt-tbody').innerHTML = trades.map((t, i) => {
+    const oc = t.outcome === 'WIN' ? 'color:var(--green)' : 'color:var(--red)';
+    const dc = t.direction === 'LONG' ? 'color:var(--green)' : 'color:var(--red)';
+    const pc = (t.pnl || 0) >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+    let ts = t.entry_timestamp || '';
+    if (typeof ts === 'number') ts = new Date(ts * 1000).toISOString().slice(0, 16).replace('T', ' ');
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+      <td style="padding:6px 8px; color:var(--muted);">${i + 1}</td>
+      <td style="padding:6px 8px; font-family:monospace; font-size:11px;">${ts}</td>
+      <td style="padding:6px 8px; font-weight:700; ${dc}">${t.direction}</td>
+      <td style="padding:6px 8px; font-family:monospace;">${t.entry?.toFixed(2) ?? '—'}</td>
+      <td style="padding:6px 8px; color:var(--red); font-family:monospace;">${t.stop_loss?.toFixed(2) ?? '—'}</td>
+      <td style="padding:6px 8px; color:var(--green); font-family:monospace;">${t.take_profit?.toFixed(2) ?? '—'}</td>
+      <td style="padding:6px 8px; color:var(--amber); font-family:monospace;">1:${t.risk_reward?.toFixed(1) ?? '—'}</td>
+      <td style="padding:6px 8px; font-weight:700; ${oc}">${t.outcome}</td>
+      <td style="padding:6px 8px; font-family:monospace; ${pc}">${(t.pnl || 0) >= 0 ? '+' : ''}${t.pnl?.toFixed(2) ?? '—'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('eth-bt-results').style.display = 'block';
+  document.getElementById('eth-bt-clear').style.display = 'inline-block';
+}
+
+
+// ── Signal history ──────────────────────────────────────────────────────────
+let sigFilter = 'all';
+
+function filterSignals(f, btn) {
+  sigFilter = f;
+  document.querySelectorAll('#tab-signals .tf-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  loadEthSignals();
+}
+
+async function loadEthSignals() {
+  try {
+    const rsi = await fetch('/api/rsi-eth/signals/history?limit=50').then(r => r.json());
+    let signals = [
+      ...(rsi.signals || []).map(s => ({...s, _strat: 'rsi_eth'})),
+    ].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    if (sigFilter !== 'all') signals = signals.filter(s => s._strat === sigFilter || s.strategyId === sigFilter);
+
+    const tbody = document.getElementById('eth-sig-tbody');
+    if (!signals.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="padding:24px; text-align:center; color:var(--muted);">No signals yet</td></tr>';
+      return;
+    }
+    tbody.innerHTML = signals.slice(0, 50).map(s => {
+      const dc = (s.type || s.direction || '').includes('LONG') || (s.type || s.direction || '').includes('BUY') ? 'color:var(--green)' : 'color:var(--red)';
+      const ts = s.timestamp ? new Date(s.timestamp).toISOString().slice(0, 16).replace('T', ' ') : '—';
+      const strat = 'RSI';
+      const stratColor = '#1D9E75';
+      return `<tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+        <td style="padding:6px 8px; font-size:11px; font-family:monospace;">${ts}</td>
+        <td style="padding:6px 8px;"><span style="background:${stratColor}22; color:${stratColor}; padding:2px 6px; border-radius:3px; font-size:10px; font-weight:700;">${strat}</span></td>
+        <td style="padding:6px 8px; font-weight:700; ${dc}">${s.type || s.direction || '—'}</td>
+        <td style="padding:6px 8px; font-family:monospace;">${(s.entryPrice || s.entry_price || 0).toFixed(2)}</td>
+        <td style="padding:6px 8px; color:var(--red); font-family:monospace;">${(s.stopLoss || s.stop_loss || 0).toFixed(2)}</td>
+        <td style="padding:6px 8px; color:var(--green); font-family:monospace;">${(s.takeProfit || s.takeProfit1 || s.take_profit || 0).toFixed(2)}</td>
+        <td style="padding:6px 8px;"><span style="color:var(--amber);">${s.strength || '—'}</span></td>
+      </tr>`;
+    }).join('');
+  } catch {}
+}
+
+
+// ── Backtest History from MongoDB ────────────────────────────────────────────
+async function loadEthBtHistory() {
+  const el = document.getElementById('eth-bt-history-body');
+  try {
+    const r = await fetch('/backtest/history?limit=50');
+    const d = await r.json();
+    const reports = (d.reports || []).filter(rpt => {
+      const strat = rpt.params?.strategy || '';
+      return strat.includes('eth') || strat.includes('rsi-eth');
+    });
+
+    if (!reports.length) {
+      el.innerHTML = '<div style="text-align:center; padding:16px; color:var(--muted);">No saved ETH backtests yet — run a backtest above.</div>';
+      return;
+    }
+
+    el.innerHTML = `<table style="width:100%; border-collapse:collapse;">
+      <thead><tr style="border-bottom:1px solid var(--border);">
+        <th style="padding:6px 8px; text-align:left; color:var(--muted); font-size:11px;">Date</th>
+        <th style="padding:6px 8px; text-align:left; color:var(--muted); font-size:11px;">Strategy</th>
+        <th style="padding:6px 8px; text-align:left; color:var(--muted); font-size:11px;">Period</th>
+        <th style="padding:6px 8px; text-align:left; color:var(--muted); font-size:11px;">Trades</th>
+        <th style="padding:6px 8px; text-align:left; color:var(--muted); font-size:11px;">Win Rate</th>
+        <th style="padding:6px 8px; text-align:left; color:var(--muted); font-size:11px;">P&L</th>
+        <th style="padding:6px 8px; text-align:left; color:var(--muted); font-size:11px;">Action</th>
+      </tr></thead>
+      <tbody>${reports.map(rpt => {
+        const m = rpt.metrics || {};
+        const p = rpt.params || {};
+        const savedAt = (rpt.saved_at || '').slice(0, 16).replace('T', ' ');
+        const strat = (p.strategy || '').toUpperCase().replace('-', ' ');
+        const stratColor = '#1D9E75';
+        const wr = m.winRate ?? '—';
+        const pnl = m.totalPnl ?? m.total_pnl ?? 0;
+        const pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        return `<tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+          <td style="padding:6px 8px; font-size:11px; font-family:monospace;">${savedAt}</td>
+          <td style="padding:6px 8px;"><span style="background:${stratColor}22; color:${stratColor}; padding:2px 6px; border-radius:3px; font-size:10px; font-weight:700;">${strat}</span></td>
+          <td style="padding:6px 8px; font-size:11px;">${p.start_date || '—'} → ${p.end_date || '—'}</td>
+          <td style="padding:6px 8px; font-weight:600;">${m.totalTrades ?? rpt.trade_count ?? '—'}</td>
+          <td style="padding:6px 8px; font-weight:600; color:var(--green)">${wr}%</td>
+          <td style="padding:6px 8px; font-family:monospace; color:${pnlColor}">${pnl >= 0 ? '+' : ''}${typeof pnl === 'number' ? pnl.toFixed(2) : pnl}</td>
+          <td style="padding:6px 8px;"><button onclick="loadSavedBacktest('${rpt._id}')" style="background:none; border:1px solid var(--border); color:var(--teal); font-size:10px; padding:2px 8px; border-radius:4px; cursor:pointer;">Load</button></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  } catch(e) {
+    el.innerHTML = '<div style="text-align:center; padding:16px; color:var(--red);">Failed to load history</div>';
+  }
+}
+
+async function loadSavedBacktest(id) {
+  try {
+    const r = await fetch('/backtest/history/' + id);
+    if (!r.ok) return;
+    const d = await r.json();
+    // Re-render with the saved data
+    btStrategy = 'rsi-eth';
+    renderEthBacktest(d);
+  } catch {}
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+// Set default date range
+const now = new Date();
+const thirtyDaysAgo = new Date(now - 30 * 86400000);
+document.getElementById('eth-bt-start').value = thirtyDaysAgo.toISOString().slice(0, 10);
+document.getElementById('eth-bt-end').value = now.toISOString().slice(0, 10);
+
+// Load backtest history on page load
+loadEthBtHistory();
+
+// Restore tab
+switchTab(activeTab);
+
+// Fetch initial price
+fetch('/api/eth/price')
+  .then(r => r.json())
+  .then(d => { if (d.price) updatePrice(d.price); })
+  .catch(() => {});
+
+</script>
+</body>
+</html>

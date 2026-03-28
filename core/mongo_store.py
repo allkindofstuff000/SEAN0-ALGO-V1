@@ -219,6 +219,36 @@ def save_live_signal(
         return None
 
 
+def save_strategy_signal(signal_doc: dict[str, Any]) -> str | None:
+    """Generic signal save — works for any strategy (XAU Scalp, etc.)."""
+    db = _get_db()
+    if db is None:
+        return None
+    try:
+        col = db["live_signals"]
+        doc = {
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+            "outcome": None,
+            "exit_price": None,
+            **signal_doc,
+        }
+        result = col.insert_one(doc)
+        inserted_id = str(result.inserted_id)
+        LOGGER.info("[MONGO] strategy_signal saved id=%s strategy=%s", inserted_id, signal_doc.get("strategy", "?"))
+
+        total = col.count_documents({})
+        if total > MAX_SIGNALS:
+            oldest = col.find({}, {"_id": 1}).sort("sent_at", 1).limit(total - MAX_SIGNALS)
+            ids = [d["_id"] for d in oldest]
+            if ids:
+                col.delete_many({"_id": {"$in": ids}})
+
+        return inserted_id
+    except Exception as exc:
+        LOGGER.error("[MONGO] save_strategy_signal failed: %s", exc)
+        return None
+
+
 def load_live_signals(limit: int = 100) -> list[dict[str, Any]]:
     """Return last *limit* live signals, newest first."""
     db = _get_db()
@@ -313,4 +343,62 @@ def load_bot_state() -> str | None:
         return doc["intent"] if doc else None
     except Exception as exc:
         LOGGER.error("[MONGO] load_bot_state failed: %s", exc)
+        return None
+
+
+def save_strategy_state(strategy_id: str, intent: str) -> bool:
+    """Persist per-strategy on/off intent + started_at timestamp."""
+    db = _get_db()
+    if db is None:
+        return False
+    try:
+        col = db["bot_state"]
+        update_doc = {
+            "_id":        f"strategy:{strategy_id}",
+            "strategy":   strategy_id,
+            "intent":     intent,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        # Save started_at when starting, clear when stopping
+        if intent == "running":
+            update_doc["started_at"] = datetime.now(timezone.utc).isoformat()
+        elif intent == "stopped":
+            update_doc["started_at"] = None
+        col.update_one(
+            {"_id": f"strategy:{strategy_id}"},
+            {"$set": update_doc},
+            upsert=True,
+        )
+        LOGGER.info("[MONGO] strategy_state saved  %s=%s", strategy_id, intent)
+        return True
+    except Exception as exc:
+        LOGGER.error("[MONGO] save_strategy_state failed: %s", exc)
+        return False
+
+
+def load_strategy_state(strategy_id: str) -> str | None:
+    """Return per-strategy intent ('running' | 'stopped') or None."""
+    db = _get_db()
+    if db is None:
+        return None
+    try:
+        col = db["bot_state"]
+        doc = col.find_one({"_id": f"strategy:{strategy_id}"})
+        return doc["intent"] if doc else None
+    except Exception as exc:
+        LOGGER.error("[MONGO] load_strategy_state failed: %s", exc)
+        return None
+
+
+def load_strategy_started_at(strategy_id: str) -> str | None:
+    """Return per-strategy started_at ISO timestamp or None."""
+    db = _get_db()
+    if db is None:
+        return None
+    try:
+        col = db["bot_state"]
+        doc = col.find_one({"_id": f"strategy:{strategy_id}"})
+        return doc.get("started_at") if doc else None
+    except Exception as exc:
+        LOGGER.error("[MONGO] load_strategy_started_at failed: %s", exc)
         return None

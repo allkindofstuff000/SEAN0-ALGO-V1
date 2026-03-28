@@ -24,7 +24,7 @@ The broader target architecture also includes walk-forward optimization as the n
 
 The current codebase has two important characteristics:
 
-1. The active runtime is the modular `bot/` package, entered through [main.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/main.py) and [bot/main.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/main.py).
+1. The active runtime is the modular `bot/` package, entered through [main.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/main.py) and [bot/main.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/main.py).
 2. Some legacy dashboard/runtime files still exist for compatibility, but the main architectural direction is the modular backend plus the React frontend in `frontend/`.
 
 ## 2. High Level System Architecture
@@ -106,9 +106,9 @@ main.py
 
 Files:
 
-- [data_fetcher.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/data/data_fetcher.py)
-- [data_cleaner.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/data/data_cleaner.py)
-- [timeframe_manager.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/data/timeframe_manager.py)
+- [data_fetcher.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/data/data_fetcher.py)
+- [data_cleaner.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/data/data_cleaner.py)
+- [timeframe_manager.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/data/timeframe_manager.py)
 
 Purpose:
 
@@ -126,7 +126,7 @@ Notes:
 
 File:
 
-- [indicator_engine.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/indicators/indicator_engine.py)
+- [indicator_engine.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/indicators/indicator_engine.py)
 
 Purpose:
 
@@ -146,9 +146,9 @@ This layer is intentionally reusable across live trading and historical validati
 
 Files:
 
-- [liquidity_map.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/market/liquidity_map.py)
-- [regime_detector.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/market/regime_detector.py)
-- [session_engine.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/market/session_engine.py)
+- [liquidity_map.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/market/liquidity_map.py)
+- [regime_detector.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/market/regime_detector.py)
+- [session_engine.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/market/session_engine.py)
 
 Purpose:
 
@@ -168,8 +168,8 @@ This layer supplies the contextual inputs that make the scoring engine more sele
 
 Files:
 
-- [scoring_engine.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/signals/scoring_engine.py)
-- [signal_logic.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/signals/signal_logic.py)
+- [scoring_engine.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/signals/scoring_engine.py)
+- [signal_logic.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/signals/signal_logic.py)
 
 Purpose:
 
@@ -200,7 +200,7 @@ That reuse is what keeps live execution and historical simulation aligned.
 
 File:
 
-- [risk_manager.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/risk/risk_manager.py)
+- [risk_manager.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/risk/risk_manager.py)
 
 Purpose:
 
@@ -221,7 +221,7 @@ The risk manager is stateful. It tracks daily counts, last signal time, and curr
 
 Files:
 
-- [signal_router.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/execution/signal_router.py)
+- [signal_router.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/execution/signal_router.py)
 
 Architectural roles:
 
@@ -248,9 +248,9 @@ Output examples:
 
 Files:
 
-- [signal_dispatcher.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/output/signal_dispatcher.py)
-- [telegram_bot.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/output/telegram_bot.py)
-- [dashboard_api.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/dashboard/dashboard_api.py)
+- [signal_dispatcher.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/output/signal_dispatcher.py)
+- [telegram_bot.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/output/telegram_bot.py)
+- [dashboard_api.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/dashboard/dashboard_api.py)
 
 Purpose:
 
@@ -311,12 +311,12 @@ Purpose:
 
 Implemented modules:
 
-- [backtest_runner.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/backtest/backtest_runner.py)
-- [trade_simulator.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/backtest/trade_simulator.py)
-- [performance_analyzer.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/backtest/performance_analyzer.py)
-- [data_loader.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/backtest/data_loader.py)
-- [report_generator.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/backtest/report_generator.py)
-- [run_backtest.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/run_backtest.py)
+- [backtest_runner.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/backtest/backtest_runner.py)
+- [trade_simulator.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/backtest/trade_simulator.py)
+- [performance_analyzer.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/backtest/performance_analyzer.py)
+- [data_loader.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/backtest/data_loader.py)
+- [report_generator.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/backtest/report_generator.py)
+- [run_backtest.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/run_backtest.py)
 
 Backtest responsibilities:
 
@@ -358,9 +358,9 @@ The self-learning system adapts the signal threshold based on realized trade out
 
 Files:
 
-- [performance_tracker.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/learning/performance_tracker.py)
-- [threshold_optimizer.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/learning/threshold_optimizer.py)
-- [strategy_adapter.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/learning/strategy_adapter.py)
+- [performance_tracker.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/learning/performance_tracker.py)
+- [threshold_optimizer.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/learning/threshold_optimizer.py)
+- [strategy_adapter.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/learning/strategy_adapter.py)
 
 Purpose:
 
@@ -399,7 +399,7 @@ The debugging system exists to make signal behavior inspectable, not just execut
 
 File:
 
-- [decision_logger.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/debug/decision_logger.py)
+- [decision_logger.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/debug/decision_logger.py)
 
 Purpose:
 
@@ -442,19 +442,19 @@ The frontend is a React-based trading dashboard in `frontend/`. It is a control 
 
 Primary page:
 
-- [Dashboard.jsx](/C:/Users/ALGO/Desktop/QUOTEX_BOT/frontend/src/pages/Dashboard.jsx)
+- [Dashboard.jsx](/C:/Users/ALGO/Desktop/SEAN-ALGO/frontend/src/pages/Dashboard.jsx)
 
 Main components:
 
-- [TopNav.jsx](/C:/Users/ALGO/Desktop/QUOTEX_BOT/frontend/src/components/TopNav.jsx)
-- [BotControls.jsx](/C:/Users/ALGO/Desktop/QUOTEX_BOT/frontend/src/components/BotControls.jsx)
-- [MarketPanel.jsx](/C:/Users/ALGO/Desktop/QUOTEX_BOT/frontend/src/components/MarketPanel.jsx)
-- [SignalPanel.jsx](/C:/Users/ALGO/Desktop/QUOTEX_BOT/frontend/src/components/SignalPanel.jsx)
-- [LearningPanel.jsx](/C:/Users/ALGO/Desktop/QUOTEX_BOT/frontend/src/components/LearningPanel.jsx)
-- [RiskPanel.jsx](/C:/Users/ALGO/Desktop/QUOTEX_BOT/frontend/src/components/RiskPanel.jsx)
-- [PerformancePanel.jsx](/C:/Users/ALGO/Desktop/QUOTEX_BOT/frontend/src/components/PerformancePanel.jsx)
-- [DecisionLogs.jsx](/C:/Users/ALGO/Desktop/QUOTEX_BOT/frontend/src/components/DecisionLogs.jsx)
-- [ChartsPanel.jsx](/C:/Users/ALGO/Desktop/QUOTEX_BOT/frontend/src/components/ChartsPanel.jsx)
+- [TopNav.jsx](/C:/Users/ALGO/Desktop/SEAN-ALGO/frontend/src/components/TopNav.jsx)
+- [BotControls.jsx](/C:/Users/ALGO/Desktop/SEAN-ALGO/frontend/src/components/BotControls.jsx)
+- [MarketPanel.jsx](/C:/Users/ALGO/Desktop/SEAN-ALGO/frontend/src/components/MarketPanel.jsx)
+- [SignalPanel.jsx](/C:/Users/ALGO/Desktop/SEAN-ALGO/frontend/src/components/SignalPanel.jsx)
+- [LearningPanel.jsx](/C:/Users/ALGO/Desktop/SEAN-ALGO/frontend/src/components/LearningPanel.jsx)
+- [RiskPanel.jsx](/C:/Users/ALGO/Desktop/SEAN-ALGO/frontend/src/components/RiskPanel.jsx)
+- [PerformancePanel.jsx](/C:/Users/ALGO/Desktop/SEAN-ALGO/frontend/src/components/PerformancePanel.jsx)
+- [DecisionLogs.jsx](/C:/Users/ALGO/Desktop/SEAN-ALGO/frontend/src/components/DecisionLogs.jsx)
+- [ChartsPanel.jsx](/C:/Users/ALGO/Desktop/SEAN-ALGO/frontend/src/components/ChartsPanel.jsx)
 
 Dashboard responsibilities:
 
@@ -470,7 +470,7 @@ Dashboard responsibilities:
 
 ### Backend Connectivity
 
-The dashboard communicates with FastAPI endpoints in [dashboard_api.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/dashboard/dashboard_api.py), including:
+The dashboard communicates with FastAPI endpoints in [dashboard_api.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/dashboard/dashboard_api.py), including:
 
 - `/api/status`
 - `/api/market-state`
@@ -693,12 +693,12 @@ The next natural validation extension is a formal WFO layer. The backtesting pac
 
 If you need to understand the project quickly, start here:
 
-1. [main.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/main.py) for the runtime entrypoint.
-2. [bot/main.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/main.py) for the live engine orchestration.
-3. [signal_logic.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/signals/signal_logic.py) for the main signal decision seam.
-4. [dashboard_api.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/dashboard/dashboard_api.py) for the monitoring and control surface.
-5. [Dashboard.jsx](/C:/Users/ALGO/Desktop/QUOTEX_BOT/frontend/src/pages/Dashboard.jsx) for the frontend composition root.
-6. [backtest_runner.py](/C:/Users/ALGO/Desktop/QUOTEX_BOT/bot/backtest/backtest_runner.py) for strategy validation reuse.
+1. [main.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/main.py) for the runtime entrypoint.
+2. [bot/main.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/main.py) for the live engine orchestration.
+3. [signal_logic.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/signals/signal_logic.py) for the main signal decision seam.
+4. [dashboard_api.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/dashboard/dashboard_api.py) for the monitoring and control surface.
+5. [Dashboard.jsx](/C:/Users/ALGO/Desktop/SEAN-ALGO/frontend/src/pages/Dashboard.jsx) for the frontend composition root.
+6. [backtest_runner.py](/C:/Users/ALGO/Desktop/SEAN-ALGO/bot/backtest/backtest_runner.py) for strategy validation reuse.
 
 The key architectural principle is simple:
 

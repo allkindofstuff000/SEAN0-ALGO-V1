@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Live Bot Control — SEAN ALGO</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f1117;color:#d1d4dc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh}
+/* ── Navbar ─────────────────────────────────────────────────────────────── */
+#main-nav{display:flex;align-items:center;padding:0 24px;height:48px;border-bottom:0.5px solid #1e222d;background:#131722;position:sticky;top:0;z-index:100}
+.nav-brand{font-size:14px;font-weight:700;color:#d1d4dc;margin-right:32px;letter-spacing:1px}
+.nav-links{display:flex;gap:4px}
+.nav-item{padding:6px 16px;font-size:13px;font-weight:500;color:#787b86;text-decoration:none;border-radius:4px;transition:all .15s}
+.nav-item:hover{color:#d1d4dc}
+.nav-item.active{color:#2196F3;background:rgba(33,150,243,0.1)}
+.nav-live{font-weight:700;display:flex;align-items:center;gap:6px}
+.nav-live.active{color:#00E676;background:rgba(0,230,118,0.08)}
+.bot-dot{width:7px;height:7px;border-radius:50%;background:#444;display:inline-block}
+.bot-dot.running{background:#00E676;animation:navpulse 1.5s ease-in-out infinite}
+@keyframes navpulse{0%,100%{opacity:1}50%{opacity:0.4}}
+/* ── Page layout ─────────────────────────────────────────────────────────── */
+.page-header{padding:20px 24px 0;display:flex;justify-content:space-between;align-items:center}
+.page-title{font-size:18px;font-weight:700;color:#d1d4dc}
+.page-sub{font-size:13px;color:#787b86;margin-top:4px}
+.main-content{padding:20px 24px;display:flex;flex-direction:column;gap:20px}
+/* ── Bot cards ───────────────────────────────────────────────────────────── */
+.bot-cards-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.bot-card{background:#161b25;border:0.5px solid #363a45;border-radius:10px;padding:20px;transition:border-color .2s}
+.bot-card.running{border-color:#00E676;border-width:1px}
+.bot-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.bot-card-name{font-size:14px;font-weight:600;color:#d1d4dc;letter-spacing:.5px}
+.bot-status-badge{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500}
+.bot-status-badge.stopped{color:#787b86}
+.bot-status-badge.running{color:#00E676}
+.pulse-dot{width:6px;height:6px;border-radius:50%}
+.pulse-dot.stopped{background:#444}
+.pulse-dot.running{background:#00E676;animation:navpulse 1.5s ease-in-out infinite}
+.bot-stats{display:flex;gap:16px;margin-bottom:16px}
+.bot-stat{display:flex;flex-direction:column}
+.bot-stat-lbl{font-size:11px;color:#787b86;margin-bottom:2px}
+.bot-stat-val{font-size:14px;font-weight:600;color:#d1d4dc}
+/* ── Strategy status table ──────────────────────────────────────────────── */
+.strat-status-block{display:grid;grid-template-columns:1fr 1fr;gap:4px 0;padding:10px 12px;background:#0d1117;border-radius:6px;margin-bottom:14px;border:0.5px solid #1e222d}
+.strat-status-row{display:flex;align-items:center;justify-content:space-between;padding:3px 0}
+.strat-status-lbl{font-size:11px;color:#555;font-family:'Courier New',monospace;letter-spacing:.5px;text-transform:uppercase}
+.strat-status-val{font-size:11px;font-weight:700;font-family:'Courier New',monospace;display:flex;align-items:center;gap:4px}
+.strat-status-val.off{color:#555}
+.strat-status-val.on{color:#00E676}
+.strat-status-val.stopped{color:#555}
+.strat-status-val.running{color:#00E676}
+.strat-status-val.warn{color:#f59e0b}
+.check-icon{font-size:10px}
+/* ── Bot buttons ────────────────────────────────────────────────────────── */
+.btn-start{width:100%;padding:10px;border-radius:6px;border:1px solid #00E676;background:transparent;color:#00E676;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-start:hover{background:rgba(0,230,118,0.1)}
+.btn-stop{width:100%;padding:10px;border-radius:6px;border:1px solid #ef5350;background:transparent;color:#ef5350;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-stop:hover{background:rgba(239,83,80,0.1)}
+.confirm-row{display:none;gap:8px;margin-top:8px}
+.confirm-row.visible{display:flex}
+.confirm-row span{font-size:12px;color:#787b86;align-self:center;flex:1}
+.btn-confirm-stop{padding:6px 12px;border-radius:4px;border:1px solid #ef5350;background:transparent;color:#ef5350;font-size:12px;cursor:pointer}
+.btn-cancel{padding:6px 12px;border-radius:4px;border:1px solid #363a45;background:transparent;color:#787b86;font-size:12px;cursor:pointer}
+/* ── Terminal — Cyberpunk Neon ────────────────────────────────────────── */
+.terminal-card{background:#0a0a12;border:1px solid rgba(0,255,170,0.15);border-radius:12px;overflow:hidden;box-shadow:0 0 25px rgba(0,255,170,0.04),inset 0 0 60px rgba(0,0,0,0.5)}
+.terminal-header{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;background:linear-gradient(180deg,#0d0f18 0%,#080a14 100%);border-bottom:1px solid rgba(0,255,170,0.12)}
+.terminal-title{font-family:'Courier New',monospace;font-size:13px;color:#0af;text-shadow:0 0 8px rgba(0,170,255,0.5);letter-spacing:1px}
+.terminal-title span{color:#0fa;text-shadow:0 0 10px rgba(0,255,170,0.6)}
+.filter-btns{display:flex;gap:5px}
+.filter-btn{padding:4px 12px;border-radius:5px;border:1px solid rgba(0,255,170,0.2);background:rgba(0,255,170,0.04);color:rgba(0,255,170,0.5);font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;text-transform:uppercase;letter-spacing:.5px}
+.filter-btn:hover{color:#0fa;border-color:rgba(0,255,170,0.5);background:rgba(0,255,170,0.08);text-shadow:0 0 6px rgba(0,255,170,0.4)}
+.filter-btn.active{background:rgba(0,255,170,0.12);border-color:#0fa;color:#0fa;text-shadow:0 0 8px rgba(0,255,170,0.6);box-shadow:0 0 10px rgba(0,255,170,0.15)}
+.filter-btn.clr:hover{color:#f44;border-color:#f44;background:rgba(255,68,68,0.08);text-shadow:0 0 6px rgba(255,68,68,0.4)}
+/* ── Terminal column headers ─────────────────────────────────────────── */
+.terminal-cols-header{display:grid;grid-template-columns:220px 1fr 1fr;padding:6px 0;border-bottom:1px solid rgba(0,170,255,0.1);background:#060810}
+.term-col-hdr{padding:0 16px;font-size:10px;font-weight:700;color:rgba(0,170,255,0.4);letter-spacing:2px;text-transform:uppercase;font-family:'Courier New',monospace}
+.terminal-body{height:480px;overflow-y:auto;padding:6px 0;font-family:'Courier New',monospace;font-size:13px;background:linear-gradient(180deg,#080a14 0%,#0a0c16 100%);scroll-behavior:smooth}
+.terminal-body::-webkit-scrollbar{width:5px}
+.terminal-body::-webkit-scrollbar-track{background:#080a14}
+.terminal-body::-webkit-scrollbar-thumb{background:rgba(0,255,170,0.2);border-radius:3px}
+.terminal-body::-webkit-scrollbar-thumb:hover{background:rgba(0,255,170,0.4)}
+/* ── 3-column log line ───────────────────────────────────────────────── */
+.log-line{display:grid;grid-template-columns:220px 1fr 1fr;line-height:1.8;border-bottom:1px solid rgba(0,255,170,0.03);transition:all .15s}
+.log-line:hover{background:rgba(0,255,170,0.04);border-bottom-color:rgba(0,255,170,0.08)}
+.log-col{padding:6px 16px;display:flex;align-items:center;gap:8px;overflow:hidden;border-right:1px solid rgba(0,170,255,0.04)}
+.log-col:last-child{border-right:none}
+/* Col 1 — source */
+.log-ts{color:rgba(0,170,255,0.4);white-space:nowrap;font-size:12px;flex-shrink:0;font-weight:500}
+.log-tag{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;letter-spacing:.8px;text-transform:uppercase}
+.log-tag.rsi{background:rgba(255,170,0,0.1);color:#ffa500;border:1px solid rgba(255,170,0,0.25);text-shadow:0 0 6px rgba(255,170,0,0.3)}
+.log-tag.xau{background:rgba(0,150,255,0.1);color:#0af;border:1px solid rgba(0,150,255,0.25);text-shadow:0 0 6px rgba(0,150,255,0.3)}
+.log-tag.sys{background:rgba(120,123,134,0.08);color:#666;border:1px solid rgba(120,123,134,0.2)}
+.log-tag.rsi-eth,.log-tag.eth-rsi-15{background:rgba(0,255,170,0.08);color:#0fa;border:1px solid rgba(0,255,170,0.25);text-shadow:0 0 8px rgba(0,255,170,0.4)}
+.log-ind{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;margin:0 2px}
+.log-ind.rsi{background:rgba(255,170,0,0.08);color:#ffa500;border:1px solid rgba(255,170,0,0.15)}
+.log-ind.rsi.bull{background:rgba(0,255,170,0.08);color:#0fa;border:1px solid rgba(0,255,170,0.2);text-shadow:0 0 4px rgba(0,255,170,0.3)}
+.log-ind.rsi.bear{background:rgba(255,50,80,0.08);color:#ff3a5e;border:1px solid rgba(255,50,80,0.2);text-shadow:0 0 4px rgba(255,50,80,0.3)}
+.log-ind.ema{background:rgba(0,150,255,0.08);color:#0af;border:1px solid rgba(0,150,255,0.15);text-shadow:0 0 4px rgba(0,150,255,0.2)}
+.log-ind.adx{background:rgba(180,50,255,0.08);color:#d070ff;border:1px solid rgba(180,50,255,0.2);text-shadow:0 0 4px rgba(180,50,255,0.3)}
+.log-ind.adx.low{background:rgba(255,50,80,0.08);color:#ff3a5e;border:1px solid rgba(255,50,80,0.2);text-shadow:0 0 4px rgba(255,50,80,0.3)}
+.log-ind.price{background:rgba(255,255,255,0.04);color:#e0e0e0;border:1px solid rgba(255,255,255,0.08);font-family:'Courier New',monospace;font-weight:700}
+.log-ind .val{font-weight:700}
+.log-filtered{padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;background:rgba(255,170,0,0.1);color:#ffa500;border:1px solid rgba(255,170,0,0.2);text-shadow:0 0 4px rgba(255,170,0,0.3)}
+.log-session{font-size:11px;color:rgba(0,170,255,0.3);white-space:nowrap}
+/* Col 2 — signal */
+.log-dir{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;letter-spacing:.5px}
+.log-dir.buy{background:rgba(0,255,170,0.1);color:#0fa;border:1px solid rgba(0,255,170,0.3);text-shadow:0 0 8px rgba(0,255,170,0.4);animation:neonPulse 2s ease-in-out infinite}
+.log-dir.sell{background:rgba(255,50,80,0.1);color:#ff3a5e;border:1px solid rgba(255,50,80,0.3);text-shadow:0 0 8px rgba(255,50,80,0.4);animation:neonPulseRed 2s ease-in-out infinite}
+.log-dir.neutral{background:rgba(120,123,134,0.08);color:#555;border:1px solid rgba(120,123,134,0.2)}
+@keyframes neonPulse{0%,100%{text-shadow:0 0 8px rgba(0,255,170,0.4)}50%{text-shadow:0 0 16px rgba(0,255,170,0.7),0 0 30px rgba(0,255,170,0.3)}}
+@keyframes neonPulseRed{0%,100%{text-shadow:0 0 8px rgba(255,50,80,0.4)}50%{text-shadow:0 0 16px rgba(255,50,80,0.7),0 0 30px rgba(255,50,80,0.3)}}
+.log-score{font-size:12px;color:#555;white-space:nowrap;flex-shrink:0}
+.log-score em{color:rgba(0,170,255,0.6);font-style:normal;font-weight:700}
+.log-decision{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;letter-spacing:.5px}
+.log-decision.signal{background:rgba(0,255,170,0.12);color:#0fa;border:1px solid rgba(0,255,170,0.35);text-shadow:0 0 10px rgba(0,255,170,0.5);box-shadow:0 0 12px rgba(0,255,170,0.1);animation:neonPulse 1.5s ease-in-out infinite}
+.log-decision.rejected{background:rgba(100,100,120,0.08);color:#444;border:1px solid rgba(100,100,120,0.15)}
+.log-decision.snapshot{background:rgba(0,150,255,0.08);color:rgba(0,170,255,0.6);border:1px solid rgba(0,150,255,0.15);text-shadow:0 0 4px rgba(0,150,255,0.2)}
+.log-decision.error{background:rgba(255,50,80,0.1);color:#ff3a5e;border:1px solid rgba(255,50,80,0.25);text-shadow:0 0 6px rgba(255,50,80,0.3)}
+/* Col 3 — reason/context */
+.log-reason{color:rgba(200,210,230,0.5);font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log-reason.has-signal{color:#0fa;text-shadow:0 0 6px rgba(0,255,170,0.3)}
+.log-reason.has-error{color:#ff3a5e;text-shadow:0 0 6px rgba(255,50,80,0.3)}
+.log-regime{padding:2px 7px;border-radius:4px;font-size:11px;color:rgba(0,170,255,0.35);border:1px solid rgba(0,170,255,0.1);white-space:nowrap;flex-shrink:0}
+.terminal-empty{color:rgba(0,255,170,0.2);text-align:center;padding:50px;font-size:13px;text-shadow:0 0 10px rgba(0,255,170,0.1);letter-spacing:1px}
+@media(max-width:768px){.bot-cards-row{grid-template-columns:1fr}.log-line{grid-template-columns:1fr}.log-col{border-right:none;border-bottom:0.5px solid #141820}.log-col:last-child{border-bottom:none}}
+</style>
+</head>
+<body>
+
+<!-- ── Navbar ──────────────────────────────────────────────────────────── -->
+<nav id="main-nav">
+  <div class="nav-brand">SEAN ALGO</div>
+  <div class="nav-links">
+    <a href="/dashboard/rsi-ema" class="nav-item" id="nav-rsi">RSI EMA</a>
+    <a href="/dashboard/xau-scalp" class="nav-item" id="nav-xau">XAU SCALP</a>
+    <a href="/dashboard/crypto" class="nav-item" id="nav-crypto">CRYPTO</a>
+    <a href="/dashboard/backtest-eth-ict" class="nav-item" id="nav-ict">ICT ETH</a>
+    <a href="/dashboard/backtest-xau-ict" class="nav-item" id="nav-ict-xau">ICT XAU</a>
+    <a href="/dashboard/live-bot" class="nav-item nav-live active" id="nav-bot">
+      <span class="bot-dot" id="bot-status-dot"></span>
+      LIVE BOT
+    </a>
+  </div>
+</nav>
+
+<!-- ── Page header ─────────────────────────────────────────────────────── -->
+<div class="page-header">
+  <div>
+    <div class="page-title">LIVE BOT CONTROL</div>
+    <div class="page-sub">Strategy status, start/stop controls, and unified decision log</div>
+  </div>
+</div>
+
+<!-- ── Market status banner (hidden when open) ── -->
+<div id="market-banner" style="display:none; margin:0 24px; padding:12px 20px; background:linear-gradient(135deg,#1a1a2e,#16213e); border:1px solid #e2b340; border-radius:8px; color:#e2b340; font-size:14px; font-weight:600; text-align:center;">
+  <span style="font-size:18px;">🌙</span>
+  <span id="market-banner-text">Forex market is closed — Weekend</span>
+  <div id="market-banner-next" style="font-size:12px; font-weight:400; color:#787b86; margin-top:4px;"></div>
+</div>
+
+<!-- ── Main content ────────────────────────────────────────────────────── -->
+<div class="main-content">
+
+  <!-- Bot control cards -->
+  <div class="bot-cards-row">
+
+    <!-- RSI EMA card -->
+    <div class="bot-card" id="card-rsi">
+      <div class="bot-card-header">
+        <div class="bot-card-name">RSI EMA STRATEGY</div>
+        <div class="bot-status-badge stopped" id="rsi-status-badge">
+          <div class="pulse-dot stopped" id="rsi-pulse"></div>
+          <span id="rsi-status-text">STOPPED</span>
+        </div>
+      </div>
+      <div class="bot-stats">
+        <div class="bot-stat">
+          <div class="bot-stat-lbl">Signals today</div>
+          <div class="bot-stat-val" id="rsi-signals-today">—</div>
+        </div>
+        <div class="bot-stat">
+          <div class="bot-stat-lbl">Last signal</div>
+          <div class="bot-stat-val" id="rsi-last-signal">—</div>
+        </div>
+        <div class="bot-stat">
+          <div class="bot-stat-lbl">Uptime</div>
+          <div class="bot-stat-val" id="rsi-uptime">—</div>
+        </div>
+      </div>
+      <!-- Strategy status table -->
+      <div class="strat-status-block">
+        <div class="strat-status-row">
+          <span class="strat-status-lbl">Market</span>
+          <span class="strat-status-val off" id="rsi-market-status">OFF <span class="check-icon">✓</span></span>
+        </div>
+        <div class="strat-status-row">
+          <span class="strat-status-lbl">Bot</span>
+          <span class="strat-status-val stopped" id="rsi-bot-status">Stopped</span>
+        </div>
+        <div class="strat-status-row">
+          <span class="strat-status-lbl">Regime</span>
+          <span class="strat-status-val off" id="rsi-regime-status">—</span>
+        </div>
+        <div class="strat-status-row">
+          <span class="strat-status-lbl">Session</span>
+          <span class="strat-status-val off" id="rsi-session-status">—</span>
+        </div>
+      </div>
+      <button class="btn-start" id="rsi-btn" onclick="botAction('rsi-ema')">START BOT</button>
+      <div class="confirm-row" id="rsi-confirm">
+        <span>Are you sure you want to stop?</span>
+        <button class="btn-confirm-stop" onclick="confirmStop('rsi-ema')">Yes, stop</button>
+        <button class="btn-cancel" onclick="cancelStop('rsi-ema')">Cancel</button>
+      </div>
+    </div>
+
+    <!-- XAU Scalp card -->
+    <div class="bot-card" id="card-xau">
+      <div class="bot-card-header">
+        <div class="bot-card-name">XAU SCALP STRATEGY</div>
+        <div class="bot-status-badge stopped" id="xau-status-badge">
+          <div class="pulse-dot stopped" id="xau-pulse"></div>
+          <span id="xau-status-text">STOPPED</span>
+        </div>
+      </div>
+      <div class="bot-stats">
+        <div class="bot-stat">
+          <div class="bot-stat-lbl">Total signals</div>
+          <div class="bot-stat-val" id="xau-signals-total">—</div>
+        </div>
+        <div class="bot-stat">
+          <div class="bot-stat-lbl">Strong signals</div>
+          <div class="bot-stat-val" id="xau-signals-strong">—</div>
+        </div>
+        <div class="bot-stat">
+          <div class="bot-stat-lbl">Uptime</div>
+          <div class="bot-stat-val" id="xau-uptime">—</div>
+        </div>
+      </div>
+      <!-- Strategy status table -->
+      <div class="strat-status-block">
+        <div class="strat-status-row">
+          <span class="strat-status-lbl">Market</span>
+          <span class="strat-status-val off" id="xau-market-status">OFF <span class="check-icon">✓</span></span>
+        </div>
+        <div class="strat-status-row">
+          <span class="strat-status-lbl">Bot</span>
+          <span class="strat-status-val stopped" id="xau-bot-status">Stopped</span>
+        </div>
+        <div class="strat-status-row">
+          <span class="strat-status-lbl">Regime</span>
+          <span class="strat-status-val off" id="xau-regime-status">—</span>
+        </div>
+        <div class="strat-status-row">
+          <span class="strat-status-lbl">Session</span>
+          <span class="strat-status-val off" id="xau-session-status">—</span>
+        </div>
+      </div>
+      <button class="btn-start" id="xau-btn" onclick="botAction('xau-scalp')">START BOT</button>
+      <div class="confirm-row" id="xau-confirm">
+        <span>Are you sure you want to stop?</span>
+        <button class="btn-confirm-stop" onclick="confirmStop('xau-scalp')">Yes, stop</button>
+        <button class="btn-cancel" onclick="cancelStop('xau-scalp')">Cancel</button>
+      </div>
+    </div>
+
+    <!-- RSI ETH card -->
+    <div class="bot-card" id="card-rsi-eth">
+      <div class="bot-card-header">
+        <div class="bot-card-name">ETH RSI 15 TF</div>
+        <div class="bot-status-badge stopped" id="rsi-eth-status-badge">
+          <div class="pulse-dot stopped" id="rsi-eth-pulse"></div>
+          <span id="rsi-eth-status-text">STOPPED</span>
+        </div>
+      </div>
+      <div class="bot-stats">
+        <div class="bot-stat"><div class="bot-stat-lbl">Signals</div><div class="bot-stat-val" id="rsi-eth-signals">—</div></div>
+        <div class="bot-stat"><div class="bot-stat-lbl">Bybit</div><div class="bot-stat-val" style="color:#0fa">24/7</div></div>
+        <div class="bot-stat"><div class="bot-stat-lbl">Uptime</div><div class="bot-stat-val" id="rsi-eth-uptime">—</div></div>
+      </div>
+      <div class="strat-status-block">
+        <div class="strat-status-row"><span class="strat-status-lbl">Market</span><span class="strat-status-val on" id="rsi-eth-market-status">Open (Crypto)</span></div>
+        <div class="strat-status-row"><span class="strat-status-lbl">Bot</span><span class="strat-status-val stopped" id="rsi-eth-bot-status">Stopped</span></div>
+        <div class="strat-status-row"><span class="strat-status-lbl">Regime</span><span class="strat-status-val off" id="rsi-eth-regime-status">—</span></div>
+        <div class="strat-status-row"><span class="strat-status-lbl">Session</span><span class="strat-status-val off" id="rsi-eth-session-status">—</span></div>
+      </div>
+      <button class="btn-start" id="rsi-eth-btn" onclick="botAction('rsi-eth')">START BOT</button>
+      <div class="confirm-row" id="rsi-eth-confirm">
+        <span>Are you sure you want to stop?</span>
+        <button class="btn-confirm-stop" onclick="confirmStop('rsi-eth')">Yes, stop</button>
+        <button class="btn-cancel" onclick="cancelStop('rsi-eth')">Cancel</button>
+      </div>
+    </div>
+
+
+  </div>
+
+  <!-- Crypto 24/7 banner -->
+  <div id="crypto-banner" style="margin:0 24px 12px; padding:10px 16px; background:rgba(29,158,117,.08); border:1px solid rgba(29,158,117,.25); border-radius:8px; color:#1D9E75; font-size:12px; font-weight:600; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px;">
+    <span style="width:6px; height:6px; border-radius:50%; background:#1D9E75; animation:pulse 2s infinite;"></span>
+    ETH/USDT — Crypto market open 24/7 — Weekend trading active
+  </div>
+
+  <!-- Unified terminal -->
+  <div class="terminal-card">
+    <div class="terminal-header">
+      <div class="terminal-title"><span>SEAN ALGO</span> · decision_log</div>
+      <div class="filter-btns">
+        <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">All</button>
+        <button class="filter-btn" id="filter-rsi" onclick="setFilter('rsi')">RSI EMA</button>
+        <button class="filter-btn" id="filter-rsi-eth" onclick="setFilter('rsi-eth')" style="color:#1D9E75">ETH-RSI-15</button>
+        <button class="filter-btn clr" onclick="clearTerminal()">Clr</button>
+      </div>
+    </div>
+    <!-- Column headers -->
+    <div class="terminal-cols-header">
+      <div class="term-col-hdr">Source</div>
+      <div class="term-col-hdr">Signal</div>
+      <div class="term-col-hdr">Context</div>
+    </div>
+    <div class="terminal-body" id="terminal-body">
+      <div class="terminal-empty" id="terminal-empty">Connecting to log stream…</div>
+    </div>
+  </div>
+
+  <!-- ── XAU SCALP ICT — Separate Terminal ───────────────────────── -->
+  <div class="terminal-card" style="margin-top:16px;">
+    <div class="terminal-header" style="background:linear-gradient(180deg,#0d0814 0%,#08060f 100%);border-bottom:1px solid rgba(255,100,50,0.15);">
+      <div class="terminal-title" style="color:#ff6a33;text-shadow:0 0 10px rgba(255,100,50,0.6);"><span style="color:#ff8a50;text-shadow:0 0 12px rgba(255,140,80,0.7);">XAU SCALP</span> · ict_decisions</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span id="xau-term-count" style="font-size:10px;color:#555;font-family:'Courier New',monospace;">0 entries</span>
+        <button class="filter-btn clr" onclick="clearXauTerminal()" style="border-color:rgba(255,100,50,0.2);color:#ff6a33;">Clr</button>
+      </div>
+    </div>
+    <div class="terminal-cols-header" style="border-bottom-color:rgba(255,100,50,0.1);">
+      <div class="term-col-hdr">Source</div>
+      <div class="term-col-hdr">Signal</div>
+      <div class="term-col-hdr">Context</div>
+    </div>
+    <div class="terminal-body" id="xau-terminal-body" style="height:300px;background:linear-gradient(180deg,#08060f 0%,#0a080f 100%);">
+      <div class="terminal-empty" id="xau-terminal-empty" style="color:rgba(255,100,50,0.2);text-shadow:0 0 10px rgba(255,100,50,0.1);">Waiting for XAU SCALP ICT decisions…</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let _filter = 'all';
+let _logLines = [];
+let _xauLogLines = [];  // separate XAU SCALP logs
+const MAX_LINES = 100;
+let _rsiRunning = false;
+let _xauRunning = false;
+let _rsiEthRunning = false;
+
+// ── Uptime tracking ──────────────────────────────────────────────────────
+const _uptimeStart = { rsi: null, xau: null, 'rsi-eth': null };
+
+function formatUptime(startTime) {
+  if (!startTime) return '—';
+  const diff = Math.floor((Date.now() - startTime) / 1000);
+  if (diff < 60) return diff + 's';
+  const m = Math.floor(diff / 60);
+  if (m < 60) return m + 'm';
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  if (h < 24) return h + 'h ' + rm + 'm';
+  const d = Math.floor(h / 24);
+  const rh = h % 24;
+  return d + 'd ' + rh + 'h';
+}
+
+function updateAllUptimes() {
+  const rsiEl = document.getElementById('rsi-uptime');
+  const xauEl = document.getElementById('xau-uptime');
+  const ethEl = document.getElementById('rsi-eth-uptime');
+  if (rsiEl) rsiEl.textContent = _rsiRunning ? formatUptime(_uptimeStart.rsi) : '—';
+  if (xauEl) xauEl.textContent = _xauRunning ? formatUptime(_uptimeStart.xau) : '—';
+  if (ethEl) ethEl.textContent = _rsiEthRunning ? formatUptime(_uptimeStart['rsi-eth']) : '—';
+}
+
+setInterval(updateAllUptimes, 1000);
+
+// ── Bot status polling ─────────────────────────────────────────────────────
+function pollBotStatus() {
+  fetch('/api/bot/status')
+    .then(r => r.json())
+    .then(d => {
+      _rsiRunning = !!(d.rsiEma && d.rsiEma.running);
+      _xauRunning = !!(d.xauScalp && d.xauScalp.running);
+      _rsiEthRunning = !!(d.rsiEth && d.rsiEth.running);
+      // Load uptime from MongoDB startedAt (survives page reload)
+      if (_rsiRunning && d.rsiEma.startedAt) _uptimeStart.rsi = new Date(d.rsiEma.startedAt).getTime();
+      else if (!_rsiRunning) _uptimeStart.rsi = null;
+      if (_xauRunning && d.xauScalp.startedAt) _uptimeStart.xau = new Date(d.xauScalp.startedAt).getTime();
+      else if (!_xauRunning) _uptimeStart.xau = null;
+      if (_rsiEthRunning && d.rsiEth.startedAt) _uptimeStart['rsi-eth'] = new Date(d.rsiEth.startedAt).getTime();
+      else if (!_rsiEthRunning) _uptimeStart['rsi-eth'] = null;
+      // Fallback: if running but no startedAt from DB, use now
+      if (_rsiRunning && !_uptimeStart.rsi) _uptimeStart.rsi = Date.now();
+      if (_xauRunning && !_uptimeStart.xau) _uptimeStart.xau = Date.now();
+      if (_rsiEthRunning && !_uptimeStart['rsi-eth']) _uptimeStart['rsi-eth'] = Date.now();
+      updateCard('rsi-ema', _rsiRunning, d.rsiEma);
+      updateCard('xau-scalp', _xauRunning, d.xauScalp);
+      updateCard('rsi-eth', _rsiEthRunning, d.rsiEth);
+      // Update session/regime/market on every poll (auto-detect from time)
+      updateStrategyStatus('rsi', d.rsiEma || null);
+      updateStrategyStatus('xau', d.xauScalp || null);
+      updateStrategyStatus('rsi-eth', d.rsiEth || null);
+      const dot = document.getElementById('bot-status-dot');
+      if (dot) dot.classList.toggle('running', _rsiRunning || _xauRunning || _rsiEthRunning);
+
+      // Market status banner
+      const market = d.market;
+      const banner = document.getElementById('market-banner');
+      if (banner && market) {
+        if (market.closed) {
+          banner.style.display = 'block';
+          document.getElementById('market-banner-text').textContent = market.reason || 'Forex market is closed';
+          const nextEl = document.getElementById('market-banner-next');
+          if (nextEl && market.nextOpen) {
+            const diff = new Date(market.nextOpen) - new Date();
+            if (diff > 0) {
+              const hrs = Math.floor(diff / 3600000);
+              const mins = Math.floor((diff % 3600000) / 60000);
+              nextEl.textContent = 'Opens in ' + hrs + 'h ' + mins + 'm';
+            }
+          }
+          // Update market status on both cards
+          const rsiMkt = document.getElementById('rsi-market-status');
+          const xauMkt = document.getElementById('xau-market-status');
+          if (rsiMkt) { rsiMkt.className = 'strat-status-val warn'; rsiMkt.textContent = 'Closed (Weekend)'; }
+          if (xauMkt) { xauMkt.className = 'strat-status-val warn'; xauMkt.textContent = 'Closed (Weekend)'; }
+        } else {
+          banner.style.display = 'none';
+        }
+      }
+    })
+    .catch(() => {});
+
+  // XAU stats
+  fetch('/api/xau-scalp/stats')
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById('xau-signals-total').textContent = d.totalSignals ?? '—';
+      document.getElementById('xau-signals-strong').textContent = d.strongSignals ?? '—';
+      document.getElementById('xau-candles').textContent = d.candleCount ?? '—';
+    })
+    .catch(() => {});
+
+  // RSI signals today
+  fetch('/signals?limit=100')
+    .then(r => r.json())
+    .then(d => {
+      const sigs = d.signals || [];
+      const today = new Date().toISOString().slice(0, 10);
+      const todayCount = sigs.filter(s => {
+        const t = s.timestamp || s.time || '';
+        return String(t).startsWith(today);
+      }).length;
+      document.getElementById('rsi-signals-today').textContent = todayCount || '0';
+      if (sigs.length) {
+        const last = sigs[0];
+        const t = last.timestamp || last.time || '';
+        document.getElementById('rsi-last-signal').textContent = t ? String(t).slice(11, 16) : '—';
+      }
+    })
+    .catch(() => {});
+
+  // ETH RSI live status
+  fetch('/api/rsi-eth/status')
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById('rsi-eth-signals').textContent = d?.stats?.totalSignals ?? '0';
+      updateStrategyStatus('rsi-eth', d || null);
+    })
+    .catch(() => {});
+
+}
+
+function updateCard(strategy, running, data) {
+  const prefixMap = {'rsi-ema':'rsi', 'xau-scalp':'xau', 'rsi-eth':'rsi-eth'};
+  const prefix = prefixMap[strategy] || strategy;
+  const card = document.getElementById('card-' + prefix);
+  const badge = document.getElementById(prefix + '-status-badge');
+  const pulse = document.getElementById(prefix + '-pulse');
+  const text = document.getElementById(prefix + '-status-text');
+  const btn = document.getElementById(prefix + '-btn');
+  const botSt = document.getElementById(prefix + '-bot-status');
+
+  if (!card) return;
+
+  if (running) {
+    card.classList.add('running');
+    badge.className = 'bot-status-badge running';
+    pulse.className = 'pulse-dot running';
+    text.textContent = 'RUNNING';
+    btn.className = 'btn-stop';
+    btn.textContent = 'STOP BOT';
+    if (botSt) { botSt.className = 'strat-status-val running'; botSt.textContent = 'Running'; }
+  } else {
+    card.classList.remove('running');
+    badge.className = 'bot-status-badge stopped';
+    pulse.className = 'pulse-dot stopped';
+    text.textContent = 'STOPPED';
+    btn.className = 'btn-start';
+    btn.textContent = 'START BOT';
+    if (botSt) { botSt.className = 'strat-status-val stopped'; botSt.textContent = 'Stopped'; }
+    const confirm = document.getElementById(prefix + '-confirm');
+    if (confirm) confirm.classList.remove('visible');
+  }
+}
+
+// Detect current forex trading session from UTC time
+function getCurrentSession() {
+  const now = new Date();
+  const h = now.getUTCHours();
+  // Tokyo/Asian: 00:00 - 08:00 UTC
+  if (h >= 0 && h < 8) return { name: 'Asian Session', color: '#d070ff', active: true };
+  // London: 08:00 - 16:00 UTC
+  if (h >= 8 && h < 16) return { name: 'London Session', color: '#0af', active: true };
+  // New York: 13:00 - 21:00 UTC (overlaps London 13-16)
+  if (h >= 13 && h < 21) return { name: 'New York Session', color: '#ffa500', active: true };
+  // Off hours: 21:00 - 00:00
+  return { name: 'Off Hours', color: '#555', active: false };
+}
+
+// Detect market regime from recent price action
+function getMarketRegime(strategy) {
+  // For display only — updated by log entries or computed from session
+  if (strategy === 'xau' || strategy === 'rsi') {
+    const now = new Date();
+    const day = now.getUTCDay();
+    // Weekend check
+    if (day === 0 || day === 6) return { regime: 'Market Closed', color: '#e2b340', type: 'warn' };
+    if (day === 5 && now.getUTCHours() >= 21) return { regime: 'Market Closed', color: '#e2b340', type: 'warn' };
+    const sess = getCurrentSession();
+    if (sess.name === 'London Session') return { regime: 'Trending', color: '#0fa', type: 'on' };
+    if (sess.name === 'New York Session') return { regime: 'Volatile', color: '#ffa500', type: 'warn' };
+    if (sess.name === 'Asian Session') return { regime: 'Ranging', color: '#d070ff', type: 'warn' };
+    return { regime: 'Low Activity', color: '#555', type: 'off' };
+  }
+  // ETH — always open
+  return { regime: '24/7 Active', color: '#0fa', type: 'on' };
+}
+
+// Update strategy status cells from a parsed log entry OR computed values
+function updateStrategyStatus(prefix, entry) {
+  const rd = entry ? (entry.regime_details || {}) : {};
+  const shouldTrade = entry ? rd.should_trade : null;
+  const regime = entry ? (entry.market_regime || rd.regime || entry.regime || null) : null;
+  const session = entry ? (entry.session || null) : null;
+  const behavior = entry ? (entry.strategy_behavior || rd.strategy_behavior || null) : null;
+
+  const mktEl = document.getElementById(prefix + '-market-status');
+  const regEl = document.getElementById(prefix + '-regime-status');
+  const sesEl = document.getElementById(prefix + '-session-status');
+
+  // Market status
+  if (mktEl) {
+    if (shouldTrade === false || behavior === 'standby') {
+      mktEl.className = 'strat-status-val warn';
+      mktEl.innerHTML = 'OFF <span class="check-icon">✓</span>';
+    } else if (shouldTrade === true) {
+      mktEl.className = 'strat-status-val on';
+      mktEl.innerHTML = 'ON <span class="check-icon">✓</span>';
+    } else {
+      // Auto-detect from time
+      const isEth = prefix === 'rsi-eth' || prefix === 'eth';
+      if (isEth) {
+        mktEl.className = 'strat-status-val on';
+        mktEl.innerHTML = 'Open (Crypto) <span class="check-icon">✓</span>';
+      } else {
+        const now = new Date();
+        const day = now.getUTCDay();
+        const h = now.getUTCHours();
+        const isWeekend = day === 0 || day === 6 || (day === 5 && h >= 21);
+        if (isWeekend) {
+          mktEl.className = 'strat-status-val warn';
+          mktEl.innerHTML = 'Closed (Weekend)';
+        } else {
+          mktEl.className = 'strat-status-val on';
+          mktEl.innerHTML = 'Open <span class="check-icon">✓</span>';
+        }
+      }
+    }
+  }
+
+  // Regime — from log data or auto-detect
+  if (regEl) {
+    if (regime) {
+      const isRange = regime.includes('range') || regime.includes('ranging') || regime.includes('low_vol');
+      regEl.className = 'strat-status-val ' + (isRange ? 'warn' : 'on');
+      regEl.textContent = regime.replace(/_/g, ' ');
+      regEl.style.textShadow = isRange ? '0 0 6px rgba(245,158,11,0.3)' : '0 0 6px rgba(0,255,170,0.3)';
+    } else {
+      const mr = getMarketRegime(prefix);
+      regEl.className = 'strat-status-val ' + mr.type;
+      regEl.textContent = mr.regime;
+      regEl.style.color = mr.color;
+      regEl.style.textShadow = '0 0 6px ' + mr.color + '40';
+    }
+  }
+
+  // Session — from log data or auto-detect
+  if (sesEl) {
+    if (session) {
+      const isLondon = session.toLowerCase().includes('london');
+      const isNY = session.toLowerCase().includes('new york') || session.toLowerCase().includes('ny');
+      const isAsian = session.toLowerCase().includes('asian');
+      const sessColor = isLondon ? '#0af' : isNY ? '#ffa500' : isAsian ? '#d070ff' : '#787b86';
+      sesEl.className = 'strat-status-val on';
+      sesEl.textContent = session;
+      sesEl.style.color = sessColor;
+      sesEl.style.textShadow = '0 0 6px ' + sessColor + '60';
+    } else {
+      const isEth = prefix === 'rsi-eth' || prefix === 'eth';
+      if (isEth) {
+        sesEl.className = 'strat-status-val on';
+        sesEl.textContent = '24/7';
+        sesEl.style.color = '#0fa';
+        sesEl.style.textShadow = '0 0 6px rgba(0,255,170,0.3)';
+      } else {
+        const sess = getCurrentSession();
+        sesEl.className = 'strat-status-val ' + (sess.active ? 'on' : 'off');
+        sesEl.textContent = sess.name;
+        sesEl.style.color = sess.color;
+        sesEl.style.textShadow = '0 0 6px ' + sess.color + '40';
+      }
+    }
+  }
+}
+
+// ── Bot control actions ────────────────────────────────────────────────────
+function botAction(strategy) {
+  const prefixMap = {'rsi-ema':'rsi', 'xau-scalp':'xau', 'rsi-eth':'rsi-eth'};
+  const prefix = prefixMap[strategy] || strategy;
+  const runMap = {'rsi-ema':_rsiRunning, 'xau-scalp':_xauRunning, 'rsi-eth':_rsiEthRunning};
+  const running = runMap[strategy];
+
+  if (running) {
+    const confirm = document.getElementById(prefix + '-confirm');
+    if (confirm) confirm.classList.add('visible');
+  } else {
+    // ETH strategies use /api/{strategy}/start, XAU uses /api/bot/{strategy}/start
+    const ethStrategies = ['rsi-eth'];
+    const startUrl = ethStrategies.includes(strategy) ? '/api/' + strategy + '/start' : '/api/bot/' + strategy + '/start';
+    fetch(startUrl, { method: 'POST' })
+      .then(r => r.json())
+      .then(() => setTimeout(pollBotStatus, 500))
+      .catch(e => appendLog({ strategy: 'SYSTEM', level: 'ERROR', message: 'Start failed: ' + e.message, time: nowStr() }));
+  }
+}
+
+function confirmStop(strategy) {
+  const prefixMap = {'rsi-ema':'rsi', 'xau-scalp':'xau', 'rsi-eth':'rsi-eth'};
+  const prefix = prefixMap[strategy] || strategy;
+  const confirm = document.getElementById(prefix + '-confirm');
+  if (confirm) confirm.classList.remove('visible');
+  const ethStrategies = ['rsi-eth'];
+  const stopUrl = ethStrategies.includes(strategy) ? '/api/' + strategy + '/stop' : '/api/bot/' + strategy + '/stop';
+  fetch(stopUrl, { method: 'POST' })
+    .then(r => r.json())
+    .then(() => setTimeout(pollBotStatus, 500))
+    .catch(e => appendLog({ strategy: 'SYSTEM', level: 'ERROR', message: 'Stop failed: ' + e.message, time: nowStr() }));
+}
+
+function cancelStop(strategy) {
+  const prefixMap = {'rsi-ema':'rsi', 'xau-scalp':'xau', 'rsi-eth':'rsi-eth'};
+  const prefix = prefixMap[strategy] || strategy;
+  const confirm = document.getElementById(prefix + '-confirm');
+  if (confirm) confirm.classList.remove('visible');
+}
+
+// ── Terminal rendering ─────────────────────────────────────────────────────
+function nowStr() {
+  return new Date().toISOString().slice(11, 19);
+}
+
+function appendLog(evt) {
+  const strat = (evt.strategy || '').toUpperCase();
+  const isXau = strat.includes('XAU') || strat.includes('SCALP');
+  if (isXau) {
+    _xauLogLines.push(evt);
+    if (_xauLogLines.length > MAX_LINES) _xauLogLines.shift();
+    renderXauTerminal();
+  } else {
+    _logLines.push(evt);
+    if (_logLines.length > MAX_LINES) _logLines.shift();
+    renderTerminal();
+  }
+}
+
+function renderTerminal() {
+  const body = document.getElementById('terminal-body');
+  const empty = document.getElementById('terminal-empty');
+  const visible = _logLines.filter(l => {
+    if (_filter === 'all') return true;
+    const s = (l.strategy || '').toUpperCase();
+    if (_filter === 'rsi') return s === 'RSI-EMA' || s.includes('RSI') && !s.includes('ETH');
+    if (_filter === 'xau') return s.includes('XAU') || s.includes('SCALP');
+    if (_filter === 'rsi-eth') return s === 'ETH-RSI-15' || s === 'RSI-ETH';
+    return true;
+  });
+  if (visible.length === 0) {
+    empty.style.display = 'block';
+    empty.textContent = _logLines.length === 0 ? 'Connecting to log stream…' : 'No entries for selected filter.';
+    Array.from(body.querySelectorAll('.log-line')).forEach(n => n.remove());
+    return;
+  }
+  empty.style.display = 'none';
+  Array.from(body.querySelectorAll('.log-line')).forEach(n => n.remove());
+
+  visible.forEach(evt => {
+    const row = document.createElement('div');
+    row.className = 'log-line';
+    row.innerHTML = buildLogLineHtml(evt);
+    body.appendChild(row);
+  });
+  body.scrollTop = body.scrollHeight;
+}
+
+// ── XAU SCALP separate terminal rendering ─────────────────────────────────
+function renderXauTerminal() {
+  const body = document.getElementById('xau-terminal-body');
+  const empty = document.getElementById('xau-terminal-empty');
+  const count = document.getElementById('xau-term-count');
+  if (!body) return;
+  if (_xauLogLines.length === 0) {
+    empty.style.display = 'block';
+    Array.from(body.querySelectorAll('.log-line')).forEach(n => n.remove());
+    return;
+  }
+  empty.style.display = 'none';
+  Array.from(body.querySelectorAll('.log-line')).forEach(n => n.remove());
+  _xauLogLines.forEach(evt => {
+    const row = document.createElement('div');
+    row.className = 'log-line';
+    row.innerHTML = buildLogLineHtml(evt);
+    body.appendChild(row);
+  });
+  body.scrollTop = body.scrollHeight;
+  if (count) count.textContent = _xauLogLines.length + ' entries';
+}
+
+function clearXauTerminal() {
+  _xauLogLines = [];
+  renderXauTerminal();
+  const empty = document.getElementById('xau-terminal-empty');
+  if (empty) { empty.style.display = 'block'; empty.textContent = 'Cleared.'; }
+}
+
+function buildLogLineHtml(evt) {
+  const strat = (evt.strategy || 'SYSTEM').toUpperCase();
+  const tagClass = (strat === 'ETH-RSI-15' || strat === 'RSI-ETH') ? 'eth-rsi-15' : strat.includes('RSI') ? 'rsi' : (strat.includes('XAU') || strat.includes('SCALP')) ? 'xau' : strat.includes('MVS') ? 'mvs-eth' : 'sys';
+  const raw = evt.raw || {};
+
+  // ── Column 1: Source ───────────────────────────────────────────────────
+  const ts = evt.time || nowStr();
+  const session = raw.session || evt.session || '';
+  const symbol = raw.symbol || '';
+  const sessionHtml = session ? `<span class="log-session">${escHtml(session)}</span>` : (symbol ? `<span class="log-session">${escHtml(symbol.replace('XAUUSDT','XAU'))}</span>` : '');
+  const col1 = `<span class="log-ts">[${escHtml(ts)}]</span><span class="log-tag ${tagClass}">${escHtml(strat.replace('STRATEGY','').trim())}</span>${sessionHtml}`;
+
+  // ── Column 2: Signal + Score Badge ─────────────────────────────────────
+  let col2 = '';
+  const decision = (raw.decision || evt.level || '').toUpperCase();
+  const direction = (raw.direction || evt.direction || '').toUpperCase();
+  const score = raw.signal_score != null ? raw.signal_score : null;
+  const threshold = raw.score_threshold != null ? raw.score_threshold : null;
+  const eventType = raw.event_type || '';
+  const reason = raw.reason || evt.reason || evt.message || '';
+
+  // Direction badge
+  let dirHtml = '';
+  if (direction === 'BUY' || direction === 'LONG') dirHtml = `<span class="log-dir buy">${direction}</span>`;
+  else if (direction === 'SELL' || direction === 'SHORT') dirHtml = `<span class="log-dir sell">${direction}</span>`;
+  else if (direction) dirHtml = `<span class="log-dir neutral">${escHtml(direction)}</span>`;
+
+  // ── SCORE SYSTEM: Calculate points out of 100 ──────────────────────────
+  let totalPts = 0;
+  let ptsParts = [];
+  const isXau = strat.includes('XAU') || strat.includes('SCALP');
+  const isEthRsi = (strat === 'ETH-RSI-15' || strat === 'RSI-ETH');
+  const isRsiEma = strat === 'RSI-EMA';
+
+  if (isEthRsi) {
+    // ETH RSI 15 TF scoring
+    const rsiM = reason.match(/RSI[:\s]*([\d.]+)/i);
+    const adxM = reason.match(/ADX[:\s]*([\d.]+)/i);
+    const ema9M = reason.match(/EMA9[:\s]*([\d.]+)/i);
+    const ema50M = reason.match(/EMA50[:\s]*([\d.]+)/i);
+    const priceM = reason.match(/@ ?([\d.]+)/);
+    const rv = rsiM ? parseFloat(rsiM[1]) : 50;
+    const av = adxM ? parseFloat(adxM[1]) : 0;
+    const e9 = ema9M ? parseFloat(ema9M[1]) : 0;
+    const e50 = ema50M ? parseFloat(ema50M[1]) : 0;
+    const px = priceM ? parseFloat(priceM[1]) : (e50 || 0);
+
+    // +20 RSI in zone
+    if (rv <= 35 || rv >= 70) { totalPts += 20; ptsParts.push({name:'RSI',pts:20,on:true}); }
+    else { ptsParts.push({name:'RSI',pts:20,on:false}); }
+    // +20 EMA trend (EMA9 > EMA50 for bull)
+    if (e9 && e50 && e9 > e50) { totalPts += 20; ptsParts.push({name:'EMA',pts:20,on:true}); }
+    else if (e9 && e50 && e9 < e50) { totalPts += 20; ptsParts.push({name:'EMA',pts:20,on:true}); }
+    else { ptsParts.push({name:'EMA',pts:20,on:false}); }
+    // +20 ADX > 20
+    if (av >= 20) { totalPts += 20; ptsParts.push({name:'ADX',pts:20,on:true}); }
+    else { ptsParts.push({name:'ADX',pts:20,on:false}); }
+    // +20 Price above/below EMA50
+    if (px && e50 && px !== e50) { totalPts += 20; ptsParts.push({name:'TREND',pts:20,on:true}); }
+    else { ptsParts.push({name:'TREND',pts:20,on:false}); }
+    // +20 if signal fired
+    if (decision === 'SIGNAL' || decision === 'ENTRY') { totalPts += 20; ptsParts.push({name:'SIGNAL',pts:20,on:true}); }
+    else { ptsParts.push({name:'SIGNAL',pts:20,on:false}); }
+  } else if (isXau) {
+    // XAU SCALP scoring
+    const hasOB = reason.toLowerCase().includes('ob') || reason.toLowerCase().includes('order block');
+    const hasFVG = reason.toLowerCase().includes('fvg') || reason.toLowerCase().includes('fair value');
+    const hasZone = reason.toLowerCase().includes('zone') || reason.toLowerCase().includes('retrace');
+    const hasSweep = reason.toLowerCase().includes('sweep');
+    const isLondon = (session || '').toLowerCase().includes('london');
+    const isNY = (session || '').toLowerCase().includes('new york') || (session || '').toLowerCase().includes('ny');
+
+    if (hasOB || hasFVG) { totalPts += 25; ptsParts.push({name:'OB/FVG',pts:25,on:true}); }
+    else { ptsParts.push({name:'OB/FVG',pts:25,on:false}); }
+    if (hasZone) { totalPts += 25; ptsParts.push({name:'ZONE',pts:25,on:true}); }
+    else { ptsParts.push({name:'ZONE',pts:25,on:false}); }
+    if (hasSweep) { totalPts += 25; ptsParts.push({name:'SWEEP',pts:25,on:true}); }
+    else { ptsParts.push({name:'SWEEP',pts:25,on:false}); }
+    if (isLondon || isNY) { totalPts += 25; ptsParts.push({name:isLondon?'LONDON':'NY',pts:25,on:true}); }
+    else { ptsParts.push({name:'SESSION',pts:25,on:false}); }
+  } else if (isRsiEma) {
+    // RSI EMA XAU scoring — use structured raw.conditions from server
+    const conds = raw.conditions || {};
+    const rsiOk = conds.rsi_ok || raw.rsi_ok;
+    const emaOk = conds.trend_alignment || raw.ema_ok;
+    const atrOk = conds.atr_expansion || raw.atr_ok;
+    const priceOk = conds.price_trigger;
+    const sessOk = conds.session_filter;
+    const sess = raw.session || '';
+
+    if (rsiOk) { totalPts += 20; ptsParts.push({name:'RSI',pts:20,on:true}); }
+    else { ptsParts.push({name:'RSI',pts:20,on:false}); }
+    if (emaOk) { totalPts += 20; ptsParts.push({name:'EMA',pts:20,on:true}); }
+    else { ptsParts.push({name:'EMA',pts:20,on:false}); }
+    if (atrOk) { totalPts += 20; ptsParts.push({name:'ATR',pts:20,on:true}); }
+    else { ptsParts.push({name:'ATR',pts:20,on:false}); }
+    if (sessOk || sess.toLowerCase().includes('overlap') || sess.toLowerCase().includes('new york')) {
+      totalPts += 20;
+      const sName = sess.includes('verlap') ? 'OVERLAP' : sess.includes('ork') || sess.includes('NY') ? 'NY' : sess.includes('ondon') ? 'LONDON' : 'SESSION';
+      ptsParts.push({name:sName,pts:20,on:true});
+    } else { ptsParts.push({name:'SESSION',pts:20,on:false}); }
+    if (priceOk) { totalPts += 20; ptsParts.push({name:'BREAK',pts:20,on:true}); }
+    else { ptsParts.push({name:'BREAK',pts:20,on:false}); }
+  }
+
+  // Build score badge HTML
+  let scoreBadge = '';
+  if (ptsParts.length > 0) {
+    const scoreColor = totalPts >= 80 ? '#0fa' : totalPts >= 60 ? '#0af' : totalPts >= 40 ? '#ffa500' : '#ff3a5e';
+    const glowColor = totalPts >= 80 ? 'rgba(0,255,170,0.4)' : totalPts >= 60 ? 'rgba(0,170,255,0.3)' : totalPts >= 40 ? 'rgba(255,165,0,0.3)' : 'rgba(255,50,80,0.3)';
+    const ptsHtml = ptsParts.map(p => {
+      if (p.on) return `<span style="color:${scoreColor};font-size:10px;opacity:0.9">+${p.pts}</span>`;
+      return `<span style="color:#333;font-size:10px;text-decoration:line-through">${p.name}</span>`;
+    }).join(' ');
+    scoreBadge = `<span class="log-score-badge" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:5px;border:1px solid ${scoreColor};background:rgba(0,0,0,0.3);font-family:'Courier New',monospace;font-weight:700;font-size:13px;color:${scoreColor};text-shadow:0 0 8px ${glowColor};margin-right:6px;min-width:48px;justify-content:center">${totalPts}</span>`;
+  }
+
+  // Legacy score
+  let scoreHtml = '';
+  if (score != null && threshold != null) scoreHtml = `<span class="log-score"><em>${score}</em>/${threshold}</span>`;
+
+  // Decision badge
+  let decClass = 'rejected';
+  let decText = '';
+  if (decision === 'SIGNAL' || decision === 'ENTRY' || evt.level === 'SIGNAL') { decClass = 'signal'; decText = 'SIGNAL'; }
+  else if (decision === 'REJECTED') { decClass = 'rejected'; decText = 'REJECTED'; }
+  else if (decision === 'MARKET_SNAPSHOT' || eventType === 'market_snapshot') { decClass = 'snapshot'; decText = 'SNAPSHOT'; }
+  else if (evt.level === 'ERROR') { decClass = 'error'; decText = 'ERROR'; }
+  else if (decision === 'NO_SIGNAL') { decClass = 'rejected'; decText = 'NO_SIGNAL'; }
+  else if (decision === 'FILTERED') { decClass = 'error'; decText = 'FILTERED'; }
+  else if (decision) { decClass = 'rejected'; decText = escHtml(decision.slice(0, 12)); }
+  else if (evt.level) { decClass = 'snapshot'; decText = escHtml(evt.level.toUpperCase().slice(0, 10)); }
+
+  const decBadge = decText ? `<span class="log-decision ${decClass}">${decText}</span>` : '';
+
+  // Live price
+  const liveP = raw.live_price ? `<span class="log-score"><em>${raw.live_price}</em></span>` : '';
+
+  col2 = `${scoreBadge}${dirHtml}${scoreHtml}${liveP}${decBadge}`;
+  if (!col2.trim()) col2 = `<span class="log-score" style="color:#2a2d3a">—</span>`;
+
+  // ── Column 3: Context — ALL strategies get neon indicator badges ────────
+  const regime = (raw.market_regime || (raw.regime_details && raw.regime_details.regime) || '').replace(/_/g, ' ');
+  const feedStatus = raw.feed_status || '';
+  const behavior = raw.strategy_behavior || (raw.regime_details && raw.regime_details.strategy_behavior) || '';
+  const contextText = reason || feedStatus || behavior || '—';
+  const reasonClass = (decClass === 'signal') ? 'has-signal' : (decClass === 'error') ? 'has-error' : '';
+  const regimeHtml = regime ? `<span class="log-regime">${escHtml(regime)}</span>` : (behavior ? `<span class="log-regime">${escHtml(behavior)}</span>` : '');
+
+  let col3 = '';
+
+  if (isEthRsi && reason) {
+    const parts = [];
+    const rsiMatch = reason.match(/RSI[:\s]*([\d.]+)/i);
+    if (rsiMatch) {
+      const rv = parseFloat(rsiMatch[1]);
+      const rsiClass = rv <= 35 ? 'bull' : rv >= 70 ? 'bear' : '';
+      parts.push(`<span class="log-ind rsi ${rsiClass}">RSI <span class="val">${rv.toFixed(1)}</span></span>`);
+    }
+    const ema9Match = reason.match(/EMA9[:\s]*([\d.]+)/i);
+    if (ema9Match) parts.push(`<span class="log-ind ema">EMA9 <span class="val">${parseFloat(ema9Match[1]).toFixed(0)}</span></span>`);
+    const ema50Match = reason.match(/EMA50[:\s]*([\d.]+)/i);
+    if (ema50Match) parts.push(`<span class="log-ind ema">EMA50 <span class="val">${parseFloat(ema50Match[1]).toFixed(0)}</span></span>`);
+    const adxMatch = reason.match(/ADX[:\s]*([\d.]+)/i);
+    if (adxMatch) {
+      const av = parseFloat(adxMatch[1]);
+      const adxClass = av < 20 ? 'low' : '';
+      parts.push(`<span class="log-ind adx ${adxClass}">ADX <span class="val">${av.toFixed(1)}</span></span>`);
+    }
+    const priceMatch = reason.match(/@ ([\d.]+)/);
+    if (priceMatch) parts.push(`<span class="log-ind price">@ <span class="val">${priceMatch[1]}</span></span>`);
+    const slMatch = reason.match(/SL[:\s]*([\d.]+)/i);
+    const tpMatch = reason.match(/TP[:\s]*([\d.]+)/i);
+    if (slMatch) parts.push(`<span class="log-ind rsi bear">SL <span class="val">${parseFloat(slMatch[1]).toFixed(2)}</span></span>`);
+    if (tpMatch) parts.push(`<span class="log-ind rsi bull">TP <span class="val">${parseFloat(tpMatch[1]).toFixed(2)}</span></span>`);
+    if (decision === 'FILTERED') parts.unshift(`<span class="log-filtered">FILTERED</span>`);
+    // Points breakdown tooltip
+    if (ptsParts.length) {
+      const breakdown = ptsParts.map(p => p.on ? `<span style="color:#0fa">+${p.pts} ${p.name}</span>` : `<span style="color:#333">${p.name}</span>`).join(' ');
+      parts.push(`<span style="font-size:10px;opacity:0.5;margin-left:4px">${breakdown}</span>`);
+    }
+    col3 = parts.length ? parts.join(' ') : `<span class="log-reason">${escHtml(contextText.slice(0, 60))}</span>`;
+  } else if (isXau) {
+    // XAU SCALP — neon glow for all log text
+    const parts = [];
+    // Parse price
+    const priceM = reason.match(/([\d]{4,5}\.?\d*)/);
+    if (priceM) parts.push(`<span class="log-ind price">@ <span class="val">${priceM[1]}</span></span>`);
+    // Session badge
+    if (session) {
+      const sessColor = session.toLowerCase().includes('london') ? '#0af' : session.toLowerCase().includes('new york') ? '#ffa500' : session.toLowerCase().includes('asian') ? '#d070ff' : '#555';
+      parts.push(`<span class="log-ind" style="color:${sessColor};border-color:${sessColor}40;background:${sessColor}12">${escHtml(session)}</span>`);
+    }
+    // Context with glow
+    const shortCtx = contextText.replace(/@ ?[\d.]+/g, '').replace(/NO_SIGNAL/g, '').trim();
+    if (shortCtx) parts.push(`<span class="log-reason ${reasonClass}" style="text-shadow:0 0 4px rgba(0,170,255,0.2)">${escHtml(shortCtx.slice(0, 50))}</span>`);
+    // Points breakdown
+    if (ptsParts.length) {
+      const breakdown = ptsParts.map(p => p.on ? `<span style="color:#0af;font-size:10px">+${p.pts} ${p.name}</span>` : `<span style="color:#222;font-size:10px">${p.name}</span>`).join(' ');
+      parts.push(`<span style="margin-left:4px">${breakdown}</span>`);
+    }
+    col3 = parts.length ? parts.join(' ') : `<span class="log-reason ${reasonClass}" style="text-shadow:0 0 4px rgba(0,170,255,0.15)">${escHtml(contextText.slice(0, 60))}</span>${regimeHtml}`;
+  } else if (isRsiEma) {
+    // RSI EMA XAU — neon indicator badges (same style as ETH-RSI-15)
+    const conds = raw.conditions || {};
+    const parts = [];
+    // RSI badge — parse from regime_details or conditions
+    const rsiOk = conds.rsi_ok || raw.rsi_ok;
+    const rsiVal = conds.rsi14 || '';
+    if (rsiVal) {
+      const rv = parseFloat(rsiVal);
+      const cls = rv > 50 ? 'bull' : rv < 50 ? 'bear' : '';
+      parts.push(`<span class="log-ind rsi ${cls}">RSI <span class="val">${rv.toFixed(1)}</span></span>`);
+    } else {
+      parts.push(`<span class="log-ind rsi ${rsiOk ? 'bull' : ''}">RSI <span class="val">${rsiOk ? 'OK' : '--'}</span></span>`);
+    }
+    // EMA50 / EMA200 badges
+    const ema50 = conds.ema50 || raw.ema50 || '';
+    const ema200 = conds.ema200 || raw.ema200 || '';
+    if (ema50) parts.push(`<span class="log-ind ema">EMA50 <span class="val">${parseFloat(ema50).toFixed(0)}</span></span>`);
+    if (ema200) parts.push(`<span class="log-ind ema">EMA200 <span class="val">${parseFloat(ema200).toFixed(0)}</span></span>`);
+    // Trend bias
+    const bias = conds.trend_bias || raw.trend_bias || '';
+    if (bias) {
+      const bc = bias === 'bull' ? '#0fa' : bias === 'bear' ? '#ff3a5e' : '#787b86';
+      parts.push(`<span class="log-ind" style="color:${bc};border-color:${bc}40;background:${bc}12">${bias.toUpperCase()}</span>`);
+    }
+    // ATR badge
+    const atrOk = conds.atr_expansion || raw.atr_ok;
+    parts.push(`<span class="log-ind ${atrOk ? 'adx' : ''}" style="${atrOk ? '' : 'opacity:0.4'}">ATR <span class="val">${atrOk ? 'EXP' : '--'}</span></span>`);
+    // Session badge
+    const sess = raw.session || '';
+    if (sess) {
+      const sc = sess.toLowerCase().includes('london') ? '#0af' : sess.toLowerCase().includes('new york') || sess.toLowerCase().includes('overlap') ? '#ffa500' : sess.toLowerCase().includes('asian') ? '#d070ff' : '#555';
+      parts.push(`<span class="log-ind" style="color:${sc};border-color:${sc}40;background:${sc}12">${escHtml(sess)}</span>`);
+    }
+    // Regime badge
+    const reg = (raw.market_regime || '').replace(/_/g, ' ');
+    if (reg) {
+      const rc = reg.includes('trend') ? '#0fa' : reg.includes('range') ? '#ffa500' : reg.includes('low') ? '#ff3a5e' : '#787b86';
+      parts.push(`<span class="log-regime" style="color:${rc};border-color:${rc}40">${escHtml(reg)}</span>`);
+    }
+    // Points breakdown
+    if (ptsParts.length) {
+      const breakdown = ptsParts.map(p => p.on ? `<span style="color:#ffa500;font-size:10px">+${p.pts} ${p.name}</span>` : `<span style="color:#333;font-size:10px">${p.name}</span>`).join(' ');
+      parts.push(`<span style="margin-left:4px;font-size:10px;opacity:0.6">${breakdown}</span>`);
+    }
+    col3 = parts.length ? parts.join(' ') : `<span class="log-reason ${reasonClass}">${escHtml(contextText.slice(0, 70))}</span>${regimeHtml}`;
+  } else {
+    col3 = `<span class="log-reason ${reasonClass}" style="text-shadow:0 0 3px rgba(100,120,180,0.15)">${escHtml(contextText.slice(0, 60))}${contextText.length > 60 ? '…' : ''}</span>${regimeHtml}`;
+  }
+
+  return `<div class="log-col">${col1}</div><div class="log-col">${col2}</div><div class="log-col">${col3}</div>`;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function setFilter(f) {
+  _filter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('filter-' + f);
+  if (btn) btn.classList.add('active');
+  renderTerminal();
+}
+
+function clearTerminal() {
+  _logLines = [];
+  renderTerminal();
+}
+
+// ── SSE log stream ─────────────────────────────────────────────────────────
+function connectLogStream() {
+  const sse = new EventSource('/api/bot/log-stream');
+  sse.onmessage = function(e) {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === 'connected') return;
+      const logEvt = {
+        strategy: data.strategy || 'SYSTEM',
+        level: data.level || 'INFO',
+        message: data.message || '',
+        time: data.time || nowStr(),
+        raw: data.raw || {},
+      };
+      appendLog(logEvt);
+      // Update ETH strategy status cards from SSE events
+      const strat = (data.strategy || '').toUpperCase();
+      if ((strat === 'ETH-RSI-15' || strat === 'RSI-ETH') && data.raw) updateStrategyStatus('rsi-eth', data.raw);
+    } catch {}
+  };
+  sse.onerror = function() {
+    sse.close();
+    setTimeout(connectLogStream, 5000);
+  };
+}
+
+// Poll XAU decision log
+let _lastXauTs = 0;
+function pollXauLog() {
+  fetch('/api/xau-scalp/log?limit=20')
+    .then(r => r.json())
+    .then(d => {
+      const entries = (d.log || []).reverse();
+      entries.forEach(entry => {
+        const ts = entry.ts || 0;
+        if (ts > _lastXauTs) {
+          _lastXauTs = ts;
+          const t = ts ? new Date(ts * 1000).toISOString().slice(11, 19) : nowStr();
+          const decision = entry.decision || '';
+          const reason = entry.reason || '';
+          const price = entry.price ? ` @ ${entry.price}` : '';
+          const direction = entry.direction || '';
+
+          // Build synthetic raw for structured display
+          const raw = {
+            decision: decision,
+            reason: reason + price,
+            direction: direction,
+            signal_score: entry.score != null ? entry.score : null,
+            score_threshold: entry.threshold != null ? entry.threshold : null,
+            market_regime: entry.regime || '',
+            session: entry.session || '',
+            symbol: 'XAUUSDT',
+            strategy_behavior: entry.behavior || '',
+          };
+          appendLog({
+            strategy: 'XAU-SCALP',
+            level: decision === 'SIGNAL' ? 'SIGNAL' : 'INFO',
+            message: `${decision} ${direction}${price} — ${reason}`,
+            time: t,
+            raw,
+          });
+          // Update card status cells
+          updateStrategyStatus('xau', raw);
+        }
+      });
+    })
+    .catch(() => {});
+}
+
+// Poll RSI decision log — parse the structured JSON payloads
+let _lastRsiTs = '';
+function pollRsiLog() {
+  fetch('/logs?limit=20')
+    .then(r => r.json())
+    .then(d => {
+      const logs = (d.logs || []).reverse();
+      logs.forEach(entry => {
+        const rawMsg = entry.message || entry.raw || '';
+        const t = (entry.time || '').slice(11, 19);
+        const ts = entry.time || '';
+        if (ts <= _lastRsiTs) return;
+        _lastRsiTs = ts;
+
+        // Try to parse JSON body from the raw log message
+        let parsed = null;
+        try {
+          // Messages may be plain JSON or have a prefix like "RSI-EMA{...}"
+          const jsonStart = rawMsg.indexOf('{');
+          if (jsonStart !== -1) parsed = JSON.parse(rawMsg.slice(jsonStart));
+        } catch {}
+
+        if (parsed) {
+          const dec = (parsed.decision || '').toUpperCase();
+          appendLog({
+            strategy: 'RSI-EMA',
+            level: dec === 'SIGNAL' ? 'SIGNAL' : (entry.level === 'ERROR' ? 'ERROR' : 'INFO'),
+            message: parsed.reason || parsed.event_type || dec || rawMsg,
+            time: t,
+            raw: parsed,
+          });
+          updateStrategyStatus('rsi', parsed);
+        } else {
+          appendLog({
+            strategy: 'RSI-EMA',
+            level: entry.level === 'ERROR' ? 'ERROR' : 'INFO',
+            message: rawMsg,
+            time: t,
+            raw: {},
+          });
+        }
+      });
+    })
+    .catch(() => {});
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+(function init() {
+  pollBotStatus();
+  setInterval(pollBotStatus, 5000);
+  connectLogStream();
+  setInterval(pollXauLog, 3000);
+  setInterval(pollRsiLog, 5000);
+})();
+</script>
+</body>
+</html>

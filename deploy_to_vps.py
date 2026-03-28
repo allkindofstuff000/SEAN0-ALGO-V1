@@ -13,11 +13,11 @@ except ImportError:
     import paramiko
 
 # ── VPS config ────────────────────────────────────────────────────────────────
-VPS_HOST = "187.77.191.182"
+VPS_HOST = "173.199.126.23"
 VPS_USER = "root"
-VPS_PASS = "Megaboostadmin1@"
+VPS_PASS = "(9Ff[zh4@,6T_MG!"
 VPS_PORT = 22
-REMOTE_DIR = "/opt/quotex_bot"
+REMOTE_DIR = "/opt/sean_algo"
 VENV_PY = f"{REMOTE_DIR}/.venv/bin/python"
 VENV_PIP = f"{REMOTE_DIR}/.venv/bin/pip"
 
@@ -111,9 +111,9 @@ def main() -> None:
     upload_files(client)
 
     print("\n=== Restarting services via systemctl ===")
-    run(client, "systemctl restart quotex-dashboard", timeout=20)
+    run(client, "systemctl restart sean-algo-dashboard", timeout=20)
     time.sleep(3)
-    run(client, "systemctl status quotex-dashboard --no-pager -l | tail -15", timeout=10)
+    run(client, "systemctl status sean-algo-dashboard --no-pager -l | tail -15", timeout=10)
 
     print("\n=== Verify web server ===")
     run(client, "curl -s -o /dev/null -w '%{http_code}' http://localhost:8010/ || true", timeout=10)

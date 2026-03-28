@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ICT Minimal Backtest — XAU/USD — SEAN ALGO</title>
+<style>
+  :root { --bg:#212121; --surface:#2f2f2f; --surface2:#262626; --border:#424242; --text:#ececec; --muted:#8e8ea0; --green:#10a37f; --red:#ef5350; --amber:#f59e0b; --blue:#2196F3; --teal:#1D9E75; --radius:10px; --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+  *{box-sizing:border-box;margin:0;padding:0} html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:13px}
+  .nav{display:flex;align-items:center;gap:0;padding:0 20px;height:52px;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+  .nav-brand{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:700;color:var(--text);text-decoration:none;flex-shrink:0;margin-right:14px}
+  .nav-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+  .nav-item{color:var(--muted);text-decoration:none;font-size:12px;font-weight:600;letter-spacing:.5px;padding:10px 14px;border-radius:6px;transition:.15s}
+  .nav-item:hover{color:var(--text);background:rgba(255,255,255,.05)} .nav-item.active{color:var(--text);background:rgba(255,255,255,.08)}
+  .nav-live{display:flex;align-items:center;gap:6px;margin-left:auto}
+  .page{max-width:1200px;margin:0 auto;padding:20px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px}
+  .btn{padding:10px 20px;background:var(--amber);color:#000;border:none;border-radius:6px;font:600 13px var(--font);cursor:pointer;transition:.15s}
+  .btn:hover{opacity:.9} .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn-sm{padding:6px 12px;font-size:11px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{padding:8px;text-align:left;color:var(--muted);border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  td{padding:8px;border-bottom:1px solid rgba(255,255,255,.04)}
+  .mono{font-family:'Courier New',monospace}
+  .win{color:var(--green);font-weight:700} .loss{color:var(--red);font-weight:700}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+  .badge.ok{background:rgba(16,163,127,.15);color:var(--green)} .badge.no{background:rgba(239,83,80,.1);color:var(--red)}
+  .badge.best{background:rgba(245,158,11,.15);color:var(--amber)}
+  .metric-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+  .metric{text-align:center;padding:12px;background:rgba(255,255,255,.03);border-radius:8px}
+  .metric-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .metric-val{font-size:20px;font-weight:700;margin-top:4px}
+  .session-grid{display:flex;gap:10px;margin-top:10px}
+  .session-card{flex:1;padding:10px;background:rgba(255,255,255,.03);border-radius:6px;text-align:center}
+  .status-bar{padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;margin-bottom:16px}
+  .status-bar.idle{background:rgba(255,255,255,.03);color:var(--muted)}
+  .status-bar.running{background:rgba(245,158,11,.1);color:var(--amber)}
+  .status-bar.done{background:rgba(16,163,127,.1);color:var(--green)}
+  .pulse-dot-sm{width:6px;height:6px;border-radius:50%;animation:pulse 1s infinite}
+  .eq-wrap{background:rgba(0,0,0,.3);border-radius:8px;padding:14px;min-height:210px}
+  .highlight-row{background:rgba(245,158,11,.08) !important}
+  @media(max-width:900px){.metric-grid{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-brand" href="/"><div class="nav-dot"></div>SEAN ALGO</a>
+  <a href="/dashboard/rsi-ema" class="nav-item">RSI EMA</a>
+  <a href="/dashboard/xau-scalp" class="nav-item">XAU SCALP</a>
+  <a href="/dashboard/crypto" class="nav-item">CRYPTO</a>
+  <a href="/dashboard/backtest-eth-ict" class="nav-item">ICT ETH</a>
+  <a href="/dashboard/backtest-xau-ict" class="nav-item active">ICT XAU</a>
+  <a href="/dashboard/live-bot" class="nav-item nav-live">
+    <span class="pulse-dot-sm" style="background:var(--green)"></span>
+    LIVE BOT
+  </a>
+</nav>
+
+<div class="page">
+
+  <div class="card" style="display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <div style="font-size:18px;font-weight:700;color:var(--amber)">Minimal ICT Backtest — XAU/USD (Gold)</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Testing 6 ICT strategy variants on OANDA M5 data</div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <label style="font-size:11px;color:var(--muted)">Days:</label>
+      <input type="number" id="bt-days" value="30" min="7" max="90" style="width:60px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:13px">
+      <button class="btn" id="run-btn" onclick="runBacktest()">Run XAU Backtest</button>
+    </div>
+  </div>
+
+  <div class="status-bar idle" id="status-bar">
+    <span>Ready — click "Run XAU Backtest" to test all 6 ICT variants on Gold</span>
+  </div>
+
+  <div class="card" id="results-table" style="display:none">
+    <div style="font-size:14px;font-weight:700;margin-bottom:12px">Variant Comparison — XAU/USD</div>
+    <table>
+      <thead><tr>
+        <th>ID</th><th>Strategy</th><th>Trades</th><th>Trades/Day</th><th>Win Rate</th><th>Avg R:R</th><th>PF</th><th>P&L (R)</th><th>Max DD</th><th>Target</th>
+      </tr></thead>
+      <tbody id="variant-tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="card" id="best-detail" style="display:none">
+    <div style="font-size:14px;font-weight:700;margin-bottom:4px" id="best-title">—</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:16px" id="best-rec">—</div>
+    <div class="metric-grid" id="best-metrics"></div>
+    <div style="margin-top:16px">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px">WIN RATE BY SESSION</div>
+      <div class="session-grid" id="best-sessions"></div>
+    </div>
+  </div>
+
+  <div class="card" id="eq-card" style="display:none">
+    <div style="font-size:14px;font-weight:700;margin-bottom:12px">Equity Curve (Best Variant)</div>
+    <div class="eq-wrap">
+      <svg id="eq-svg" viewBox="0 0 800 210" style="width:100%;height:210px"></svg>
+    </div>
+  </div>
+
+  <div class="card" id="trades-card" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:14px;font-weight:700">Trade Log — XAU/USD</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span id="trade-count" style="font-size:11px;color:var(--muted)"></span>
+        <button class="btn btn-sm" onclick="exportCSV()">Export CSV</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto;max-height:500px;overflow-y:auto">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Date</th><th>Dir</th><th>Entry</th><th>SL</th><th>TP1</th><th>Exit</th><th>Reason</th><th>R</th>
+        </tr></thead>
+        <tbody id="trade-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let _result = null;
+
+async function runBacktest() {
+  const btn = document.getElementById('run-btn');
+  const bar = document.getElementById('status-bar');
+  const days = +document.getElementById('bt-days').value || 30;
+
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  bar.className = 'status-bar running';
+  bar.innerHTML = '<div class="pulse-dot-sm" style="background:var(--amber)"></div> Fetching ' + days + ' days of XAU/USD data from OANDA and running 6 variants…';
+
+  try {
+    const r = await fetch('/api/backtest/xau-ict-minimal/run?days=' + days, { method: 'POST' });
+    const d = await r.json();
+    if (d.error) { bar.className = 'status-bar idle'; bar.textContent = 'Error: ' + d.error; return; }
+    _result = d;
+    renderResults(d);
+    bar.className = 'status-bar done';
+    bar.innerHTML = '<div class="pulse-dot-sm" style="background:var(--green)"></div> Complete — ' + (d.recommendation || 'See results below');
+  } catch (e) {
+    bar.className = 'status-bar idle';
+    bar.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run XAU Backtest';
+  }
+}
+
+function renderResults(d) {
+  const variants = d.variants || {};
+  const best = d.best;
+  const bestId = best ? best.id : null;
+
+  const tbody = document.getElementById('variant-tbody');
+  tbody.innerHTML = Object.values(variants).map(v => {
+    const isBest = v.id === bestId;
+    const cls = isBest ? 'highlight-row' : '';
+    const target = v.meetsTarget ? '<span class="badge ok">PASS</span>' : '<span class="badge no">FAIL</span>';
+    const bestBadge = isBest ? ' <span class="badge best">BEST</span>' : '';
+    const pnlC = v.totalPnLR >= 0 ? 'win' : 'loss';
+    return `<tr class="${cls}">
+      <td style="font-weight:700">${v.id}${bestBadge}</td>
+      <td>${v.name}</td>
+      <td class="mono">${v.totalTrades}</td>
+      <td class="mono">${v.tradesPerDay}</td>
+      <td class="mono" style="color:${v.winRate >= 50 ? 'var(--green)' : 'var(--red)'}">${v.winRate}%</td>
+      <td class="mono">${v.avgRR}</td>
+      <td class="mono" style="color:${v.profitFactor >= 1 ? 'var(--green)' : 'var(--red)'}">${v.profitFactor}</td>
+      <td class="mono ${pnlC}">${v.totalPnLR >= 0 ? '+' : ''}${v.totalPnLR}R</td>
+      <td class="mono" style="color:var(--red)">${v.maxDrawdownR}R</td>
+      <td>${target}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('results-table').style.display = 'block';
+
+  if (!best) return;
+
+  document.getElementById('best-title').innerHTML = `BEST: Variant ${best.id} — ${best.name}`;
+  document.getElementById('best-rec').textContent = d.recommendation || '';
+  document.getElementById('best-metrics').innerHTML = [
+    { l: 'Win Rate', v: best.winRate + '%', c: best.winRate >= 50 ? 'var(--green)' : 'var(--red)' },
+    { l: 'Trades/Day', v: best.tradesPerDay, c: best.tradesPerDay >= 4 ? 'var(--green)' : 'var(--amber)' },
+    { l: 'Avg R:R', v: best.avgRR, c: 'var(--text)' },
+    { l: 'Profit Factor', v: best.profitFactor, c: best.profitFactor >= 1 ? 'var(--green)' : 'var(--red)' },
+    { l: 'Max DD', v: best.maxDrawdownR + 'R', c: 'var(--red)' },
+    { l: 'Total P&L', v: (best.totalPnLR >= 0 ? '+' : '') + best.totalPnLR + 'R', c: best.totalPnLR >= 0 ? 'var(--green)' : 'var(--red)' },
+  ].map(m => `<div class="metric"><div class="metric-lbl">${m.l}</div><div class="metric-val" style="color:${m.c}">${m.v}</div></div>`).join('');
+
+  const sess = best.bySession || {};
+  document.getElementById('best-sessions').innerHTML = Object.entries(sess).map(([s, d]) => {
+    const c = d.winRate >= 55 ? 'var(--green)' : d.winRate >= 45 ? 'var(--amber)' : 'var(--red)';
+    return `<div class="session-card">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase">${s}</div>
+      <div style="font-size:18px;font-weight:700;color:${c}">${d.winRate}%</div>
+      <div style="font-size:10px;color:var(--muted)">${d.trades} trades</div>
+    </div>`;
+  }).join('');
+  document.getElementById('best-detail').style.display = 'block';
+
+  const curve = best.equityCurve || [];
+  if (curve.length >= 2) {
+    renderEquity(curve);
+    document.getElementById('eq-card').style.display = 'block';
+  }
+
+  const trades = best.trades || [];
+  document.getElementById('trade-count').textContent = trades.length + ' trades';
+  document.getElementById('trade-tbody').innerHTML = trades.map((t, i) => {
+    const dc = t.direction === 'LONG' ? 'win' : 'loss';
+    const rc = t.pnlR >= 0 ? 'win' : 'loss';
+    const ts = t.openTime ? new Date(t.openTime * 1000).toISOString().slice(0, 16).replace('T', ' ') : '—';
+    return `<tr>
+      <td style="color:var(--muted)">${i + 1}</td>
+      <td class="mono" style="font-size:11px">${ts}</td>
+      <td class="${dc}" style="font-weight:700">${t.direction}</td>
+      <td class="mono">${t.entry}</td>
+      <td class="mono" style="color:var(--red)">${t.sl}</td>
+      <td class="mono" style="color:var(--green)">${t.tp1}</td>
+      <td class="mono">${t.exitPrice}</td>
+      <td style="font-size:11px">${t.exitReason}</td>
+      <td class="${rc}" style="font-weight:700">${t.pnlR >= 0 ? '+' : ''}${t.pnlR}R</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('trades-card').style.display = 'block';
+}
+
+function renderEquity(curve) {
+  const vals = curve.map(p => p.value);
+  const minV = Math.min(...vals), maxV = Math.max(...vals), span = maxV - minV || 1;
+  const lastV = vals[vals.length - 1];
+  const lineColor = lastV >= 0 ? '#f59e0b' : '#ef4444';
+  const W = 800, H = 210, PX = 50, PY = 20;
+  const innerW = W - PX * 2, innerH = H - PY * 2;
+  const px = i => PX + (i / (curve.length - 1)) * innerW;
+  const py = v => H - PY - ((v - minV) / span) * innerH;
+  const pts = curve.map((p, i) => `${px(i)},${py(p.value)}`).join(' ');
+  const areaD = `M${PX},${py(0)} ` + curve.map((p, i) => `L${px(i)},${py(p.value)}`).join(' ') + ` L${px(curve.length - 1)},${py(0)} Z`;
+  let svg = `<defs><linearGradient id="gF" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${lineColor}" stop-opacity=".25"/><stop offset="100%" stop-color="${lineColor}" stop-opacity=".02"/></linearGradient></defs>`;
+  const steps = 4;
+  for (let i = 0; i <= steps; i++) {
+    const v = minV + (span / steps) * i;
+    const y = py(v);
+    svg += `<line x1="${PX}" y1="${y}" x2="${W - PX}" y2="${y}" stroke="rgba(255,255,255,.04)"/>`;
+    svg += `<text x="${PX - 6}" y="${y + 3}" fill="rgba(255,255,255,.3)" font-size="9" text-anchor="end" font-family="monospace">${v.toFixed(1)}R</text>`;
+  }
+  const zeroY = py(0);
+  if (0 >= minV && 0 <= maxV) svg += `<line x1="${PX}" y1="${zeroY}" x2="${W - PX}" y2="${zeroY}" stroke="rgba(255,255,255,.12)" stroke-dasharray="4 4"/>`;
+  svg += `<path d="${areaD}" fill="url(#gF)"/>`;
+  svg += `<polyline points="${pts}" fill="none" stroke="${lineColor}" stroke-width="2"/>`;
+  const endX = px(curve.length - 1), endY = py(lastV);
+  svg += `<circle cx="${endX}" cy="${endY}" r="4" fill="${lineColor}"/>`;
+  svg += `<text x="${endX + 8}" y="${endY + 4}" fill="${lineColor}" font-size="11" font-weight="700" font-family="monospace">${lastV >= 0 ? '+' : ''}${lastV}R</text>`;
+  document.getElementById('eq-svg').innerHTML = svg;
+}
+
+function exportCSV() {
+  if (!_result || !_result.best) return;
+  const trades = _result.best.trades || [];
+  const header = 'Date,Direction,Entry,SL,TP1,ExitPrice,ExitReason,PnlR,Signal\n';
+  const rows = trades.map(t => {
+    const ts = t.openTime ? new Date(t.openTime * 1000).toISOString().slice(0, 16) : '';
+    return `${ts},${t.direction},${t.entry},${t.sl},${t.tp1},${t.exitPrice},${t.exitReason},${t.pnlR},${t.signal}`;
+  }).join('\n');
+  const blob = new Blob([header + rows], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ict_xau_backtest_' + _result.best.id + '.csv';
+  a.click();
+}
+
+fetch('/api/backtest/xau-ict-minimal/last')
+  .then(r => r.json())
+  .then(d => { if (d.best) { _result = d; renderResults(d); document.getElementById('status-bar').className = 'status-bar done'; document.getElementById('status-bar').innerHTML = '<div class="pulse-dot-sm" style="background:var(--green)"></div> Last run — ' + (d.recommendation || ''); } })
+  .catch(() => {});
+</script>
+</body>
+</html>
