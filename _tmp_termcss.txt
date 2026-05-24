@@ -1,0 +1,20 @@
+.term-row           { display:flex; align-items:center; flex-wrap:wrap; gap:5px; padding:3px 12px; line-height:1.7; border-left:2px solid transparent; transition:background .1s; }
+    .term-row:hover     { background:rgba(255,255,255,.025); }
+    .term-row-new       { animation:termFlash .8s ease-out forwards; }
+    .term-row-signal    { border-left-color:#28ca41 !important; background:rgba(40,202,65,.04); }
+    .term-row-rej       { border-left-color:rgba(239,68,68,.5); }
+    @keyframes termFlash{ 0%{ background:rgba(16,163,127,.22); } 100%{ background:transparent; } }
+
+    /* row elements */
+    .term-prompt        { color:#28ca41; font-weight:700; font-size:12px; flex-shrink:0; margin-right:2px; }
+    .term-ts            { color:#3a6b3a; font-size:11px; min-width:90px; flex-shrink:0; }
+    .term-plain         { color:#8e8ea0; font-size:11px; word-break:break-all; }
+    .term-cursor-row    { display:flex; align-items:center; gap:4px; padding:5px 12px 8px; }
+    .term-cursor        { display:inline-block; width:7px; height:13px; background:#28ca41; animation:blink .8s step-end infinite; vertical-align:middle; }
+    @keyframes blink    { 0%,100%{ opacity:.9; } 50%{ opacity:0; } }
+    .term-empty         { padding:28px 16px; color:#2a4a2a; font-family:monospace; font-size:12px; }
+    .term-empty code    { color:#28ca41; }
+
+    /* override chip sizes inside terminal rows */
+    .term-row .log-jdir            { font-size:10px; padding:1px 6px; border-radius:3px; }
+    .term-row 

@@ -39,9 +39,9 @@
 
   /* ── Strategy sub-tab bar ── */
   .strat-tabs { display:flex; align-items:center; gap:8px; padding:0 20px; height:46px; background:var(--surface2); border-bottom:1px solid var(--border); position:sticky; top:52px; z-index:99; }
-  .stab { padding:6px 14px; font-size:12px; font-weight:700; color:var(--muted); background:transparent; border:1px solid transparent; border-radius:8px; cursor:pointer; transition:all .15s; white-space:nowrap; font-family:var(--font); display:flex; align-items:center; gap:6px; }
-  .stab:hover { color:var(--text); background:rgba(255,255,255,.05); }
-  .stab.active { color:var(--green); border-color:rgba(16,163,127,.35); background:rgba(16,163,127,.1); }
+  .stab { padding:8px 16px; font-size:12px; font-weight:700; color:var(--muted); background:transparent; border:none; border-bottom:2px solid transparent; border-radius:0; cursor:pointer; transition:all .15s; white-space:nowrap; font-family:var(--font); display:flex; align-items:center; gap:6px; }
+  .stab:hover { color:var(--text); }
+  .stab.active { color:#f59e0b; border-bottom-color:#f59e0b; }
 
   /* ── Page layout ── */
   .page { max-width: 1440px; margin: 0 auto; padding: 16px 20px 40px; display: flex; flex-direction: column; gap: 16px; }
@@ -131,10 +131,10 @@
   .overlay-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:8px 12px; border-bottom:1px solid var(--border); background:rgba(255,255,255,.02); min-height:44px; }
   .ov-btn {
     background: transparent;
-    border: 0.5px solid #363a45;
-    border-radius: 4px;
-    padding: 4px 10px;
-    font-size: 11px;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
     cursor: pointer;
     color: #787b86;
     transition: all .15s;
@@ -142,8 +142,10 @@
     font-weight: 700;
     white-space: nowrap;
   }
-  .ov-btn:hover { color: var(--text); border-color: #4b5563; background: rgba(255,255,255,.03); }
-  .ov-btn.active { background: rgba(33,150,243,0.15); border-color: #2196F3; color: #2196F3; }
+  .ov-btn:hover { color: var(--text); background: rgba(255,255,255,.06); }
+  .ov-btn.active { background: rgba(16,163,127,0.2); color: #10a37f; }
+  .ov-btn[data-overlay="fvg"].active { background: rgba(245,158,11,0.2); color: #f59e0b; }
+  .ov-btn[data-overlay="orderblock"].active { background: rgba(16,163,127,0.2); color: #10a37f; }
   .chart-overlay-canvas { position:absolute; inset:0; pointer-events:none; z-index:8; }
 
   /* ── Single view chart ── */
@@ -368,23 +370,42 @@
   .bot-dot.running { background:#00E676; animation:navpulse 1.5s ease-in-out infinite; }
   @keyframes navpulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
-  /* ── Session awareness banner ── */
-  .session-banner { padding:10px 20px; text-align:center; font-size:13px; font-weight:600; font-family:'Courier New',monospace; letter-spacing:.5px; display:flex; align-items:center; justify-content:center; gap:8px; }
-  .session-banner.active { background:linear-gradient(90deg,rgba(16,163,127,0.12),rgba(16,163,127,0.06)); color:#10a37f; border-bottom:1px solid rgba(16,163,127,0.2); }
-  .session-banner.closed { background:linear-gradient(90deg,rgba(139,148,158,0.08),rgba(139,148,158,0.04)); color:#787b86; border-bottom:1px solid rgba(139,148,158,0.15); }
-  .session-banner.ny { background:linear-gradient(90deg,rgba(245,158,11,0.12),rgba(245,158,11,0.06)); color:#f59e0b; border-bottom:1px solid rgba(245,158,11,0.2); }
+  /* ── Session awareness banner (pill shape) ── */
+  .session-banner { padding:8px 24px; font-size:12px; font-weight:700; font-family:'Courier New',monospace; letter-spacing:.5px; display:inline-flex; align-items:center; gap:8px; border-radius:6px; margin:12px 24px 0; }
+  .session-banner .dot { width:7px; height:7px; border-radius:50%; display:inline-block; }
+  .session-banner.active { background:rgba(16,163,127,0.12); color:#10a37f; border:1px solid rgba(16,163,127,0.25); }
+  .session-banner.active .dot { background:#10a37f; animation:navpulse 1.5s infinite; }
+  .session-banner.closed { background:rgba(139,148,158,0.08); color:#787b86; border:1px solid rgba(139,148,158,0.15); }
+  .session-banner.closed .dot { background:#787b86; }
+  .session-banner.ny { background:rgba(245,158,11,0.12); color:#f59e0b; border:1px solid rgba(245,158,11,0.25); }
+  .session-banner.ny .dot { background:#f59e0b; animation:navpulse 1.5s infinite; }
 
-  /* ── Page header (Replit style) ── */
-  .page-header { display:flex; align-items:flex-start; justify-content:space-between; padding:20px 24px 0; max-width:1440px; margin:0 auto; }
+  /* ── Page header (Replit mockup style) ── */
+  .page-header { display:flex; align-items:flex-start; justify-content:space-between; padding:20px 24px 16px; max-width:1440px; margin:0 auto; background:#161b22; border:1px solid #21262d; border-radius:10px; margin:16px 24px 0; }
   .page-header-left { display:flex; flex-direction:column; gap:4px; }
-  .page-title { font-size:28px; font-weight:800; letter-spacing:-.02em; display:flex; align-items:center; gap:12px; }
-  .page-title .live-tag { font-size:11px; font-weight:700; padding:3px 10px; border-radius:4px; background:rgba(16,163,127,0.2); color:var(--green); letter-spacing:.5px; }
-  .page-subtitle { font-size:13px; color:var(--muted); margin-top:2px; }
-  .page-header-right { display:flex; align-items:flex-start; gap:24px; text-align:right; }
-  .header-stat-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; font-weight:600; }
-  .header-stat-value { font-size:22px; font-weight:800; font-family:monospace; margin-top:2px; }
-  .header-stat-value.green { color:var(--green); }
+  .page-title { font-size:24px; font-weight:800; letter-spacing:-.02em; display:flex; align-items:center; gap:10px; }
+  .page-title .icon { font-size:20px; }
+  .page-title .live-tag { font-size:10px; font-weight:700; padding:3px 10px; border-radius:4px; background:rgba(16,163,127,0.25); color:#10a37f; letter-spacing:.5px; }
+  .page-title .scalp-tag { font-size:10px; font-weight:700; padding:3px 10px; border-radius:4px; background:rgba(245,158,11,0.2); color:#f59e0b; letter-spacing:.5px; }
+  .page-subtitle { font-size:12px; color:var(--muted); margin-top:4px; }
+  .page-header-right { display:flex; align-items:flex-end; gap:20px; text-align:right; }
+  .header-stat { display:flex; flex-direction:column; align-items:flex-end; }
+  .header-stat-label { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; font-weight:600; }
+  .header-stat-value { font-size:18px; font-weight:800; font-family:'Courier New',monospace; margin-top:2px; }
+  .header-stat-value.green { color:#10a37f; }
   .header-stat-value.white { color:var(--text); }
+  .header-stat-value.red { color:#ef5350; }
+  .header-price { font-size:32px; font-weight:800; font-family:'Courier New',monospace; color:var(--text); line-height:1; }
+  .header-price-change { font-size:12px; font-family:'Courier New',monospace; margin-top:4px; }
+  .header-price-change.up { color:#10a37f; }
+  .header-price-change.dn { color:#ef5350; }
+
+  /* ── Quick stats row ── */
+  .quick-stats { display:grid; grid-template-columns:repeat(4,1fr); margin:12px 24px 0; border:1px solid #21262d; border-radius:8px; overflow:hidden; background:#161b22; }
+  .quick-stat { padding:12px 16px; border-right:1px solid #21262d; }
+  .quick-stat:last-child { border-right:none; }
+  .quick-stat-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; font-weight:600; }
+  .quick-stat-value { font-size:15px; font-weight:800; margin-top:4px; font-family:'Courier New',monospace; }
 
   /* ── Decision terminal ── */
   .log-filter { display:flex; gap:6px; }
@@ -440,35 +461,63 @@
   </a>
 </nav>
 
-<!-- ── Session Awareness Banner ── -->
+<!-- ── Session Awareness Banner (pill shape) ── -->
 <div class="session-banner closed" id="session-banner">
-  <span>⏰</span>
-  <span id="session-banner-text">XAUUSD — Checking session...</span>
+  <span class="dot"></span>
+  <span id="session-banner-text">XAUUSD · Checking session...</span>
 </div>
 
 <!-- ── Page Header ── -->
 <div class="page-header">
   <div class="page-header-left">
-    <div class="page-title">XAU SCALP <span class="live-tag">LIVE</span></div>
-    <div class="page-subtitle">1M / 5M timeframe execution model</div>
+    <div class="page-title">
+      <span class="icon">✧</span> XAU/USD
+      <span class="live-tag">LIVE</span>
+      <span class="scalp-tag">SCALP</span>
+    </div>
+    <div class="page-subtitle">1M / 5M ICT execution model · Order Block + FVG targeting</div>
   </div>
   <div class="page-header-right">
-    <div>
+    <div class="header-stat">
       <div class="header-stat-label">Today's P&L</div>
       <div class="header-stat-value green" id="header-pnl">—</div>
     </div>
-    <div>
+    <div class="header-stat">
       <div class="header-stat-label">Win Rate</div>
       <div class="header-stat-value white" id="header-winrate">—</div>
     </div>
+    <div class="header-stat">
+      <div class="header-price" id="header-live-price">—</div>
+      <div class="header-price-change up" id="header-price-change">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Quick Stats Row ── -->
+<div class="quick-stats">
+  <div class="quick-stat">
+    <div class="quick-stat-label">SESSION</div>
+    <div class="quick-stat-value" id="qs-session" style="color:#787b86">—</div>
+  </div>
+  <div class="quick-stat">
+    <div class="quick-stat-label">15M STRUCTURE</div>
+    <div class="quick-stat-value" id="qs-structure" style="color:#787b86">—</div>
+  </div>
+  <div class="quick-stat">
+    <div class="quick-stat-label">SIGNALS TODAY</div>
+    <div class="quick-stat-value" id="qs-signals" style="color:var(--text)">0</div>
+  </div>
+  <div class="quick-stat">
+    <div class="quick-stat-label">OPEN TRADES</div>
+    <div class="quick-stat-value" id="qs-trades" style="color:var(--text)">0</div>
   </div>
 </div>
 
 <!-- ── Strategy Sub-Tab Bar ── -->
 <div class="strat-tabs" style="max-width:1440px;margin:0 auto;padding:0 24px;">
-  <button class="stab active" data-tab="chart">CHART</button>
-  <button class="stab" data-tab="live-setup">LIVE SETUP</button>
-  <button class="stab" data-tab="history">SIGNAL HISTORY</button>
+  <button class="stab active" data-tab="chart">📊 CHART</button>
+  <button class="stab" data-tab="live-setup">⚙ LIVE SETUP</button>
+  <button class="stab" data-tab="history">📋 SIGNAL HISTORY</button>
 </div>
 
 <div class="page">
@@ -488,21 +537,24 @@
 
       <!-- Chart header -->
       <div class="chart-hd">
-        <span class="chart-hd-title" id="chart-hd-title">XAUUSD · M1 · Live</span>
-        <span id="chart-ohlc" style="font-family:monospace;font-size:11px;color:var(--muted)"></span>
+        <span class="chart-hd-title" id="chart-hd-title" style="display:flex;align-items:center;gap:8px;">
+          <span style="font-weight:800;">XAUSD</span>
+          <span style="color:var(--muted);font-weight:400;">· Live</span>
+          <span id="chart-ohlc" style="font-family:'Courier New',monospace;font-size:11px;color:var(--muted);margin-left:8px;"></span>
+        </span>
       </div>
 
-      <!-- Unified overlay toolbar -->
+      <!-- Unified overlay toolbar (colored pills) -->
       <div id="overlay-toolbar" class="overlay-toolbar">
-        <button class="ov-btn active" data-overlay="structure"    onclick="toggleAllOverlays('structure',this)">📐 Structure</button>
-        <button class="ov-btn active" data-overlay="fvg"          onclick="toggleAllOverlays('fvg',this)">🟩 FVG</button>
-        <button class="ov-btn active" data-overlay="orderblock"   onclick="toggleAllOverlays('orderblock',this)">🟦 Order Block</button>
-        <button class="ov-btn active" data-overlay="liquidity"    onclick="toggleAllOverlays('liquidity',this)">💧 Liquidity</button>
-        <button class="ov-btn active" data-overlay="displacement" onclick="toggleAllOverlays('displacement',this)">⚡ Displacement</button>
-        <button class="ov-btn active" data-overlay="cisd"         onclick="toggleAllOverlays('cisd',this)">🔄 CISD</button>
-        <button class="ov-btn active" data-overlay="signal"       onclick="toggleAllOverlays('signal',this)">🎯 Signal</button>
-        <button class="ov-btn"        data-overlay="swing"        onclick="toggleAllOverlays('swing',this)">📊 Swing</button>
-        <button class="ov-btn"        data-overlay="sd"           onclick="toggleAllOverlays('sd',this)">📦 S/D</button>
+        <button class="ov-btn active" data-overlay="structure"    onclick="toggleAllOverlays('structure',this)">Structure</button>
+        <button class="ov-btn active" data-overlay="fvg"          onclick="toggleAllOverlays('fvg',this)">FVG</button>
+        <button class="ov-btn active" data-overlay="orderblock"   onclick="toggleAllOverlays('orderblock',this)">Order Block</button>
+        <button class="ov-btn"        data-overlay="liquidity"    onclick="toggleAllOverlays('liquidity',this)">Liquidity</button>
+        <button class="ov-btn"        data-overlay="displacement" onclick="toggleAllOverlays('displacement',this)">Displacement</button>
+        <button class="ov-btn"        data-overlay="cisd"         onclick="toggleAllOverlays('cisd',this)">CISD</button>
+        <button class="ov-btn"        data-overlay="signal"       onclick="toggleAllOverlays('signal',this)">Signal</button>
+        <button class="ov-btn"        data-overlay="swing"        onclick="toggleAllOverlays('swing',this)">Swing</button>
+        <button class="ov-btn"        data-overlay="sd"           onclick="toggleAllOverlays('sd',this)">S/D</button>
         <div style="margin-left:auto;display:flex;gap:5px;align-items:center">
           <button class="ov-btn active" id="view-single" onclick="setViewMode('single')">Single</button>
           <button class="ov-btn"        id="view-split"  onclick="setViewMode('split')">Split</button>
@@ -878,6 +930,22 @@ function updateConditions(cond) {
   if (kzEl && countdown.sessionName) {
     kzEl.textContent = `Next Kill Zone: ${countdown.sessionName} in ${countdown.startsIn_minutes || 0}m`;
   }
+
+  // ── Quick stats row ──
+  const qsSession = document.getElementById('qs-session');
+  if (qsSession) {
+    const sName = session.headline || '—';
+    const sActive = session.active;
+    qsSession.textContent = sActive ? sName.toUpperCase() : sName;
+    qsSession.style.color = sActive ? '#10a37f' : '#787b86';
+  }
+  const qsStructure = document.getElementById('qs-structure');
+  if (qsStructure) {
+    const sName = structure.headline || 'NEUTRAL';
+    const sActive = structure.active;
+    qsStructure.textContent = sName.toUpperCase();
+    qsStructure.style.color = sActive ? '#10a37f' : '#787b86';
+  }
 }
 
 function updateSignalCard(sig) {
@@ -935,6 +1003,16 @@ function updateStats(s) {
     pnlEl.className = 'header-stat-value ' + (pnl >= 0 ? 'green' : 'red');
   }
   if (wrEl && s.winRate != null) wrEl.textContent = s.winRate.toFixed(1) + '%';
+
+  // Quick stats row — signals + open trades
+  const qsSig = document.getElementById('qs-signals');
+  if (qsSig) qsSig.textContent = s.totalSignals || 0;
+  const qsTrades = document.getElementById('qs-trades');
+  if (qsTrades) {
+    const ot = s.openTrades || 0;
+    qsTrades.textContent = ot;
+    qsTrades.style.color = ot > 0 ? '#10a37f' : 'var(--text)';
+  }
 }
 
 function updatePrice(price) {
@@ -942,15 +1020,19 @@ function updatePrice(price) {
   const p = price.price;
   if (!openPrice) openPrice = p;
   lastPrice = p;
-  // Legacy elements (may not exist)
+  // Header live price (large)
+  const hp = document.getElementById('header-live-price');
+  if (hp) hp.textContent = p.toFixed(2);
+  // Header price change
+  const hc = document.getElementById('header-price-change');
+  if (hc) {
+    const chg = p - openPrice;
+    hc.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)} (${(chg/openPrice*100).toFixed(2)}%)`;
+    hc.className = 'header-price-change ' + (chg >= 0 ? 'up' : 'dn');
+  }
+  // Legacy elements
   const lp = document.getElementById('live-price');
   if (lp) lp.textContent = p.toFixed(2);
-  const el = document.getElementById('price-change');
-  if (el) {
-    const chg = p - openPrice;
-    el.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)} (${(chg/openPrice*100).toFixed(2)}%)`;
-    el.className = 'price-change ' + (chg >= 0 ? 'up' : 'dn');
-  }
 }
 
 async function fetchStatus() {

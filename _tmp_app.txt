@@ -1,0 +1,46 @@
+function App() {
+  const [clock,          setClock]          = useState('');
+  const [backtestResult, setBacktestResult] = useState(null);
+
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setClock(now.toUTCString().slice(5, 22) + ' UTC');
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div>
+      {/* ── Header ── */}
+      <header className="hdr">
+        <div className="hdr-brand">
+          <div className="hdr-dot" />
+          SEAN0-ALGO
+          <span style={{ color: 'var(--muted)', fontWeight: 400 }}>· XAUUSD</span>
+        </div>
+        <div className="hdr-meta">
+          <span className="badge badge-gray">5m / 15m</span>
+          <span className="badge badge-green">OANDA</span>
+          <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{clock}</span>
+        </div>
+      </header>
+
+      {/* ── Content ── */}
+      <main className="main">
+        <BacktestPanel onBacktestComplete={setBacktestResult} />
+        <div className="grid2">
+          <LogsPanel />
+          <TradeHistoryPanel backtestResult={backtestResult} />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

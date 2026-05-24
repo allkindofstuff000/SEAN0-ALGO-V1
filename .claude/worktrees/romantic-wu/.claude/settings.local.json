@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python -c \"from backtest_dashboard import *; print\\(''import ok''\\)\")",
+      "Bash(python -m py_compile backtest_dashboard.py)",
+      "Bash(python -m py_compile backtest_forex_engine.py)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8502)",
+      "Bash(python -m streamlit run backtest_dashboard.py --server.port 8502 --server.headless true)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":8502\")",
+      "Bash(python -c \":*)",
+      "Bash(python backtest_pick_sell.py)",
+      "Bash(taskkill /F /IM streamlit.exe)",
+      "Bash(taskkill /F /FI \"WINDOWTITLE eq streamlit*\")",
+      "Bash(timeout /t 5 /nobreak)",
+      "Bash(findstr :8502)",
+      "Bash(taskkill /F /PID 16228)",
+      "Bash(python -c \"import subprocess; subprocess.run\\([''taskkill'', ''/F'', ''/PID'', ''16228''], shell=False\\)\")",
+      "Bash(python backtest_forex_engine.py --start 2025-12-13 --end 2026-03-13)",
+      "Bash(python run_3month_backtest.py)",
+      "Bash(python analyze_results.py)",
+      "Bash(__NEW_LINE_f9ff2ccea8f8e5b0__ mv:*)",
+      "Bash(grep -v \"^$\\\\|^System\\\\|^pagefile\")"
+    ]
+  }
+}

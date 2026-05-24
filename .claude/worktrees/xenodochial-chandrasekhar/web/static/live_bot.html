@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Live Bot Control — SEAN0-ALGO</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f1117;color:#d1d4dc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh}
+/* ── Navbar ─────────────────────────────────────────────────────────────── */
+#main-nav{display:flex;align-items:center;padding:0 24px;height:48px;border-bottom:0.5px solid #1e222d;background:#131722;position:sticky;top:0;z-index:100}
+.nav-brand{font-size:14px;font-weight:700;color:#d1d4dc;margin-right:32px;letter-spacing:1px}
+.nav-links{display:flex;gap:4px}
+.nav-item{padding:6px 16px;font-size:13px;font-weight:500;color:#787b86;text-decoration:none;border-radius:4px;transition:all .15s}
+.nav-item:hover{color:#d1d4dc}
+.nav-item.active{color:#2196F3;background:rgba(33,150,243,0.1)}
+.nav-live{font-weight:700;display:flex;align-items:center;gap:6px}
+.nav-live.active{color:#00E676;background:rgba(0,230,118,0.08)}
+.bot-dot{width:7px;height:7px;border-radius:50%;background:#444;display:inline-block}
+.bot-dot.running{background:#00E676;animation:navpulse 1.5s ease-in-out infinite}
+@keyframes navpulse{0%,100%{opacity:1}50%{opacity:0.4}}
+/* ── Page layout ─────────────────────────────────────────────────────────── */
+.page-header{padding:20px 24px 0;display:flex;justify-content:space-between;align-items:center}
+.page-title{font-size:18px;font-weight:700;color:#d1d4dc}
+.page-sub{font-size:13px;color:#787b86;margin-top:4px}
+.main-content{padding:20px 24px;display:flex;flex-direction:column;gap:20px}
+/* ── Bot cards ───────────────────────────────────────────────────────────── */
+.bot-cards-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.bot-card{background:#161b25;border:0.5px solid #363a45;border-radius:10px;padding:20px;transition:border-color .2s}
+.bot-card.running{border-color:#00E676;border-width:1px}
+.bot-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.bot-card-name{font-size:14px;font-weight:600;color:#d1d4dc;letter-spacing:.5px}
+.bot-status-badge{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500}
+.bot-status-badge.stopped{color:#787b86}
+.bot-status-badge.running{color:#00E676}
+.pulse-dot{width:6px;height:6px;border-radius:50%}
+.pulse-dot.stopped{background:#444}
+.pulse-dot.running{background:#00E676;animation:navpulse 1.5s ease-in-out infinite}
+.bot-stats{display:flex;gap:16px;margin-bottom:20px}
+.bot-stat{display:flex;flex-direction:column}
+.bot-stat-lbl{font-size:11px;color:#787b86;margin-bottom:2px}
+.bot-stat-val{font-size:14px;font-weight:600;color:#d1d4dc}
+.btn-start{width:100%;padding:10px;border-radius:6px;border:1px solid #00E676;background:transparent;color:#00E676;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-start:hover{background:rgba(0,230,118,0.1)}
+.btn-stop{width:100%;padding:10px;border-radius:6px;border:1px solid #ef5350;background:transparent;color:#ef5350;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-stop:hover{background:rgba(239,83,80,0.1)}
+.confirm-row{display:none;gap:8px;margin-top:8px}
+.confirm-row.visible{display:flex}
+.confirm-row span{font-size:12px;color:#787b86;align-self:center;flex:1}
+.btn-confirm-stop{padding:6px 12px;border-radius:4px;border:1px solid #ef5350;background:transparent;color:#ef5350;font-size:12px;cursor:pointer}
+.btn-cancel{padding:6px 12px;border-radius:4px;border:1px solid #363a45;background:transparent;color:#787b86;font-size:12px;cursor:pointer}
+/* ── Terminal ────────────────────────────────────────────────────────────── */
+.terminal-card{background:#161b25;border:0.5px solid #363a45;border-radius:10px;overflow:hidden}
+.terminal-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#0d1117;border-bottom:0.5px solid #1e222d}
+.terminal-title{font-family:'Courier New',monospace;font-size:12px;color:#787b86}
+.terminal-title span{color:#00E676}
+.filter-btns{display:flex;gap:4px}
+.filter-btn{padding:3px 10px;border-radius:4px;border:0.5px solid #363a45;background:transparent;color:#787b86;font-size:11px;cursor:pointer;transition:all .15s}
+.filter-btn:hover{color:#d1d4dc}
+.filter-btn.active{background:rgba(33,150,243,0.15);border-color:#2196F3;color:#2196F3}
+.filter-btn.clr:hover{color:#ef5350;border-color:#ef5350}
+.terminal-body{height:420px;overflow-y:auto;padding:8px 0;font-family:'Courier New',monospace;font-size:12px;background:#0d1117;scroll-behavior:smooth}
+.terminal-body::-webkit-scrollbar{width:4px}
+.terminal-body::-webkit-scrollbar-track{background:#0d1117}
+.terminal-body::-webkit-scrollbar-thumb{background:#2a2d3a;border-radius:2px}
+.log-line{padding:3px 16px;line-height:1.6;display:flex;gap:8px;align-items:flex-start}
+.log-line:hover{background:rgba(255,255,255,0.02)}
+.log-ts{color:#444;white-space:nowrap;min-width:72px;flex-shrink:0}
+.log-tag{padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0}
+.log-tag.rsi{background:rgba(245,158,11,0.15);color:#f59e0b;border:0.5px solid rgba(245,158,11,0.3)}
+.log-tag.xau{background:rgba(33,150,243,0.15);color:#2196F3;border:0.5px solid rgba(33,150,243,0.3)}
+.log-tag.sys{background:rgba(120,123,134,0.15);color:#787b86;border:0.5px solid rgba(120,123,134,0.3)}
+.log-msg{color:#787b86;word-break:break-word;flex:1}
+.log-msg.signal{color:#00E676}
+.log-msg.error{color:#ef5350}
+.log-msg.info{color:#d1d4dc}
+.terminal-empty{color:#444;text-align:center;padding:40px;font-size:12px}
+@media(max-width:768px){.bot-cards-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- ── Navbar ──────────────────────────────────────────────────────────── -->
+<nav id="main-nav">
+  <div class="nav-brand">SEAN ALGO</div>
+  <div class="nav-links">
+    <a href="/dashboard/rsi-ema" class="nav-item" id="nav-rsi">RSI EMA</a>
+    <a href="/dashboard/xau-scalp" class="nav-item" id="nav-xau">XAU SCALP</a>
+    <a href="/dashboard/live-bot" class="nav-item nav-live active" id="nav-bot">
+      <span class="bot-dot" id="bot-status-dot"></span>
+      LIVE BOT
+    </a>
+  </div>
+</nav>
+
+<!-- ── Page header ─────────────────────────────────────────────────────── -->
+<div class="page-header">
+  <div>
+    <div class="page-title">LIVE BOT CONTROL</div>
+    <div class="page-sub">Strategy status, start/stop controls, and unified decision log</div>
+  </div>
+</div>
+
+<!-- ── Main content ────────────────────────────────────────────────────── -->
+<div class="main-content">
+
+  <!-- Bot control cards -->
+  <div class="bot-cards-row">
+
+    <!-- RSI EMA card -->
+    <div class="bot-card" id="card-rsi">
+      <div class="bot-card-header">
+        <div class="bot-card-name">RSI EMA STRATEGY</div>
+        <div class="bot-status-badge stopped" id="rsi-status-badge">
+          <div class="pulse-dot stopped" id="rsi-pulse"></div>
+          <span id="rsi-status-text">STOPPED</span>
+        </div>
+      </div>
+      <div class="bot-stats">
+        <div class="bot-stat">
+          <div class="bot-stat-lbl">Signals today</div>
+          <div class="bot-stat-val" id="rsi-signals-today">—</div>
+        </div>
+        <div class="bot-stat">
+          <div class="bot-stat-lbl">Last signal</div>
+          <div class="bot-stat-val" id="rsi-last-signal">—</div>
+        </div>
+        <div class="bot-stat">
+          <div class="bot-stat-lbl">Uptime</div>
+          <div class="bot-stat-val" id="rsi-uptime">—</div>
+        </div>
+      </div>
+      <button class="btn-start" id="rsi-btn" onclick="botAction('rsi-ema')">START BOT</button>
+      <div class="confirm-row" id="rsi-confirm">
+        <span>Are you sure you want to stop?</span>
+        <button class="btn-confirm-stop" onclick="confirmStop('rsi-ema')">Yes, stop</button>
+        <button class="btn-cancel" onclick="cancelStop('rsi-ema')">Cancel</button>
+      </div>
+    </div>
+
+    <!-- XAU Scalp card -->
+    <div class="bot-card" id="card-xau">
+      <div class="bot-card-header">
+        <div class="bot-card-name">XAU SCALP STRATEGY</div>
+        <div class="bot-status-badge stopped" id="xau-status-badge">
+          <div class="pulse-dot stopped" id="xau-pulse"></div>
+          <span id="xau-status-text">STOPPED</span>
+        </div>
+      </div>
+      <div class="bot-stats">
+        <div class="bot-stat">
+          <div class="bot-stat-lbl">Total signals</div>
+          <div class="bot-stat-val" id="xau-signals-total">—</div>
+        </div>
+        <div class="bot-stat">
+          <div class="bot-stat-lbl">Strong signals</div>
+          <div class="bot-stat-val" id="xau-signals-strong">—</div>
+        </div>
+        <div class="bot-stat">
+          <div class="bot-stat-lbl">M1 candles</div>
+          <div class="bot-stat-val" id="xau-candles">—</div>
+        </div>
+      </div>
+      <button class="btn-start" id="xau-btn" onclick="botAction('xau-scalp')">START BOT</button>
+      <div class="confirm-row" id="xau-confirm">
+        <span>Are you sure you want to stop?</span>
+        <button class="btn-confirm-stop" onclick="confirmStop('xau-scalp')">Yes, stop</button>
+        <button class="btn-cancel" onclick="cancelStop('xau-scalp')">Cancel</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Unified terminal -->
+  <div class="terminal-card">
+    <div class="terminal-header">
+      <div class="terminal-title"><span>SEAN-ALGO</span> · decision_log</div>
+      <div class="filter-btns">
+        <button class="filter-btn active" id="filter-all" onclick="setFilter('all')">All</button>
+        <button class="filter-btn" id="filter-rsi" onclick="setFilter('rsi')">RSI</button>
+        <button class="filter-btn" id="filter-xau" onclick="setFilter('xau')">XAU</button>
+        <button class="filter-btn clr" onclick="clearTerminal()">Clr</button>
+      </div>
+    </div>
+    <div class="terminal-body" id="terminal-body">
+      <div class="terminal-empty" id="terminal-empty">Connecting to log stream…</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let _filter = 'all';
+let _logLines = [];
+const MAX_LINES = 200;
+let _rsiRunning = false;
+let _xauRunning = false;
+
+// ── Bot status polling ─────────────────────────────────────────────────────
+function pollBotStatus() {
+  fetch('/api/bot/status')
+    .then(r => r.json())
+    .then(d => {
+      _rsiRunning = !!(d.rsiEma && d.rsiEma.running);
+      _xauRunning = !!(d.xauScalp && d.xauScalp.running);
+      updateCard('rsi-ema', _rsiRunning, d.rsiEma);
+      updateCard('xau-scalp', _xauRunning, d.xauScalp);
+      // Update nav dot
+      const dot = document.getElementById('bot-status-dot');
+      if (dot) dot.classList.toggle('running', _rsiRunning || _xauRunning);
+    })
+    .catch(() => {});
+
+  // XAU stats
+  fetch('/api/xau-scalp/stats')
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById('xau-signals-total').textContent = d.totalSignals ?? '—';
+      document.getElementById('xau-signals-strong').textContent = d.strongSignals ?? '—';
+      document.getElementById('xau-candles').textContent = d.candleCount ?? '—';
+    })
+    .catch(() => {});
+
+  // RSI signals today
+  fetch('/signals?limit=100')
+    .then(r => r.json())
+    .then(d => {
+      const sigs = d.signals || [];
+      const today = new Date().toISOString().slice(0, 10);
+      const todayCount = sigs.filter(s => {
+        const t = s.timestamp || s.time || '';
+        return String(t).startsWith(today);
+      }).length;
+      document.getElementById('rsi-signals-today').textContent = todayCount || '0';
+      if (sigs.length) {
+        const last = sigs[0];
+        const t = last.timestamp || last.time || '';
+        document.getElementById('rsi-last-signal').textContent = t ? String(t).slice(11, 16) : '—';
+      }
+    })
+    .catch(() => {});
+
+  // RSI uptime
+  fetch('/bot/status')
+    .then(r => r.json())
+    .then(d => {
+      const secs = d.uptime_seconds;
+      if (secs != null && secs > 0) {
+        const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
+        document.getElementById('rsi-uptime').textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
+      } else {
+        document.getElementById('rsi-uptime').textContent = '—';
+      }
+    })
+    .catch(() => {});
+}
+
+function updateCard(strategy, running, data) {
+  const prefix = strategy === 'rsi-ema' ? 'rsi' : 'xau';
+  const card = document.getElementById('card-' + prefix);
+  const badge = document.getElementById(prefix + '-status-badge');
+  const pulse = document.getElementById(prefix + '-pulse');
+  const text = document.getElementById(prefix + '-status-text');
+  const btn = document.getElementById(prefix + '-btn');
+
+  if (!card) return;
+
+  if (running) {
+    card.classList.add('running');
+    badge.className = 'bot-status-badge running';
+    pulse.className = 'pulse-dot running';
+    text.textContent = 'RUNNING';
+    btn.className = 'btn-stop';
+    btn.textContent = 'STOP BOT';
+  } else {
+    card.classList.remove('running');
+    badge.className = 'bot-status-badge stopped';
+    pulse.className = 'pulse-dot stopped';
+    text.textContent = 'STOPPED';
+    btn.className = 'btn-start';
+    btn.textContent = 'START BOT';
+    // Hide confirm if visible
+    const confirm = document.getElementById(prefix + '-confirm');
+    if (confirm) confirm.classList.remove('visible');
+  }
+}
+
+// ── Bot control actions ────────────────────────────────────────────────────
+function botAction(strategy) {
+  const prefix = strategy === 'rsi-ema' ? 'rsi' : 'xau';
+  const running = strategy === 'rsi-ema' ? _rsiRunning : _xauRunning;
+
+  if (running) {
+    // Show confirm row instead of stopping immediately
+    const confirm = document.getElementById(prefix + '-confirm');
+    if (confirm) confirm.classList.add('visible');
+  } else {
+    // Start the bot
+    fetch('/api/bot/' + strategy + '/start', { method: 'POST' })
+      .then(r => r.json())
+      .then(() => setTimeout(pollBotStatus, 500))
+      .catch(e => appendLog({ strategy: 'SYSTEM', level: 'ERROR', message: 'Start failed: ' + e.message, time: nowStr() }));
+  }
+}
+
+function confirmStop(strategy) {
+  const prefix = strategy === 'rsi-ema' ? 'rsi' : 'xau';
+  const confirm = document.getElementById(prefix + '-confirm');
+  if (confirm) confirm.classList.remove('visible');
+  fetch('/api/bot/' + strategy + '/stop', { method: 'POST' })
+    .then(r => r.json())
+    .then(() => setTimeout(pollBotStatus, 500))
+    .catch(e => appendLog({ strategy: 'SYSTEM', level: 'ERROR', message: 'Stop failed: ' + e.message, time: nowStr() }));
+}
+
+function cancelStop(strategy) {
+  const prefix = strategy === 'rsi-ema' ? 'rsi' : 'xau';
+  const confirm = document.getElementById(prefix + '-confirm');
+  if (confirm) confirm.classList.remove('visible');
+}
+
+// ── Terminal ───────────────────────────────────────────────────────────────
+function nowStr() {
+  return new Date().toISOString().slice(11, 19);
+}
+
+function appendLog(evt) {
+  _logLines.push(evt);
+  if (_logLines.length > MAX_LINES) _logLines.shift();
+  renderTerminal();
+}
+
+function renderTerminal() {
+  const body = document.getElementById('terminal-body');
+  const empty = document.getElementById('terminal-empty');
+  const visible = _logLines.filter(l => {
+    if (_filter === 'all') return true;
+    if (_filter === 'rsi') return (l.strategy || '').toLowerCase().includes('rsi');
+    if (_filter === 'xau') return (l.strategy || '').toLowerCase().includes('xau');
+    return true;
+  });
+  if (visible.length === 0) {
+    empty.style.display = 'block';
+    empty.textContent = _logLines.length === 0 ? 'Connecting to log stream…' : 'No entries for selected filter.';
+    // Remove all log lines
+    Array.from(body.querySelectorAll('.log-line')).forEach(n => n.remove());
+    return;
+  }
+  empty.style.display = 'none';
+  // Rebuild terminal — remove only log lines (preserves #terminal-empty in DOM)
+  Array.from(body.querySelectorAll('.log-line')).forEach(n => n.remove());
+  visible.forEach(evt => {
+    const row = document.createElement('div');
+    row.className = 'log-line';
+    const strat = (evt.strategy || 'SYSTEM').toUpperCase();
+    const tagClass = strat.includes('RSI') ? 'rsi' : strat.includes('XAU') ? 'xau' : 'sys';
+    const msgClass = evt.level === 'SIGNAL' ? 'signal' : evt.level === 'ERROR' ? 'error' : evt.level === 'INFO' ? 'info' : '';
+    row.innerHTML = `<span class="log-ts">[${evt.time || ''}]</span><span class="log-tag ${tagClass}">${strat}</span><span class="log-msg ${msgClass}">${escHtml(evt.message || '')}</span>`;
+    body.appendChild(row);
+  });
+  body.scrollTop = body.scrollHeight;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function setFilter(f) {
+  _filter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('filter-' + f);
+  if (btn) btn.classList.add('active');
+  renderTerminal();
+}
+
+function clearTerminal() {
+  _logLines = [];
+  renderTerminal();
+}
+
+// ── SSE log stream ─────────────────────────────────────────────────────────
+function connectLogStream() {
+  const sse = new EventSource('/api/bot/log-stream');
+  sse.onmessage = function(e) {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === 'connected') return;
+      appendLog({
+        strategy: data.strategy || 'SYSTEM',
+        level: data.level || 'INFO',
+        message: data.message || '',
+        time: data.time || nowStr(),
+      });
+    } catch {}
+  };
+  sse.onerror = function() {
+    // Reconnect after 5s
+    sse.close();
+    setTimeout(connectLogStream, 5000);
+  };
+}
+
+// Also poll XAU decision log directly
+let _lastXauTs = 0;
+function pollXauLog() {
+  fetch('/api/xau-scalp/log?limit=20')
+    .then(r => r.json())
+    .then(d => {
+      const entries = (d.log || []).reverse(); // oldest first
+      entries.forEach(entry => {
+        const ts = entry.ts || 0;
+        if (ts > _lastXauTs) {
+          _lastXauTs = ts;
+          const t = ts ? new Date(ts).toISOString().slice(11, 19) : nowStr();
+          const decision = entry.decision || '';
+          const reason = entry.reason || '';
+          const price = entry.price ? ` @ ${entry.price}` : '';
+          const direction = entry.direction ? ` [${entry.direction}]` : '';
+          appendLog({
+            strategy: 'XAU-SCALP',
+            level: decision === 'SIGNAL' ? 'SIGNAL' : 'INFO',
+            message: `${decision}${direction}${price} — ${reason}`,
+            time: t,
+          });
+        }
+      });
+    })
+    .catch(() => {});
+}
+
+// Poll RSI logs
+let _lastRsiLine = 0;
+function pollRsiLog() {
+  fetch('/logs?limit=20')
+    .then(r => r.json())
+    .then(d => {
+      const logs = (d.logs || []).reverse();
+      logs.slice(_lastRsiLine).forEach(entry => {
+        appendLog({
+          strategy: 'RSI-EMA',
+          level: entry.level === 'ERROR' ? 'ERROR' : entry.level === 'WARNING' ? 'WARN' : 'INFO',
+          message: entry.message || entry.raw || '',
+          time: (entry.time || '').slice(11, 19),
+        });
+      });
+      _lastRsiLine = logs.length;
+    })
+    .catch(() => {});
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+(function init() {
+  pollBotStatus();
+  setInterval(pollBotStatus, 5000);
+  connectLogStream();
+  setInterval(pollXauLog, 3000);
+  setInterval(pollRsiLog, 5000);
+})();
+</script>
+</body>
+</html>

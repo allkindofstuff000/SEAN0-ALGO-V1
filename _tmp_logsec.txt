@@ -1,0 +1,139 @@
+/logs every 3 s ── */
+  useEffect(() => {
+    let cancelled = false;
+
+    function poll() {
+      fetch('/logs?limit=60')
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (cancelled) return;
+          var entries = (d.logs || []).slice().reverse(); // oldest→newest
+          var prevLen = prevCountRef.current;
+          if (entries.length > prevLen) {
+            var fresh = new Set();
+            for (var j = prevLen; j < entries.length; j++) {
+              fresh.add(j);
+            }
+            setNewIdxs(fresh);
+            setTimeout(function(){ setNewIdxs(new Set()); }, 1200);
+          }
+          prevCountRef.current = entries.length;
+          setLogs(entries);
+          setReady(true);
+          if (d.file_mtime) {
+            var dt  = new Date(d.file_mtime * 1000);
+            var ago = Date.now() - dt.getTime();
+            setLastSeen(dt.toLocaleTimeString());
+            setBotOnline(ago < 5 * 60 * 1000);
+          }
+        })
+        .catch(function(){ if (!cancelled) setReady(true); });
+    }
+
+    poll();
+    var id = setInterval(poll, 3000);
+    var tickId = setInterval(function(){ setTick(function(t){ return t + 1; }); }, 1000);
+
+    return function(){ cancelled = true; clearInterval(id); clearInterval(tickId); };
+  }, []);
+
+  /* ── Auto-scroll to newest ── */
+  useEffect(function(){
+    if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [logs.length]);
+
+  /* ── Safe render wrapper — never let one bad entry crash the list ── */
+  function safeRender(log, i) {
+    try {
+      return renderLogEntry(log, i, newIdxs.has(i));
+    } catch(e) {
+      return (
+        <div key={i} className="term-row">
+          <span className="term-prompt">&gt;</span>
+          <span className="term-plain">{String(log.raw || log.message || '').slice(0, 120)}</span>
+        </div>
+      );
+    }
+  }
+
+  var now = new Date().toLocaleTimeString();
+
+  return (
+    <div className="term-panel">
+      {/* macOS title bar */}
+      <div className="term-titlebar">
+        <div className="term-dots">
+          <span className="term-dot term-dot-red" />
+          <span className="term-dot term-dot-yellow" />
+          <span className="term-dot term-dot-green2" />
+        </div>
+        <span className="term-title-txt">SEAN0-ALGO · decision_trace.log</span>
+        <div className="term-meta">
+          <span className={`term-live-dot ${ready ? 'live' : 'dead'}`} />
+          <span className={`term-live-lbl ${ready ? 'live' : 'dead'}`} style={{fontSize:'9px'}}>
+            {ready ? 'LIVE' : 'CONNECTING'}
+          </span>
+          <span style={{fontSize:'9px', fontFamily:'monospace', fontWeight:700,
+            color: botOnline ? '#28ca41' : '#f59e0b'}}>
+            {botOnline ? '● BOT ON' : '○ BOT IDLE'}
+          </span>
+          <span style={{fontSize:'9px', fontFamily:'monospace', color:'#3a5a3a'}}>{now}</span>
+        </div>
+      </div>
+
+      {/* Terminal body */}
+      <div className="term-body">
+        {!ready ? (
+          <div className="term-empty">
+            <span className="term-prompt">$</span> connecting to log feed…
+          </div>
+        ) : (
+          <div>
+            {!botOnline && lastSeen && (
+              <div style={{padding:'5px 14px', background:'rgba(245,158,11,.07)',
+                borderBottom:'1px solid rgba(245,158,11,.15)', color:'#f59e0b',
+                fontSize:'11px', fontFamily:'monospace', lineHeight:'1.6'}}>
+                ⚠ Bot idle · last log: <strong>{lastSeen}</strong> · run <code style={{color:'#fbbf24'}}>python main.py</code>
+              </div>
+            )}
+            {logs.length === 0 ? (
+              <div className="term-empty">
+                <span className="term-prompt">$</span> no entries · start bot: <code>python main.py</code>
+              </div>
+            ) : (
+              logs.map(function(log, i){ return safeRender(log, i); })
+            )}
+          </div>
+        )}
+        <div className="term-cursor-row">
+          <span className="term-prompt">$</span>
+          <span className="term-cursor" />
+        </div>
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Trade History Panel
+───────────────────────────────────────────────────────────────────────────── */
+function TradeHistoryPanel({ backtestResult }) {
+  const [csvTrades,  setCsvTrades]  = useState([]);
+  const [csvLoading, setCsvLoading] = useState(true);
+
+  /* Load CSV trades once on mount as fallback */
+  useEffect(() => {
+    (async () => {
+      try {
+        const res  = await fetch('/trades');
+        const data = await res.json();
+        setCsvTrades(data.trades || []);
+      } catch (_) {}
+      finally { setCsvLoading(false); }
+    })();
+  }, []);
+
+  /* Always prefer live backtest trades if available */
+  const trades  = backtestResult?.trades?.length ? backtestResult.trades : csvTrades;
+  const count   =

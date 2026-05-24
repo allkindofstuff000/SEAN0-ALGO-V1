@@ -1,0 +1,88 @@
+function BacktestPanel({ onBacktestComplete }) {
+  const range = defaultRange();
+  const [startDate, setStartDate] = useState(range.start);
+  const [endDate,   setEndDate]   = useState(range.end);
+  const [slC,       setSlC]       = useState(5);
+  const [tpC,       setTpC]       = useState(10);
+  const [balance,   setBalance]   = useState(5000);
+  const [riskPct,   setRiskPct]   = useState(5);
+  const [loading,   setLoading]   = useState(false);
+  const [result,    setResult]    = useState(null);
+  const [error,     setError]     = useState('');
+
+  const run = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    setResult(null);
+    try {
+      const res  = await fetch('/backtest', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          start_date:          startDate,
+          end_date:            endDate,
+          sl_candles:          slC,
+          tp_candles:          tpC,
+          starting_balance:    +balance || 5000,
+          risk_per_trade_pct:  +riskPct || 5,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        // Strip noisy OANDA URLs from error messages shown to the user
+        let msg = data.detail || 'Backtest request failed';
+        msg = msg.replace(/https?:\/\/[^\s]+/g, '').replace(/400 Client Error: Bad Request for url:\s*/i, '').trim();
+        if (/unable to fetch.*candles/i.test(msg)) {
+          msg = 'Some OANDA candle windows were unavailable (weekend / partial day). Try a different date range.';
+        }
+        throw new Error(msg);
+      }
+      if (data.error) throw new Error(data.error);
+      setResult(data);
+      if (onBacktestComplete) onBacktestComplete(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [startDate, endDate, slC, tpC, balance, riskPct]);
+
+  const m = result?.metrics || {};
+  const netPnl = result?.equity_curve?.slice(-1)[0]?.equity ?? null;
+
+  return (
+    <div className="card">
+      <div className="card-hd">
+        <span className="card-title">Backtest · XAUUSD 5m / 15m</span>
+        {result && <span className="badge badge-green">✓ Complete</span>}
+      </div>
+      <div className="card-body">
+
+        {/* ── Controls ── */}
+        <div className="form-grid">
+          <div className="fg">
+            <label className="fg-label">Start Date</label>
+            <input type="date" className="input" value={startDate}
+              onChange={e => setStartDate(e.target.value)} />
+          </div>
+          <div className="fg">
+            <label className="fg-label">End Date</label>
+            <input type="date" className="input" value={endDate}
+              onChange={e => setEndDate(e.target.value)} />
+          </div>
+          <div className="fg">
+            <label className="fg-label">
+              Stop-Loss Candles
+              <span className="fg-accent">({slC} candles = {(slC * 0.3).toFixed(1)}× ATR)</span>
+            </label>
+            <div className="slider-row">
+              <input type="range" min="5" max="20" value={slC}
+                style={{ flex: 1 }}
+                onChange={e => setSlC(+e.target.value)} />
+              <span className="slider-val">{slC}</span>
+            </div>
+          </div>
+          <div className="fg">
+            <label className="fg-label">
+              Take-Profit Candles
+              <span className="fg-accent">({tpC} candles = {(tpC * 0.3).toFixed(

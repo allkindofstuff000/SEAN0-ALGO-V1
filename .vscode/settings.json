@@ -1,0 +1,52 @@
+{
+  "explorer.compactFolders": true,
+  "explorer.sortOrder": "type",
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.expand": false,
+  "explorer.fileNesting.patterns": {
+    "README.md": "ARCHITECTURE.md,requirements.txt,.gitignore,.env",
+    "main.py": "web_server.py,dashboard.py,deploy_to_vps.py,backtest_xau_strategy.py,backtest_forex_engine.py,backtest_htf.py,simple_backtest.py"
+  },
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.claude": true,
+    "**/.idea": true,
+    "**/_tmp_*.txt": true,
+    "**/_brace_check.py": true,
+    "**/check_braces.py": true,
+    "**/rg_results.json": true,
+    "**/decision_trace.log": true,
+    "**/uvicorn.log": true,
+    "**/streamlit_out.log": true,
+    "**/performance.csv": true,
+    "**/signals.csv": true,
+    "**/state.json": true,
+    "**/risk_state.json": true,
+    "**/evaluations.csv": true,
+    "**/equity.png": true,
+    "**/equity_curve.png": true,
+    "**/trades.csv": true,
+    "**/trades_*.csv": true
+  },
+  "search.exclude": {
+    "**/__pycache__": true,
+    "**/.claude": true,
+    "**/.idea": true,
+    "**/_tmp_*.txt": true,
+    "**/_brace_check.py": true,
+    "**/check_braces.py": true,
+    "**/rg_results.json": true,
+    "**/decision_trace.log": true,
+    "**/uvicorn.log": true,
+    "**/streamlit_out.log": true,
+    "**/performance.csv": true,
+    "**/signals.csv": true,
+    "**/state.json": true,
+    "**/risk_state.json": true,
+    "**/evaluations.csv": true,
+    "**/equity.png": true,
+    "**/equity_curve.png": true,
+    "**/trades.csv": true,
+    "**/trades_*.csv": true
+  }
+}

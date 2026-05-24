@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "SEAN0-ALGO Dashboard",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["web/web_server.py"],
+      "port": 8002,
+      "env": {
+        "PORT": "8002"
+      }
+    }
+  ]
+}

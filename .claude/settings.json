@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(*)",
+      "mcp__ccd_session__*",
+      "mcp__ccd_session_mgmt__*",
+      "mcp__ccd_directory__*",
+      "mcp__3bc995c2-1078-4808-ac1a-c35c11245516__*"
+    ]
+  }
+}
