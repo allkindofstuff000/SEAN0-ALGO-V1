@@ -838,7 +838,7 @@ def _fetch_chart_candles(granularity: str, count: int) -> list[dict[str, Any]]:
 @app.get("/api/candles")
 def get_chart_candles(granularity: str = "M5", count: int = 200) -> dict[str, Any]:
     """Historical candles — tries engine cache first, falls back to direct OANDA fetch."""
-    count = min(max(count, 10), 500)
+    count = min(max(count, 10), 12000)
     gran = granularity.upper()
 
     # Serve from engine cache if available and populated

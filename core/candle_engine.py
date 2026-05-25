@@ -51,15 +51,15 @@ TIMEFRAMES: dict[str, int] = {   # label → period in seconds
     "H1":  3600,
 }
 
-DAYS_HISTORY   = 5
+DAYS_HISTORY   = 7
 OANDA_MAX_COUNT = 5_000
 SYMBOL          = "XAU_USD"
 
 TF_MAX_CANDLES: dict[str, int] = {
-    "M1":  7_500,   # 5 days × 1 440  = 7 200 M1  candles
-    "M5":  1_500,   # 5 days × 288    = 1 440 M5
-    "M15":   500,   # 5 days × 96     =   480 M15
-    "H1":    130,   # 5 days × 24     =   120 H1
+    "M1":  11_000,  # 7 days × 1 440  = 10 080 M1 candles
+    "M5":   2_200,  # 7 days × 288    =  2 016 M5
+    "M15":    800,  # 7 days × 96     =    672 M15
+    "H1":     200,  # 7 days × 24     =    168 H1
 }
 
 

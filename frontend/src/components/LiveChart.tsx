@@ -44,10 +44,21 @@ const toBars = (arr: any[]) => {
   return out;
 };
 
-const emaLine = (candles: Candle[], period: number) => {
+const TF_SECONDS: Record<string, number> = { M1: 60, M5: 300, M15: 900, H1: 3600 };
+
+// EMA line that BREAKS across market-closure gaps (weekend / daily settlement)
+// instead of drawing a misleading diagonal. A whitespace point ({time} only,
+// no value) at the first bar after a gap breaks the line without adding a new
+// time slot, so candlesticks stay adjacent.
+const emaLine = (candles: Candle[], period: number, intervalSec: number) => {
   const clean = (candles || []).filter(isValidCandle).sort((a, b) => a.time - b.time);
   const vals = ema(clean.map((c) => c.close), period);
-  return clean.map((c, i) => ({ time: c.time as UTCTimestamp, value: vals[i] }));
+  return clean.map((c, i) => {
+    if (i > 0 && c.time - clean[i - 1].time > intervalSec * 1.5) {
+      return { time: c.time as UTCTimestamp }; // gap → break the line here
+    }
+    return { time: c.time as UTCTimestamp, value: vals[i] };
+  });
 };
 
 export function LiveChart({ tf, showEMA = true, className }: Props) {
@@ -110,13 +121,14 @@ export function LiveChart({ tf, showEMA = true, className }: Props) {
     let cancelled = false;
     setStatus("loading");
 
+    const intervalSec = TF_SECONDS[tf] || 300;
     const applyEma = () => {
       if (!showEMA) return;
-      ema9Ref.current?.setData(emaLine(candlesRef.current, 9));
-      ema21Ref.current?.setData(emaLine(candlesRef.current, 21));
+      ema9Ref.current?.setData(emaLine(candlesRef.current, 9, intervalSec));
+      ema21Ref.current?.setData(emaLine(candlesRef.current, 21, intervalSec));
     };
 
-    Api.candles(tf, 240)
+    Api.candles(tf, 12000)
       .then((res) => {
         if (cancelled || !candleSeriesRef.current) return;
         const candles = (res.candles || []).filter(isValidCandle);
