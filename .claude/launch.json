@@ -6,6 +6,12 @@
       "runtimeExecutable": "C:\\Users\\MEGA - 4\\AppData\\Local\\Python\\pythoncore-3.12-64\\python.exe",
       "runtimeArgs": ["web_server.py"],
       "port": 8000
+    },
+    {
+      "name": "sean-dash-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "preview", "--", "--port", "4174", "--strictPort"],
+      "port": 4174
     }
   ]
 }

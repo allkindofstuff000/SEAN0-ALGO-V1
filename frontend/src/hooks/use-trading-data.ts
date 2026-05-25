@@ -1,69 +1,101 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MOCK_BACKTESTS, MOCK_SIGNALS, MOCK_DECISION_LOGS } from "../lib/mock-data";
+import { Api, type BacktestParams } from "@/lib/api";
 
-// Simulated network delay
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-export function useBacktests() {
+// ── Live data queries ────────────────────────────────────────────────────────
+export function useCandles(tf: string, count = 240) {
   return useQuery({
-    queryKey: ["backtests"],
-    queryFn: async () => {
-      await delay(400);
-      return MOCK_BACKTESTS;
-    },
+    queryKey: ["candles", tf, count],
+    queryFn: () => Api.candles(tf, count),
+    refetchInterval: 60_000,
   });
 }
 
-export function useSignals() {
+export function useXauStatus() {
   return useQuery({
-    queryKey: ["signals"],
-    queryFn: async () => {
-      await delay(300);
-      return MOCK_SIGNALS;
-    },
+    queryKey: ["xau-status"],
+    queryFn: Api.xauStatus,
+    refetchInterval: 3_000,
   });
 }
 
-export function useDecisionLogs(filter: string = "ALL") {
+export function useXauStats() {
   return useQuery({
-    queryKey: ["decision-logs", filter],
-    queryFn: async () => {
-      await delay(200);
-      if (filter === "ALL") return MOCK_DECISION_LOGS;
-      return MOCK_DECISION_LOGS.filter(log => log.source.includes(filter));
-    },
+    queryKey: ["xau-stats"],
+    queryFn: Api.xauStats,
+    refetchInterval: 5_000,
   });
 }
 
+export function useXauConditions() {
+  return useQuery({
+    queryKey: ["xau-conditions"],
+    queryFn: Api.xauConditions,
+    refetchInterval: 3_000,
+  });
+}
+
+export function useXauSignals(limit = 20) {
+  return useQuery({
+    queryKey: ["xau-signals", limit],
+    queryFn: () => Api.xauSignals(limit),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useXauLog(limit = 100) {
+  return useQuery({
+    queryKey: ["xau-log", limit],
+    queryFn: () => Api.xauLog(limit),
+    refetchInterval: 5_000,
+  });
+}
+
+export function useMarketStatus() {
+  return useQuery({
+    queryKey: ["market-status"],
+    queryFn: Api.marketStatus,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useBotStatus() {
+  return useQuery({
+    queryKey: ["bot-status"],
+    queryFn: Api.botStatus,
+    refetchInterval: 5_000,
+  });
+}
+
+export function useBacktestHistory() {
+  return useQuery({
+    queryKey: ["backtest-history"],
+    queryFn: Api.backtestHistory,
+    retry: false,
+  });
+}
+
+// ── Mutations ────────────────────────────────────────────────────────────────
 export function useRunBacktest() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (params: any) => {
-      await delay(1200); // Simulate heavy computation
-      const newBacktest = {
-        id: `#${MOCK_BACKTESTS.length + 40}`,
-        date: new Date().toISOString().split('T')[0],
-        tradeCount: Math.floor(Math.random() * 200) + 50,
-        winRate: Number((Math.random() * 20 + 55).toFixed(1)),
-        profitFactor: Number((Math.random() * 1.5 + 1.2).toFixed(2)),
-        pnlAmount: Number((Math.random() * 5000 + 500).toFixed(2)),
-        params: `SL: ${params.sl} ATR / TP: ${params.tp} ATR / Risk: ${params.risk}%`
-      };
-      // In a real app we'd post this to the server
-      MOCK_BACKTESTS.unshift(newBacktest);
-      return newBacktest;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["backtests"] });
-    },
+    mutationFn: (params: BacktestParams) => Api.runBacktest(params),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["backtest-history"] }),
   });
 }
 
 export function useBotControl() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ action, strategy }: { action: "START" | "STOP", strategy: string }) => {
-      await delay(500);
-      return { success: true, action, strategy };
-    }
+    mutationFn: ({
+      action,
+      strategy,
+    }: {
+      action: "START" | "STOP";
+      strategy: "rsi-ema" | "xau-scalp";
+    }) => (action === "START" ? Api.startBot(strategy) : Api.stopBot(strategy)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["bot-status"] });
+      qc.invalidateQueries({ queryKey: ["xau-status"] });
+    },
   });
 }

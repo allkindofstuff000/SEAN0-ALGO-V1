@@ -2,50 +2,45 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useBotControl, useDecisionLogs } from "@/hooks/use-trading-data";
+import { useBotControl, useBotStatus, useXauLog, useXauStatus, useCandles, useMarketStatus } from "@/hooks/use-trading-data";
 import { Play, Square, Activity, Wifi, Server, Clock } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { computeIndicators } from "@/lib/indicators";
+
+function uptimeFrom(startedAt: string | null | undefined): string {
+  if (!startedAt) return "—";
+  const start = new Date(startedAt).getTime();
+  if (Number.isNaN(start)) return "—";
+  const secs = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
 
 function StrategyCard({
-  title,
-  subtitle,
-  status,
-  metrics,
-  pnl,
-  winRate,
-  onToggle,
+  title, subtitle, running, uptime, pending, onToggle, sessionText,
 }: {
-  title: string;
-  subtitle: string;
-  status: "RUNNING" | "STOPPED";
-  metrics: { signals: number; uptime: string };
-  pnl: string;
-  winRate: string;
-  onToggle: (action: "START" | "STOP") => void;
+  title: string; subtitle: string; running: boolean; uptime: string; pending: boolean;
+  onToggle: (action: "START" | "STOP") => void; sessionText?: string;
 }) {
-  const isRunning = status === "RUNNING";
   return (
     <div className="flex flex-col rounded-lg border border-border bg-card overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/60 bg-secondary/20">
         <div className="flex items-center gap-2">
           <span className="font-bold text-sm tracking-wider">{title}</span>
-          {isRunning && (
+          {running && (
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
             </span>
           )}
         </div>
-        <Badge
-          variant="secondary"
-          className={`text-[10px] font-mono font-bold px-2 py-0.5 ${
-            isRunning
-              ? "bg-accent/15 text-accent border border-accent/30"
-              : "bg-secondary text-muted-foreground border border-border"
-          }`}
-        >
-          {status}
+        <Badge variant="secondary" className={`text-[10px] font-mono font-bold px-2 py-0.5 ${running ? "bg-accent/15 text-accent border border-accent/30" : "bg-secondary text-muted-foreground border border-border"}`}>
+          {running ? "RUNNING" : "STOPPED"}
         </Badge>
       </div>
 
@@ -55,83 +50,68 @@ function StrategyCard({
 
       <div className="grid grid-cols-2 gap-0 px-4 pb-3 pt-2">
         <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-muted-foreground uppercase font-semibold">Signals Today</span>
-          <span className="font-mono text-2xl font-bold">{metrics.signals}</span>
+          <span className="text-[10px] text-muted-foreground uppercase font-semibold">Status</span>
+          <span className={`font-mono text-2xl font-bold ${running ? "text-accent" : "text-muted-foreground"}`}>{running ? "LIVE" : "OFF"}</span>
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[10px] text-muted-foreground uppercase font-semibold">Uptime</span>
-          <span className="font-mono text-2xl font-bold">{metrics.uptime}</span>
+          <span className="font-mono text-2xl font-bold">{uptime}</span>
         </div>
       </div>
 
-      <div className="mx-4 mb-3 rounded-md border border-border bg-background/60 grid grid-cols-3 divide-x divide-border text-center py-2">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[9px] text-muted-foreground uppercase">Market</span>
-          <span className="text-xs font-bold text-accent">OPEN</span>
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[9px] text-muted-foreground uppercase">Regime</span>
-          <span className="text-xs font-bold">TREND</span>
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[9px] text-muted-foreground uppercase">Session</span>
-          <span className="text-xs font-bold">NY</span>
-        </div>
-      </div>
-
-      <div className="mx-4 mb-3 grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-muted-foreground uppercase">Today's P&amp;L</span>
-          <span className={`font-mono text-sm font-bold ${pnl.startsWith("+") ? "text-accent" : pnl.startsWith("-") ? "text-destructive" : "text-muted-foreground"}`}>{pnl}</span>
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-muted-foreground uppercase">Win Rate</span>
-          <span className="font-mono text-sm font-bold">{winRate}</span>
-        </div>
+      <div className="mx-4 mb-3 rounded-md border border-border bg-background/60 py-2 px-3 text-center">
+        <span className="text-[9px] text-muted-foreground uppercase">Session</span>
+        <span className="block text-xs font-bold mt-0.5">{sessionText || "—"}</span>
       </div>
 
       <div className="px-4 pb-4">
-        <Button
-          variant={isRunning ? "destructive" : "default"}
-          className="w-full font-bold tracking-wider"
-          onClick={() => onToggle(isRunning ? "STOP" : "START")}
-        >
-          {isRunning ? (
-            <><Square className="w-4 h-4 mr-2 fill-current" /> STOP BOT</>
-          ) : (
-            <><Play className="w-4 h-4 mr-2 fill-current" /> START BOT</>
-          )}
+        <Button variant={running ? "destructive" : "default"} className="w-full font-bold tracking-wider" disabled={pending} onClick={() => onToggle(running ? "STOP" : "START")}>
+          {running ? <><Square className="w-4 h-4 mr-2 fill-current" /> STOP BOT</> : <><Play className="w-4 h-4 mr-2 fill-current" /> START BOT</>}
         </Button>
       </div>
     </div>
   );
 }
 
+const FILTERS = ["ALL", "SIGNALS", "WAITING", "CLR"];
+
 export default function LiveBot() {
   const [filter, setFilter] = useState("ALL");
-  const { data: logs, isLoading } = useDecisionLogs(filter);
-  const botControl = useBotControl();
   const { toast } = useToast();
+  const { data: bot } = useBotStatus();
+  const { data: status } = useXauStatus();
+  const { data: candleData } = useCandles("M5", 60);
+  const { data: market } = useMarketStatus();
+  const { data: logData } = useXauLog(80);
+  const botControl = useBotControl();
 
-  const handleToggle = (strategy: string, action: "START" | "STOP") => {
+  const ind = useMemo(() => computeIndicators(candleData?.candles ?? []), [candleData]);
+  const price = status?.livePrice?.price || ind?.price || 0;
+  const sessionText = status?.conditions?.session?.headline || "—";
+  const runningCount = [bot?.rsiEma?.running, bot?.xauScalp?.running].filter(Boolean).length;
+
+  const handleToggle = (strategy: "rsi-ema" | "xau-scalp", label: string, action: "START" | "STOP") => {
     botControl.mutate({ strategy, action }, {
-      onSuccess: () => {
-        toast({
-          title: `Bot ${action === "START" ? "Started" : "Stopped"}`,
-          description: `${strategy} is now ${action === "START" ? "running" : "inactive"}.`,
-          variant: action === "START" ? "default" : "destructive",
-        });
-      },
+      onSuccess: (r) => toast({ title: `${label} ${action === "START" ? "Started" : "Stopped"}`, description: (r as any).message || "", variant: action === "START" ? "default" : "destructive" }),
+      onError: (e: any) => toast({ title: "Action failed", description: String(e.message || e), variant: "destructive" }),
     });
   };
+
+  const logs = (logData?.log ?? []).filter((l) => {
+    if (filter === "ALL") return true;
+    if (filter === "SIGNALS") return l.decision !== "NO_SIGNAL";
+    if (filter === "WAITING") return l.decision === "NO_SIGNAL";
+    if (filter === "CLR") return false;
+    return true;
+  });
 
   return (
     <PageLayout>
       {/* System Status Bar */}
-      <div className="flex items-center gap-6 px-4 py-2 border-b border-border/60 bg-card/50 text-xs font-mono">
-        <div className="flex items-center gap-1.5 text-accent">
+      <div className="flex items-center gap-6 px-4 py-2 border-b border-border/60 bg-card/50 text-xs font-mono flex-wrap">
+        <div className={`flex items-center gap-1.5 ${bot?.anyRunning ? "text-accent" : "text-muted-foreground"}`}>
           <Wifi className="w-3 h-3" />
-          <span className="font-bold">SYSTEM ONLINE</span>
+          <span className="font-bold">{bot?.anyRunning ? "SYSTEM ONLINE" : "SYSTEM IDLE"}</span>
         </div>
         <div className="h-3 w-px bg-border/60" />
         <div className="flex items-center gap-1.5 text-muted-foreground">
@@ -141,17 +121,17 @@ export default function LiveBot() {
         <div className="h-3 w-px bg-border/60" />
         <div className="flex items-center gap-1.5 text-muted-foreground">
           <Clock className="w-3 h-3" />
-          <span>NY SESSION <span className="text-foreground font-bold">ACTIVE</span></span>
+          <span>{sessionText.toUpperCase()} <span className={`font-bold ${market?.closed ? "text-destructive" : "text-accent"}`}>{market?.closed ? "CLOSED" : "OPEN"}</span></span>
         </div>
         <div className="h-3 w-px bg-border/60" />
         <div className="flex items-center gap-1.5 text-muted-foreground">
-          <span>ETH/USDT</span>
-          <span className="text-accent font-bold">+0.04%</span>
-          <span className="text-foreground">1983.49</span>
+          <span>XAU/USD</span>
+          <span className={`font-bold ${(ind?.changePct ?? 0) >= 0 ? "text-accent" : "text-destructive"}`}>{(ind?.changePct ?? 0) >= 0 ? "+" : ""}{(ind?.changePct ?? 0).toFixed(2)}%</span>
+          <span className="text-foreground">{price ? price.toFixed(2) : "—"}</span>
         </div>
         <div className="ml-auto flex items-center gap-1.5 text-muted-foreground">
           <span>BOTS ACTIVE:</span>
-          <span className="text-accent font-bold">2 / 3</span>
+          <span className="text-accent font-bold">{runningCount} / 2</span>
         </div>
       </div>
 
@@ -161,29 +141,20 @@ export default function LiveBot() {
           <StrategyCard
             title="RSI EMA STRATEGY"
             subtitle="XAUUSD · 5M / 15M · Multi-timeframe"
-            status="RUNNING"
-            metrics={{ signals: 4, uptime: "3d 2h" }}
-            pnl="+$420.00"
-            winRate="68.5%"
-            onToggle={(a) => handleToggle("RSI EMA", a)}
+            running={!!bot?.rsiEma?.running}
+            uptime={uptimeFrom(bot?.rsiEma?.startedAt)}
+            pending={botControl.isPending}
+            onToggle={(a) => handleToggle("rsi-ema", "RSI EMA", a)}
+            sessionText={sessionText}
           />
           <StrategyCard
             title="XAU SCALP"
             subtitle="XAUUSD · 1M / 5M · ICT execution"
-            status="RUNNING"
-            metrics={{ signals: 12, uptime: "1d 5h" }}
-            pnl="+$842.50"
-            winRate="72.4%"
-            onToggle={(a) => handleToggle("XAU SCALP", a)}
-          />
-          <StrategyCard
-            title="ETH RSI 15 TF"
-            subtitle="ETH/USDT · 15M · RSI momentum"
-            status="STOPPED"
-            metrics={{ signals: 0, uptime: "—" }}
-            pnl="—"
-            winRate="—"
-            onToggle={(a) => handleToggle("ETH RSI 15", a)}
+            running={!!bot?.xauScalp?.running}
+            uptime={uptimeFrom(bot?.xauScalp?.startedAt)}
+            pending={botControl.isPending}
+            onToggle={(a) => handleToggle("xau-scalp", "XAU Scalp", a)}
+            sessionText={sessionText}
           />
         </div>
 
@@ -195,16 +166,8 @@ export default function LiveBot() {
               <span className="font-mono font-bold text-sm">SEAN ALGO · decision_log</span>
             </div>
             <div className="flex items-center gap-1 bg-secondary/60 p-1 rounded-lg">
-              {["ALL", "RSI EMA", "ETH-RSI", "CLR"].map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={`px-3 py-1 text-xs font-bold uppercase rounded-md transition-all ${
-                    filter === f
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                  }`}
-                >
+              {FILTERS.map((f) => (
+                <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1 text-xs font-bold uppercase rounded-md transition-all ${filter === f ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-background/50"}`}>
                   {f}
                 </button>
               ))}
@@ -214,43 +177,25 @@ export default function LiveBot() {
             <TableHeader className="bg-secondary/30">
               <TableRow className="border-border hover:bg-transparent">
                 <TableHead className="w-[130px] font-mono text-[10px] text-muted-foreground uppercase">Time</TableHead>
-                <TableHead className="w-[140px] font-mono text-[10px] text-muted-foreground uppercase">Source</TableHead>
-                <TableHead className="w-[130px] font-mono text-[10px] text-muted-foreground uppercase">Signal</TableHead>
-                <TableHead className="font-mono text-[10px] text-muted-foreground uppercase">Context</TableHead>
+                <TableHead className="w-[140px] font-mono text-[10px] text-muted-foreground uppercase">Decision</TableHead>
+                <TableHead className="w-[110px] font-mono text-[10px] text-muted-foreground uppercase">Price</TableHead>
+                <TableHead className="font-mono text-[10px] text-muted-foreground uppercase">Reason</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground text-xs">Loading logs...</TableCell>
-                </TableRow>
-              ) : logs?.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground text-xs">No logs found for this filter.</TableCell>
-                </TableRow>
+              {logs.length === 0 ? (
+                <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground text-xs">{filter === "CLR" ? "Log cleared — select ALL to view." : "No log entries for this filter."}</TableCell></TableRow>
               ) : (
-                logs?.map((log) => (
-                  <TableRow key={log.id} className="border-border hover:bg-secondary/20 transition-colors">
-                    <TableCell className="font-mono text-xs text-muted-foreground">{log.timestamp}</TableCell>
+                logs.slice(0, 50).map((log, i) => (
+                  <TableRow key={i} className="border-border hover:bg-secondary/20 transition-colors">
+                    <TableCell className="font-mono text-xs text-muted-foreground">{new Date(log.ts).toLocaleTimeString()}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="font-mono text-[10px] bg-secondary/50 border-border">
-                        {log.source}
+                      <Badge variant="outline" className={`font-mono text-[10px] ${log.decision !== "NO_SIGNAL" ? "text-accent border-accent/40 bg-accent/10" : "bg-secondary/50 border-border"}`}>
+                        {log.decision}
                       </Badge>
                     </TableCell>
-                    <TableCell
-                      className={`font-mono text-xs font-bold ${
-                        log.signal.includes("+")
-                          ? "text-accent"
-                          : log.signal.includes("-")
-                          ? "text-destructive"
-                          : "text-foreground"
-                      }`}
-                    >
-                      {log.signal}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground max-w-[320px] truncate" title={log.context}>
-                      {log.context}
-                    </TableCell>
+                    <TableCell className="font-mono text-xs font-bold">{log.price?.toFixed?.(2) ?? "—"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[360px] truncate" title={log.reason}>{log.reason}</TableCell>
                   </TableRow>
                 ))
               )}

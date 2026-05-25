@@ -8,9 +8,6 @@ export function TopNav() {
   const navItems = [
     { href: "/rsi-ema", label: "RSI EMA" },
     { href: "/xau-scalp", label: "XAU SCALP" },
-    { href: "/crypto", label: "CRYPTO" },
-    { href: "/ict-eth", label: "ICT ETH" },
-    { href: "/ict-xau", label: "ICT XAU" },
   ];
 
   return (

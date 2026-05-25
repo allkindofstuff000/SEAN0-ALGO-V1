@@ -8,9 +8,6 @@ import NotFound from "@/pages/not-found";
 import LiveBot from "./pages/LiveBot";
 import RsiEma from "./pages/RsiEma";
 import XauScalp from "./pages/XauScalp";
-import Crypto from "./pages/Crypto";
-import IctEth from "./pages/IctEth";
-import IctXau from "./pages/IctXau";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,9 +25,6 @@ function Router() {
       <Route path="/live-bot" component={LiveBot} />
       <Route path="/rsi-ema" component={RsiEma} />
       <Route path="/xau-scalp" component={XauScalp} />
-      <Route path="/crypto" component={Crypto} />
-      <Route path="/ict-eth" component={IctEth} />
-      <Route path="/ict-xau" component={IctXau} />
       <Route component={NotFound} />
     </Switch>
   );
