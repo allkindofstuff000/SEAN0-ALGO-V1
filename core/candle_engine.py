@@ -55,6 +55,12 @@ DAYS_HISTORY   = 7
 OANDA_MAX_COUNT = 5_000
 SYMBOL          = "XAU_USD"
 
+# Force a stream reconnect if no PRICE message arrives for this long.
+# OANDA keeps sending HEARTBEATs on half-dead sessions (e.g. across the daily
+# settlement break), so the socket never times out while prices stay frozen —
+# the reconnect triggers the existing gap-backfill and resumes live ticks.
+STALE_PRICE_RECONNECT_SEC = 900
+
 TF_MAX_CANDLES: dict[str, int] = {
     "M1":  11_000,  # 7 days × 1 440  = 10 080 M1 candles
     "M5":   2_200,  # 7 days × 288    =  2 016 M5
@@ -778,6 +784,7 @@ class OandaStreamEngine:
         with urllib.request.urlopen(req, timeout=30, context=ssl_ctx) as resp:
             self._set_status("connected")
             LOGGER.info("[STREAM] connected — reading ticks")
+            last_price_at = time.time()
 
             for raw_line in resp:
                 if not self._running:
@@ -791,9 +798,15 @@ class OandaStreamEngine:
                     continue
 
                 if msg.get("type") == "HEARTBEAT":
+                    if time.time() - last_price_at > STALE_PRICE_RECONNECT_SEC:
+                        raise TimeoutError(
+                            f"no PRICE for {STALE_PRICE_RECONNECT_SEC}s "
+                            "(heartbeats only) — forcing reconnect"
+                        )
                     continue
                 if msg.get("type") != "PRICE":
                     continue
+                last_price_at = time.time()
 
                 bids = msg.get("bids", [])
                 asks = msg.get("asks", [])
