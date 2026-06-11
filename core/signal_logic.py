@@ -119,7 +119,7 @@ class SignalLogic:
     rule_weight: int = 20
     signal_modes: tuple[str, ...] = ("forex",)
     forex_sl_atr_multiplier: float = 1.5
-    forex_tp_atr_multiplier: float = 3.0
+    forex_tp_atr_multiplier: float = 1.5
     decision_logger: DecisionLogger = field(default_factory=get_decision_logger)
 
     def evaluate(

@@ -12,11 +12,19 @@ import pandas as pd
 import pytz
 from dotenv import load_dotenv
 
-from data_fetcher import DataFetcher
-from indicator_engine import IndicatorEngine
-from risk_manager import RiskManager
-from signal_logic import SignalDecision, SignalLogic
-from telegram_bot import TelegramNotifier
+from core.data_fetcher import DataFetcher
+from core.indicator_engine import IndicatorEngine
+from core.risk_manager import RiskManager
+from core.signal_logic import SignalDecision, SignalLogic, TradeSignal
+from core.telegram_bot import TelegramNotifier
+
+# MongoDB signal persistence (non-fatal if unavailable)
+try:
+    from core.mongo_store import save_live_signal as _save_live_signal
+    _MONGO_SIGNALS = True
+except Exception:
+    _MONGO_SIGNALS = False
+    def _save_live_signal(**_): return None
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -26,13 +34,10 @@ DECISION_TRACE_PATH = ROOT_DIR / "logs" / "decision_trace.log"
 SYMBOL = "XAUUSDT"
 TREND_TIMEFRAME = "15m"
 ENTRY_TIMEFRAME = "5m"
-HTF_TIMEFRAME = "1h"
 SIGNAL_MODES = ("forex",)
 CANDLE_LIMIT = 300
-HTF_CANDLE_LIMIT = 300
 POLL_INTERVAL_SECONDS = 60
 DEFAULT_MAX_CYCLES = 0
-ENABLE_HTF_FILTER = True
 
 MARKET_HOURS = {
     "always_open": False,
@@ -95,7 +100,7 @@ def _build_components() -> tuple[DataFetcher, IndicatorEngine, SignalLogic, Risk
     fetcher = DataFetcher(min_candles=CANDLE_LIMIT)
     fetcher.startup_check()
     indicators = IndicatorEngine()
-    signal_engine = SignalLogic(symbol=SYMBOL, signal_modes=SIGNAL_MODES, enable_htf_filter=ENABLE_HTF_FILTER)
+    signal_engine = SignalLogic(symbol=SYMBOL, signal_modes=SIGNAL_MODES)
     risk_manager = RiskManager(
         max_signals_per_day=int(os.getenv("MAX_SIGNALS_PER_DAY", "3")),
         cooldown_candles=int(os.getenv("COOLDOWN_CANDLES", "1")),
@@ -157,6 +162,114 @@ def should_log_skip(now_utc: datetime.datetime, last_skip_log: datetime.datetime
     return (now_utc - last_skip_log) >= SKIP_LOG_INTERVAL
 
 
+def _timeframe_delta(timeframe: str) -> pd.Timedelta:
+    normalized = timeframe.strip().lower()
+    mapping = {
+        "1m": pd.Timedelta(minutes=1),
+        "5m": pd.Timedelta(minutes=5),
+        "15m": pd.Timedelta(minutes=15),
+        "30m": pd.Timedelta(minutes=30),
+        "1h": pd.Timedelta(hours=1),
+        "4h": pd.Timedelta(hours=4),
+    }
+    if normalized not in mapping:
+        raise ValueError(f"Unsupported timeframe delta: {timeframe}")
+    return mapping[normalized]
+
+
+def _market_feed_status(
+    now_utc: datetime.datetime,
+    entry_close_time: pd.Timestamp,
+    live_candle_time: pd.Timestamp | None,
+    live_candle_complete: bool,
+) -> str:
+    now_ts = pd.Timestamp(now_utc)
+    entry_delay_seconds = max(0.0, float((now_ts - entry_close_time).total_seconds()))
+    if live_candle_time is None:
+        return "snapshot_unavailable"
+
+    live_age_seconds = max(0.0, float((now_ts - live_candle_time).total_seconds()))
+    if live_age_seconds > 600 or entry_delay_seconds > 900:
+        return "stale_or_market_pause"
+    if live_candle_complete:
+        return "live_complete"
+    return "live_in_progress"
+
+
+def _build_market_snapshot_payload(
+    *,
+    now_utc: datetime.datetime,
+    trend_candle_time: pd.Timestamp,
+    entry_candle_time: pd.Timestamp,
+    trend_last: pd.Series,
+    entry_last: pd.Series,
+    live_snapshot: dict[str, object] | None,
+    snapshot_error: str | None = None,
+) -> dict[str, object]:
+    trend_close_time = trend_candle_time + _timeframe_delta(TREND_TIMEFRAME)
+    entry_close_time = entry_candle_time + _timeframe_delta(ENTRY_TIMEFRAME)
+
+    live_candle_time = None
+    live_candle_close_time = None
+    live_candle_complete = False
+    live_price = None
+    live_open = None
+    live_high = None
+    live_low = None
+    live_volume = None
+    live_granularity = None
+    live_instrument = None
+
+    if live_snapshot is not None:
+        live_candle_time = pd.Timestamp(live_snapshot["timestamp"])
+        live_candle_close_time = live_candle_time + _timeframe_delta("1m")
+        live_candle_complete = bool(live_snapshot.get("complete", False))
+        live_price = float(live_snapshot["close"])
+        live_open = float(live_snapshot["open"])
+        live_high = float(live_snapshot["high"])
+        live_low = float(live_snapshot["low"])
+        live_volume = float(live_snapshot["volume"])
+        live_granularity = str(live_snapshot.get("granularity", "M1"))
+        live_instrument = str(live_snapshot.get("instrument", "XAU_USD"))
+
+    now_ts = pd.Timestamp(now_utc)
+    entry_delay_seconds = max(0.0, float((now_ts - entry_close_time).total_seconds()))
+    trend_delay_seconds = max(0.0, float((now_ts - trend_close_time).total_seconds()))
+    feed_status = _market_feed_status(
+        now_utc=now_utc,
+        entry_close_time=entry_close_time,
+        live_candle_time=live_candle_time,
+        live_candle_complete=live_candle_complete,
+    )
+
+    return {
+        "timestamp": now_utc,
+        "event_type": "market_snapshot",
+        "symbol": SYMBOL,
+        "fetched_at_utc": now_utc,
+        "latest_closed_trend_open_utc": trend_candle_time,
+        "latest_closed_trend_close_utc": trend_close_time,
+        "latest_closed_trend_close_price": float(trend_last["close"]),
+        "latest_closed_entry_open_utc": entry_candle_time,
+        "latest_closed_entry_close_utc": entry_close_time,
+        "latest_closed_entry_close_price": float(entry_last["close"]),
+        "trend_delay_seconds": round(trend_delay_seconds, 2),
+        "entry_delay_seconds": round(entry_delay_seconds, 2),
+        "live_candle_open_utc": live_candle_time,
+        "live_candle_close_utc": live_candle_close_time,
+        "live_candle_complete": live_candle_complete,
+        "live_price": live_price,
+        "live_open": live_open,
+        "live_high": live_high,
+        "live_low": live_low,
+        "live_volume": live_volume,
+        "live_granularity": live_granularity,
+        "live_instrument": live_instrument,
+        "feed_status": feed_status,
+        "snapshot_error": snapshot_error,
+    }
+
+
 async def run_loop() -> None:
     startup_summary = _startup_feed_summary()
     LOGGER.info(
@@ -181,12 +294,10 @@ async def run_loop() -> None:
     cycles_completed = 0
 
     LOGGER.info(
-        "[ENGINE] started symbol=%s trend_tf=%s entry_tf=%s htf_tf=%s htf_filter=%s modes=%s interval=%ss decision_log=%s",
+        "[ENGINE] started symbol=%s trend_tf=%s entry_tf=%s modes=%s interval=%ss decision_log=%s",
         SYMBOL,
         TREND_TIMEFRAME,
         ENTRY_TIMEFRAME,
-        HTF_TIMEFRAME,
-        ENABLE_HTF_FILTER,
         ",".join(SIGNAL_MODES),
         POLL_INTERVAL_SECONDS,
         DECISION_TRACE_PATH,
@@ -233,21 +344,6 @@ async def run_loop() -> None:
             trend_indicators = indicators.add_indicators(trend_candles)
             entry_indicators = indicators.add_indicators(entry_candles)
 
-            # HTF (1H) candles for structural bias filter
-            htf_indicators = None
-            if ENABLE_HTF_FILTER:
-                try:
-                    htf_candles = await asyncio.to_thread(
-                        fetcher.fetch_market_data, SYMBOL, HTF_TIMEFRAME, HTF_CANDLE_LIMIT
-                    )
-                    htf_indicators = indicators.add_indicators(htf_candles)
-                    if htf_indicators.empty:
-                        LOGGER.warning("[HTF] empty indicators for %s %s — HTF filter skipped", SYMBOL, HTF_TIMEFRAME)
-                        htf_indicators = None
-                except Exception:
-                    LOGGER.warning("[HTF] failed to fetch %s %s candles — HTF filter skipped", SYMBOL, HTF_TIMEFRAME)
-                    htf_indicators = None
-
             if trend_indicators.empty or entry_indicators.empty:
                 raise RuntimeError(f"Missing indicator data for {SYMBOL}.")
 
@@ -258,6 +354,26 @@ async def run_loop() -> None:
             should_log_market_snapshot = bool(
                 trend_candle_time != last_logged_trend_candle
                 or entry_candle_time != last_logged_entry_candle
+            )
+
+            live_snapshot: dict[str, object] | None = None
+            snapshot_error: str | None = None
+            try:
+                live_snapshot = await asyncio.to_thread(fetcher.fetch_live_market_snapshot, "1m")
+            except Exception as error:
+                snapshot_error = str(error)
+                LOGGER.warning("[MARKET] live snapshot fetch failed: %s", error)
+
+            signal_engine.decision_logger.log_market_snapshot(
+                _build_market_snapshot_payload(
+                    now_utc=now_utc,
+                    trend_candle_time=trend_candle_time,
+                    entry_candle_time=entry_candle_time,
+                    trend_last=trend_last,
+                    entry_last=entry_last,
+                    live_snapshot=live_snapshot,
+                    snapshot_error=snapshot_error,
+                )
             )
 
             if last_processed_entry_candle is not None and entry_candle_time <= last_processed_entry_candle:
@@ -293,7 +409,7 @@ async def run_loop() -> None:
                 last_logged_entry_candle = entry_candle_time
 
             decision = signal_engine.evaluate(
-                trend_indicators, entry_indicators, now_utc=now_utc, htf_candles=htf_indicators
+                trend_indicators, entry_indicators, now_utc=now_utc
             )
             runtime_state = _state_from_decision(
                 runtime_state,
@@ -330,6 +446,31 @@ async def run_loop() -> None:
                     runtime_state.last_signal_time_utc = primary_signal.timestamp_utc.isoformat()
                     runtime_state.last_reason = "signal_dispatched"
                     runtime_state.last_signal_modes = [signal.signal_kind for signal in decision.signals]
+                    # ── Persist signal to MongoDB ─────────────────────────────
+                    try:
+                        _save_live_signal(
+                            symbol=primary_signal.symbol,
+                            direction=primary_signal.direction,
+                            entry_price=primary_signal.entry_price,
+                            stop_loss=primary_signal.stop_loss,
+                            take_profit=primary_signal.take_profit,
+                            atr=primary_signal.atr,
+                            score=primary_signal.score,
+                            score_threshold=primary_signal.score_threshold,
+                            session=primary_signal.session,
+                            market_regime=decision.market_regime,
+                            regime_confidence=decision.regime_confidence,
+                            trend_alignment=decision.trend_alignment,
+                            price_trigger=decision.price_trigger,
+                            rsi_filter=decision.rsi_filter,
+                            atr_expansion=decision.atr_expansion,
+                            reason=decision.reason,
+                            signal_kind=primary_signal.signal_kind,
+                            telegram_sent=sent_any,
+                            candle_time_utc=primary_signal.timestamp_utc.isoformat(),
+                        )
+                    except Exception:
+                        LOGGER.warning("[MONGO] failed to save live signal — continuing")
                 else:
                     runtime_state.status = "blocked"
                     runtime_state.last_reason = risk_reason

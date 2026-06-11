@@ -1791,13 +1791,10 @@ def serve_crypto_dashboard():
 
 @app.get("/", include_in_schema=False)
 def serve_index():
-    return RedirectResponse(
-        url="/dashboard/rsi-ema",
-        status_code=307,
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate",
-            "Pragma": "no-cache",
-        },
+    return FileResponse(
+        str(STATIC_DIR / "index.html"),
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
     )
 
 # ── RSI ETH Optimizer (read-only parameter testing) ───────────────────────────
@@ -1867,7 +1864,17 @@ async def rsi_eth_optimizer_status():
     return {"status": "idle"}
 
 
-app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+# Serve compiled React/Vite assets
+app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="assets")
+
+@app.get("/favicon.svg", include_in_schema=False)
+def serve_favicon():
+    return FileResponse(str(STATIC_DIR / "favicon.svg"))
+
+# SPA catch-all - serve React index.html for every unmatched route
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_spa(full_path: str):
+    return FileResponse(str(STATIC_DIR / "index.html"))
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

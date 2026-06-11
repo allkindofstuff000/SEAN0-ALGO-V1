@@ -34,7 +34,7 @@ export default function RsiEma() {
   const [activeTF, setActiveTF] = useState("5M");
   const [showEma, setShowEma] = useState(true);
   const [sl, setSl] = useState([1.5]);
-  const [tp, setTp] = useState([3.0]);
+  const [tp, setTp] = useState([1.5]);
   const [risk, setRisk] = useState([2]);
   const [startDate, setStartDate] = useState(isoDaysAgo(30));
   const [endDate, setEndDate] = useState(isoDaysAgo(1));
