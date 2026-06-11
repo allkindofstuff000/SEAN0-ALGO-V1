@@ -4,13 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useCandles, useXauStatus, useRunBacktest, useXauSignals, useMarketStatus } from "@/hooks/use-trading-data";
+import { useCandles, useXauStatus, useRunRsiBacktest, useXauSignals, useMarketStatus } from "@/hooks/use-trading-data";
 import { useMemo, useState } from "react";
 import { Play, BarChart2, History, SlidersHorizontal, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { LiveChart } from "@/components/LiveChart";
+import { BacktestResults } from "@/components/BacktestResults";
 import { computeIndicators } from "@/lib/indicators";
-import type { BacktestMetrics } from "@/lib/api";
+import type { RsiBacktestResult } from "@/lib/api";
 
 const TABS = [
   { id: "chart", label: "Chart", icon: BarChart2 },
@@ -21,7 +22,11 @@ const TABS = [
 
 const TF_MAP: Record<string, string> = { "1M": "M1", "5M": "M5", "15M": "M15", "1H": "H1" };
 
-type RunRow = { id: string; date: string; metrics: BacktestMetrics; params: string };
+const isoDaysAgo = (n: number) => {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().split("T")[0];
+};
 
 export default function RsiEma() {
   const { toast } = useToast();
@@ -31,17 +36,18 @@ export default function RsiEma() {
   const [sl, setSl] = useState([1.5]);
   const [tp, setTp] = useState([3.0]);
   const [risk, setRisk] = useState([2]);
-  const [startDate, setStartDate] = useState("2025-04-01");
-  const [endDate, setEndDate] = useState("2025-05-01");
+  const [startDate, setStartDate] = useState(isoDaysAgo(30));
+  const [endDate, setEndDate] = useState(isoDaysAgo(1));
   const [balance, setBalance] = useState(10000);
-  const [runs, setRuns] = useState<RunRow[]>([]);
+  const [result, setResult] = useState<RsiBacktestResult | null>(null);
+  const [ranBalance, setRanBalance] = useState(10000);
 
   const tf = TF_MAP[activeTF];
   const { data: candleData } = useCandles(tf, 240);
   const { data: status } = useXauStatus();
   const { data: signalsData } = useXauSignals(20);
   const { data: market } = useMarketStatus();
-  const runBacktest = useRunBacktest();
+  const runBacktest = useRunRsiBacktest();
 
   const ind = useMemo(() => computeIndicators(candleData?.candles ?? []), [candleData]);
   const livePrice = status?.livePrice?.price || ind?.price || 0;
@@ -56,13 +62,15 @@ export default function RsiEma() {
   ];
 
   const handleRunTest = () => {
+    const bal = balance;
     runBacktest.mutate(
       {
         start_date: startDate || null,
         end_date: endDate || null,
-        starting_balance: balance,
+        sl_candles: Math.max(1, Math.round(sl[0] / 0.3)),
+        tp_candles: Math.max(1, Math.round(tp[0] / 0.3)),
+        starting_balance: bal,
         risk_per_trade_pct: risk[0],
-        max_hold_bars: 60,
       },
       {
         onSuccess: (res) => {
@@ -70,19 +78,12 @@ export default function RsiEma() {
             toast({ title: "Backtest error", description: res.error, variant: "destructive" });
             return;
           }
-          const m = res.metrics || {};
-          setRuns((prev) => [
-            {
-              id: `#${prev.length + 1}`,
-              date: new Date().toISOString().split("T")[0],
-              metrics: m,
-              params: `Risk ${risk[0]}% · SL ${sl[0]} / TP ${tp[0]} ATR · $${balance}`,
-            },
-            ...prev,
-          ]);
+          setResult(res);
+          setRanBalance(bal);
+          const m = res.metrics;
           toast({
             title: "Backtest Complete",
-            description: `${m.totalTrades ?? 0} trades · ${(m.winRate ?? 0).toFixed?.(1) ?? m.winRate}% win · final $${(m.finalBalance ?? 0).toFixed?.(2) ?? m.finalBalance}`,
+            description: `${m.total_trades} trades · ${m.win_rate.toFixed(1)}% win · final $${m.ending_balance.toFixed(2)}`,
           });
         },
         onError: (e: any) => toast({ title: "Backtest failed", description: String(e.message || e), variant: "destructive" }),
@@ -173,93 +174,59 @@ export default function RsiEma() {
 
         {/* BACKTEST TAB */}
         {activeTab === "backtest" && (
-          <div className="h-full overflow-auto">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pb-4">
-              <div className="rounded-lg border border-border bg-card overflow-hidden">
-                <div className="px-4 py-3 border-b border-border bg-secondary/20">
-                  <p className="text-xs font-bold uppercase tracking-wider">Configuration</p>
-                  <p className="text-[10px] font-mono text-muted-foreground mt-0.5">XAUUSD · live OANDA history</p>
+          <div className="h-full overflow-auto pb-4 space-y-4">
+            {/* Config bar */}
+            <div className="rounded-lg border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold uppercase tracking-wider">Backtest Configuration</p>
+                <p className="text-[10px] font-mono text-muted-foreground">XAUUSD M5/M15 · live OANDA history · EMA50/200 + RSI breakout</p>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase">Start Date</label>
+                  <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-8 text-xs font-mono bg-background" />
                 </div>
-                <div className="p-4 space-y-5">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Start Date</label>
-                      <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-8 text-xs font-mono bg-background" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase">End Date</label>
-                      <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-8 text-xs font-mono bg-background" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Stop-Loss ATR</label>
-                      <span className="text-xs font-mono text-primary font-bold">{sl[0].toFixed(1)}x</span>
-                    </div>
-                    <Slider value={sl} onValueChange={setSl} min={0.5} max={5} step={0.1} />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Take-Profit ATR</label>
-                      <span className="text-xs font-mono text-primary font-bold">{tp[0].toFixed(1)}x</span>
-                    </div>
-                    <Slider value={tp} onValueChange={setTp} min={1} max={10} step={0.5} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase">Starting Balance (USD)</label>
-                    <Input type="number" value={balance} onChange={(e) => setBalance(Number(e.target.value))} className="h-8 text-xs font-mono bg-background" />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Risk Per Trade</label>
-                      <span className="text-xs font-mono text-destructive font-bold">{risk[0]}%</span>
-                    </div>
-                    <Slider value={risk} onValueChange={setRisk} min={0.5} max={5} step={0.5} />
-                  </div>
-                  <Button className="w-full font-bold uppercase tracking-wider" onClick={handleRunTest} disabled={runBacktest.isPending}>
-                    {runBacktest.isPending ? "Running…" : <><Play className="w-4 h-4 mr-2" />Run Backtest</>}
-                  </Button>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase">End Date</label>
+                  <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-8 text-xs font-mono bg-background" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase">Balance (USD)</label>
+                  <Input type="number" value={balance} onChange={(e) => setBalance(Number(e.target.value))} className="h-8 text-xs font-mono bg-background" />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between"><label className="text-[10px] font-bold text-muted-foreground uppercase">SL ATR</label><span className="text-xs font-mono text-primary font-bold">{sl[0].toFixed(1)}x</span></div>
+                  <Slider value={sl} onValueChange={setSl} min={0.5} max={5} step={0.1} />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between"><label className="text-[10px] font-bold text-muted-foreground uppercase">TP ATR</label><span className="text-xs font-mono text-primary font-bold">{tp[0].toFixed(1)}x</span></div>
+                  <Slider value={tp} onValueChange={setTp} min={1} max={10} step={0.5} />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between"><label className="text-[10px] font-bold text-muted-foreground uppercase">Risk</label><span className="text-xs font-mono text-destructive font-bold">{risk[0]}%</span></div>
+                  <Slider value={risk} onValueChange={setRisk} min={1} max={10} step={0.5} />
                 </div>
               </div>
-
-              <div className="col-span-1 lg:col-span-2 rounded-lg border border-border bg-card overflow-hidden flex flex-col">
-                <div className="px-4 py-3 border-b border-border bg-secondary/20 shrink-0">
-                  <p className="text-xs font-bold uppercase tracking-wider">Backtest Results</p>
-                </div>
-                <div className="overflow-auto flex-1">
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-card border-b border-border z-10">
-                      <TableRow className="hover:bg-transparent">
-                        <TableHead className="font-mono text-[10px] uppercase text-muted-foreground w-[60px]">ID</TableHead>
-                        <TableHead className="font-mono text-[10px] uppercase text-muted-foreground">Date</TableHead>
-                        <TableHead className="font-mono text-[10px] uppercase text-muted-foreground text-right">Trades</TableHead>
-                        <TableHead className="font-mono text-[10px] uppercase text-muted-foreground text-right">Win Rate</TableHead>
-                        <TableHead className="font-mono text-[10px] uppercase text-muted-foreground text-right">PF</TableHead>
-                        <TableHead className="font-mono text-[10px] uppercase text-muted-foreground text-right">Final $</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {runs.length === 0 ? (
-                        <TableRow><TableCell colSpan={6} className="text-center py-8 text-xs text-muted-foreground">Run a backtest to see results.</TableCell></TableRow>
-                      ) : (
-                        runs.map((bt) => (
-                          <TableRow key={bt.id} className="border-b border-border/50 hover:bg-secondary/20">
-                            <TableCell className="font-mono text-xs font-bold">{bt.id}</TableCell>
-                            <TableCell className="font-mono text-xs text-muted-foreground">{bt.date}</TableCell>
-                            <TableCell className="font-mono text-xs text-right">{bt.metrics.totalTrades ?? 0}</TableCell>
-                            <TableCell className="font-mono text-xs text-right font-bold text-primary">{(bt.metrics.winRate ?? 0).toFixed?.(1) ?? bt.metrics.winRate}%</TableCell>
-                            <TableCell className="font-mono text-xs text-right">{(bt.metrics.profitFactor ?? 0).toFixed?.(2) ?? bt.metrics.profitFactor}</TableCell>
-                            <TableCell className={`font-mono text-xs text-right font-bold ${(bt.metrics.finalBalance ?? 0) >= balance ? "text-accent" : "text-destructive"}`}>
-                              ${(bt.metrics.finalBalance ?? 0).toFixed?.(2) ?? bt.metrics.finalBalance}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
+              <Button className="w-full mt-4 font-bold uppercase tracking-wider" onClick={handleRunTest} disabled={runBacktest.isPending}>
+                {runBacktest.isPending ? "Running backtest… (fetching OANDA history)" : <><Play className="w-4 h-4 mr-2" />Run Backtest</>}
+              </Button>
             </div>
+
+            {/* Results */}
+            {runBacktest.isPending ? (
+              <div className="rounded-lg border border-border bg-card p-12 text-center">
+                <div className="inline-block w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3" />
+                <p className="text-xs text-muted-foreground">Running strategy over OANDA history…</p>
+              </div>
+            ) : result ? (
+              <BacktestResults result={result} startBalance={ranBalance} />
+            ) : (
+              <div className="rounded-lg border border-border border-dashed bg-card/50 p-12 text-center">
+                <BarChart2 className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                <p className="font-bold text-sm uppercase tracking-wider">No backtest yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Set your window and risk, then click Run Backtest to see the full equity curve, drawdown, and every trade.</p>
+              </div>
+            )}
           </div>
         )}
 

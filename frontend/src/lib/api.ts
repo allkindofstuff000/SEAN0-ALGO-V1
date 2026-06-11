@@ -147,6 +147,57 @@ export type BacktestParams = {
   max_hold_bars?: number;
 };
 
+// ── RSI EMA forex backtest (POST /backtest) ──────────────────────────────────
+export type RsiBacktestParams = {
+  start_date?: string | null;
+  end_date?: string | null;
+  sl_candles: number; // ×0.3 → ATR mult (5 → 1.5×ATR)
+  tp_candles: number; // ×0.3 → ATR mult (10 → 3.0×ATR)
+  starting_balance: number;
+  risk_per_trade_pct: number; // 1–10
+};
+
+export type RsiMetrics = {
+  total_trades: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  profit_factor: number;
+  average_r: number;
+  max_drawdown_r: number;
+  ending_balance: number;
+};
+
+export type RsiTrade = {
+  timestamp: string;
+  entry_timestamp: string;
+  exit_timestamp: string;
+  direction: "BUY" | "SELL";
+  entry_price: number;
+  exit_price: number;
+  sl: number;
+  tp: number;
+  result: "WIN" | "LOSS";
+  R_multiple: number;
+  position_size: number;
+  pnl: number;
+  equity_before: number;
+  equity_after: number;
+  rsi: number;
+  atr: number;
+  reason: string;
+  exit_reason: string;
+  bars_held: number;
+};
+
+export type RsiBacktestResult = {
+  metrics: RsiMetrics;
+  trades: RsiTrade[];
+  equity_curve: { trade: number; equity: number; ts: string }[];
+  mongo_id?: string;
+  error?: string;
+};
+
 // ── Endpoints ────────────────────────────────────────────────────────────────
 export const Api = {
   candles: (tf: string, count = 240) =>
@@ -164,6 +215,7 @@ export const Api = {
   botStatus: () => apiGet<BotStatus>("/api/bot/status"),
   backtestHistory: () => apiGet<any>("/backtest/history"),
   runBacktest: (p: BacktestParams) => apiPost<BacktestResult>("/api/xau-scalp/backtest", p),
+  runRsiBacktest: (p: RsiBacktestParams) => apiPost<RsiBacktestResult>("/backtest", p),
   startBot: (strategy: "rsi-ema" | "xau-scalp") =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/start`),
   stopBot: (strategy: "rsi-ema" | "xau-scalp") =>

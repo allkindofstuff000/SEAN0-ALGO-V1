@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Api, type BacktestParams } from "@/lib/api";
+import { Api, type BacktestParams, type RsiBacktestParams } from "@/lib/api";
 
 // ── Live data queries ────────────────────────────────────────────────────────
 export function useCandles(tf: string, count = 240) {
@@ -80,6 +80,13 @@ export function useRunBacktest() {
   return useMutation({
     mutationFn: (params: BacktestParams) => Api.runBacktest(params),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["backtest-history"] }),
+  });
+}
+
+// RSI EMA forex engine backtest (POST /backtest)
+export function useRunRsiBacktest() {
+  return useMutation({
+    mutationFn: (params: RsiBacktestParams) => Api.runRsiBacktest(params),
   });
 }
 
