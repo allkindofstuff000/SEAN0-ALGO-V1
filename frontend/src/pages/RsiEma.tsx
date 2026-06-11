@@ -4,14 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useCandles, useXauStatus, useRunRsiBacktest, useXauSignals, useMarketStatus } from "@/hooks/use-trading-data";
+import { useCandles, useXauStatus, useRunRsiBacktest, useLiveSignals, useBacktestHistory, useMarketStatus } from "@/hooks/use-trading-data";
 import { useMemo, useState } from "react";
-import { Play, BarChart2, History, SlidersHorizontal, TrendingUp } from "lucide-react";
+import { Play, BarChart2, History, SlidersHorizontal, TrendingUp, Send, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { LiveChart } from "@/components/LiveChart";
 import { BacktestResults } from "@/components/BacktestResults";
 import { computeIndicators } from "@/lib/indicators";
-import type { RsiBacktestResult } from "@/lib/api";
+import { Api, type RsiBacktestResult } from "@/lib/api";
 
 const TABS = [
   { id: "chart", label: "Chart", icon: BarChart2 },
@@ -45,9 +45,27 @@ export default function RsiEma() {
   const tf = TF_MAP[activeTF];
   const { data: candleData } = useCandles(tf, 240);
   const { data: status } = useXauStatus();
-  const { data: signalsData } = useXauSignals(20);
+  const { data: signalsData } = useLiveSignals(100);
+  const { data: history } = useBacktestHistory();
   const { data: market } = useMarketStatus();
   const runBacktest = useRunRsiBacktest();
+  const [loadingReport, setLoadingReport] = useState<string | null>(null);
+
+  const openReport = async (id: string) => {
+    setLoadingReport(id);
+    try {
+      const doc = await Api.backtestReport(id);
+      setResult({ metrics: doc.metrics as any, trades: doc.trades || [], equity_curve: doc.equity_curve || [] });
+      setRanBalance(Number(doc.params?.starting_balance) || 10000);
+    } catch (e: any) {
+      toast({ title: "Could not load report", description: String(e.message || e), variant: "destructive" });
+    } finally {
+      setLoadingReport(null);
+    }
+  };
+
+  // Only RSI EMA forex runs (xau-scalp reports use a different schema)
+  const rsiReports = (history?.reports || []).filter((r) => r.params?.strategy !== "xau-scalp" && r.metrics?.total_trades != null);
 
   const ind = useMemo(() => computeIndicators(candleData?.candles ?? []), [candleData]);
   const livePrice = status?.livePrice?.price || ind?.price || 0;
@@ -227,43 +245,112 @@ export default function RsiEma() {
                 <p className="text-xs text-muted-foreground mt-1">Set your window and risk, then click Run Backtest to see the full equity curve, drawdown, and every trade.</p>
               </div>
             )}
+
+            {/* Backtest history */}
+            <div className="rounded-lg border border-border bg-card overflow-hidden">
+              <div className="px-4 py-3 border-b border-border bg-secondary/20 flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                <p className="text-xs font-bold uppercase tracking-wider">Backtest History</p>
+                <p className="text-[10px] text-muted-foreground font-mono ml-1">click a run to reopen its full report</p>
+              </div>
+              <div className="overflow-auto max-h-[360px]">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-card z-10">
+                    <TableRow className="hover:bg-transparent border-border">
+                      {["Run Date", "Window", "Trades", "Win %", "PF", "Max DD (R)", "Final $", ""].map((h) => (
+                        <TableHead key={h} className={`font-mono text-[10px] uppercase text-muted-foreground ${["Trades", "Win %", "PF", "Max DD (R)", "Final $"].includes(h) ? "text-right" : ""}`}>{h}</TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rsiReports.length === 0 ? (
+                      <TableRow><TableCell colSpan={8} className="text-center py-8 text-xs text-muted-foreground">No saved backtests yet. Run one above — results are stored automatically.</TableCell></TableRow>
+                    ) : (
+                      rsiReports.map((r) => {
+                        const m = r.metrics;
+                        const start = Number(r.params?.starting_balance) || 0;
+                        const profit = (m.ending_balance ?? 0) - start;
+                        return (
+                          <TableRow key={r._id} className="border-border/50 hover:bg-secondary/20 cursor-pointer" onClick={() => openReport(r._id)}>
+                            <TableCell className="font-mono text-xs text-muted-foreground">{(r.saved_at || "").slice(0, 16).replace("T", " ")}</TableCell>
+                            <TableCell className="font-mono text-[11px] text-muted-foreground">{(r.params?.start_date || "?")} → {(r.params?.end_date || "?")}</TableCell>
+                            <TableCell className="font-mono text-xs text-right">{m.total_trades ?? r.trade_count ?? 0}</TableCell>
+                            <TableCell className="font-mono text-xs text-right font-bold text-primary">{(m.win_rate ?? 0).toFixed(1)}%</TableCell>
+                            <TableCell className="font-mono text-xs text-right">{Number.isFinite(m.profit_factor) ? (m.profit_factor ?? 0).toFixed(2) : "∞"}</TableCell>
+                            <TableCell className="font-mono text-xs text-right text-destructive">{(m.max_drawdown_r ?? 0).toFixed(2)}</TableCell>
+                            <TableCell className={`font-mono text-xs text-right font-bold ${profit >= 0 ? "text-accent" : "text-destructive"}`}>${(m.ending_balance ?? 0).toFixed(0)}</TableCell>
+                            <TableCell className="text-right">
+                              <span className="text-[10px] text-primary font-bold uppercase">{loadingReport === r._id ? "Loading…" : "View →"}</span>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* SIGNALS TAB */}
+        {/* SIGNAL HISTORY TAB — all fired signals (sent to Telegram) */}
         {activeTab === "signals" && (
           <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <div className="px-4 py-3 border-b border-border bg-secondary/20">
-              <p className="text-xs font-bold uppercase tracking-wider">Recent Signals</p>
+            <div className="px-4 py-3 border-b border-border bg-secondary/20 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Send className="w-3.5 h-3.5 text-muted-foreground" />
+                <p className="text-xs font-bold uppercase tracking-wider">Signal History</p>
+                <p className="text-[10px] text-muted-foreground font-mono ml-1">every signal fired across strategies · sent to Telegram</p>
+              </div>
+              <span className="text-[10px] font-mono text-muted-foreground">{signalsData?.count ?? 0} signals</span>
             </div>
-            <Table>
-              <TableHeader>
-                <TableRow className="border-border hover:bg-transparent bg-secondary/30">
-                  <TableHead className="font-mono text-[10px] uppercase text-muted-foreground w-[160px]">Time</TableHead>
-                  <TableHead className="font-mono text-[10px] uppercase text-muted-foreground">Type</TableHead>
-                  <TableHead className="font-mono text-[10px] uppercase text-muted-foreground text-right">Price</TableHead>
-                  <TableHead className="font-mono text-[10px] uppercase text-muted-foreground">Context</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(signalsData?.signals?.length ?? 0) === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="text-center py-8 text-xs text-muted-foreground">No signals yet — waiting for setup.</TableCell></TableRow>
-                ) : (
-                  signalsData!.signals.map((sig, i) => (
-                    <TableRow key={i} className="border-border hover:bg-secondary/20">
-                      <TableCell className="font-mono text-xs text-muted-foreground">{sig.time || (sig.ts ? new Date(sig.ts).toLocaleTimeString() : "—")}</TableCell>
-                      <TableCell>
-                        <Badge variant={(sig.direction || "").toUpperCase() === "BUY" ? "default" : "destructive"} className="text-[10px] font-bold w-16 justify-center">
-                          {sig.direction || "—"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-right font-bold">{sig.price?.toFixed?.(2) ?? "—"}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{sig.reason || sig.strength || "—"}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+            <div className="overflow-auto max-h-[560px]">
+              <Table>
+                <TableHeader className="sticky top-0 bg-card z-10">
+                  <TableRow className="border-border hover:bg-transparent bg-secondary/30">
+                    {["Time (UTC)", "Strategy", "Symbol", "Dir", "Entry", "SL", "TP", "Score", "TG", "Outcome"].map((h) => (
+                      <TableHead key={h} className={`font-mono text-[10px] uppercase text-muted-foreground ${["Entry", "SL", "TP", "Score"].includes(h) ? "text-right" : ""}`}>{h}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(signalsData?.signals?.length ?? 0) === 0 ? (
+                    <TableRow><TableCell colSpan={10} className="text-center py-10 text-xs text-muted-foreground">No signals fired yet. When a strategy fires and sends a Telegram alert, it appears here.</TableCell></TableRow>
+                  ) : (
+                    signalsData!.signals.map((s) => {
+                      const t = s.sent_at ? new Date(s.sent_at) : s.timestamp ? new Date(s.timestamp) : null;
+                      const isBuy = (s.direction || "").toUpperCase() === "BUY";
+                      return (
+                        <TableRow key={s._id} className="border-border/50 hover:bg-secondary/20">
+                          <TableCell className="font-mono text-[11px] text-muted-foreground">{t ? t.toISOString().slice(0, 16).replace("T", " ") : "—"}</TableCell>
+                          <TableCell><Badge variant="outline" className="text-[9px] font-mono">{s.strategyName || s.strategy || s.signal_kind || "—"}</Badge></TableCell>
+                          <TableCell className="font-mono text-xs">{s.symbol}</TableCell>
+                          <TableCell><Badge variant={isBuy ? "default" : "destructive"} className="text-[9px] font-bold w-12 justify-center">{s.direction}</Badge></TableCell>
+                          <TableCell className="font-mono text-xs text-right font-bold">{s.entry_price?.toFixed?.(2) ?? "—"}</TableCell>
+                          <TableCell className="font-mono text-xs text-right text-destructive/80">{s.stop_loss != null ? s.stop_loss.toFixed(2) : "—"}</TableCell>
+                          <TableCell className="font-mono text-xs text-right text-accent/80">{s.take_profit != null ? s.take_profit.toFixed(2) : "—"}</TableCell>
+                          <TableCell className="font-mono text-xs text-right">{s.score ?? "—"}{s.strength ? <span className="text-[9px] text-muted-foreground ml-1">{s.strength}</span> : null}</TableCell>
+                          <TableCell>
+                            {s.telegram_sent === false ? (
+                              <Badge variant="outline" className="text-[9px] text-muted-foreground">logged</Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[9px] text-accent border-accent/30 bg-accent/10">sent</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {s.outcome ? (
+                              <Badge variant="outline" className={`text-[9px] font-bold ${s.outcome === "WIN" ? "text-accent border-accent/30 bg-accent/10" : s.outcome === "LOSS" ? "text-destructive border-destructive/30 bg-destructive/10" : "text-muted-foreground"}`}>{s.outcome}</Badge>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground">open</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         )}
 

@@ -69,8 +69,17 @@ export function useBotStatus() {
 export function useBacktestHistory() {
   return useQuery({
     queryKey: ["backtest-history"],
-    queryFn: Api.backtestHistory,
+    queryFn: () => Api.backtestHistory(50),
     retry: false,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useLiveSignals(limit = 100) {
+  return useQuery({
+    queryKey: ["live-signals", limit],
+    queryFn: () => Api.liveSignals(limit),
+    refetchInterval: 15_000,
   });
 }
 

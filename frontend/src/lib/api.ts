@@ -198,6 +198,46 @@ export type RsiBacktestResult = {
   error?: string;
 };
 
+export type BacktestHistoryItem = {
+  _id: string;
+  saved_at: string;
+  trade_count: number;
+  params: {
+    start_date?: string;
+    end_date?: string;
+    sl_candles?: number;
+    tp_candles?: number;
+    starting_balance?: number;
+    risk_per_trade_pct?: number;
+    strategy?: string;
+    [k: string]: any;
+  };
+  metrics: Record<string, any>;
+};
+
+export type LiveSignal = {
+  _id: string;
+  sent_at?: string;
+  timestamp?: number;
+  candle_time_utc?: string | null;
+  symbol: string;
+  direction: string;
+  entry_price: number;
+  stop_loss?: number | null;
+  take_profit?: number | null;
+  atr?: number;
+  score?: number;
+  strength?: string;
+  session?: string;
+  market_regime?: string;
+  reason?: string;
+  signal_kind?: string;
+  strategy?: string;
+  strategyName?: string;
+  telegram_sent?: boolean;
+  outcome?: string | null;
+};
+
 // ── Endpoints ────────────────────────────────────────────────────────────────
 export const Api = {
   candles: (tf: string, count = 240) =>
@@ -213,9 +253,12 @@ export const Api = {
     apiGet<{ log: DecisionLogRow[] }>(`/api/xau-scalp/log?limit=${limit}`),
   marketStatus: () => apiGet<MarketStatus>("/api/market/status"),
   botStatus: () => apiGet<BotStatus>("/api/bot/status"),
-  backtestHistory: () => apiGet<any>("/backtest/history"),
+  backtestHistory: (limit = 50) =>
+    apiGet<{ reports: BacktestHistoryItem[]; count: number; mongo_available: boolean }>(`/backtest/history?limit=${limit}`),
+  backtestReport: (id: string) => apiGet<RsiBacktestResult & { params?: any; saved_at?: string }>(`/backtest/history/${id}`),
   runBacktest: (p: BacktestParams) => apiPost<BacktestResult>("/api/xau-scalp/backtest", p),
   runRsiBacktest: (p: RsiBacktestParams) => apiPost<RsiBacktestResult>("/backtest", p),
+  liveSignals: (limit = 100) => apiGet<{ signals: LiveSignal[]; count: number }>(`/signals?limit=${limit}`),
   startBot: (strategy: "rsi-ema" | "xau-scalp") =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/start`),
   stopBot: (strategy: "rsi-ema" | "xau-scalp") =>
