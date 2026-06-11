@@ -67,6 +67,12 @@ export default function RsiEma() {
   // Only RSI EMA forex runs (xau-scalp reports use a different schema)
   const rsiReports = (history?.reports || []).filter((r) => r.params?.strategy !== "xau-scalp" && r.metrics?.total_trades != null);
 
+  // Forex-only signal history — exclude ETH/crypto strategies (this is a XAU dashboard)
+  const forexSignals = (signalsData?.signals || []).filter((s) => {
+    const blob = `${s.symbol || ""} ${s.strategy || ""} ${s.strategyName || ""} ${s.signal_kind || ""}`.toLowerCase();
+    return !blob.includes("eth") && !blob.includes("btc") && !blob.includes("crypto");
+  });
+
   const ind = useMemo(() => computeIndicators(candleData?.candles ?? []), [candleData]);
   const livePrice = status?.livePrice?.price || ind?.price || 0;
   const changeAbs = ind?.changeAbs ?? 0;
@@ -302,7 +308,7 @@ export default function RsiEma() {
                 <p className="text-xs font-bold uppercase tracking-wider">Signal History</p>
                 <p className="text-[10px] text-muted-foreground font-mono ml-1">every signal fired across strategies · sent to Telegram</p>
               </div>
-              <span className="text-[10px] font-mono text-muted-foreground">{signalsData?.count ?? 0} signals</span>
+              <span className="text-[10px] font-mono text-muted-foreground">{forexSignals.length} signals</span>
             </div>
             <div className="overflow-auto max-h-[560px]">
               <Table>
@@ -314,10 +320,10 @@ export default function RsiEma() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(signalsData?.signals?.length ?? 0) === 0 ? (
-                    <TableRow><TableCell colSpan={10} className="text-center py-10 text-xs text-muted-foreground">No signals fired yet. When a strategy fires and sends a Telegram alert, it appears here.</TableCell></TableRow>
+                  {forexSignals.length === 0 ? (
+                    <TableRow><TableCell colSpan={10} className="text-center py-10 text-xs text-muted-foreground">No signals fired yet. When the RSI EMA or XAU Scalp strategy fires and sends a Telegram alert, it appears here.</TableCell></TableRow>
                   ) : (
-                    signalsData!.signals.map((s) => {
+                    forexSignals.map((s) => {
                       const t = s.sent_at ? new Date(s.sent_at) : s.timestamp ? new Date(s.timestamp) : null;
                       const isBuy = (s.direction || "").toUpperCase() === "BUY";
                       return (
