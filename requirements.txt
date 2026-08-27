@@ -11,3 +11,15 @@ matplotlib>=3.9.0
 streamlit>=1.44.0
 streamlit-autorefresh>=1.0.1
 plotly>=5.18.0
+
+# Web dashboard / API (runtime deps for web/web_server.py)
+fastapi>=0.115.0
+uvicorn>=0.30.0
+python-multipart>=0.0.20
+aiofiles>=24.1.0
+
+# MongoDB (used by core/mongo_store.py for signals + backtest reports)
+pymongo>=4.9.0
+
+# Bybit WebSocket (used by core/binance_client.py for ETH stream)
+websocket-client>=1.8.0
