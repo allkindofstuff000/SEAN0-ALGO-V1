@@ -42,9 +42,46 @@ RETRY_SECONDS = 12
 BUY_RSI_THRESHOLD = 55.0
 SELL_RSI_THRESHOLD = 45.0
 STOP_LOSS_ATR_MULTIPLIER = 1.5
-TAKE_PROFIT_ATR_MULTIPLIER = 1.5
+TAKE_PROFIT_ATR_MULTIPLIER = 1.5           # default TP (chop regime)
 SLIPPAGE_POINTS = 0.05
 COMMISSION_RATE = 0.000001
+
+# ── Volatility Switch (built but DISABLED by default) ────────────────────
+# Idea: when ADX(14) on the M15 trend candle is >= threshold, widen TP to
+# TAKE_PROFIT_ATR_MULTIPLIER_HIGH_VOL to capture trending moves; else keep 1:1.
+# Tested on 120-day Aug 2026 XAUUSD:
+#   baseline 1:1  → +19.89% net, PF 1.19, MaxDD -5.12R
+#   switch @ ADX 30 → +19.66% net, PF 1.18, MaxDD -7.12R  (SAME net, WORSE DD)
+# Verdict: no material improvement on real complete data; the earlier isolated
+# experiment that showed +3.6pp gain was an artifact of a fetch data gap that
+# lowered the baseline. Left in-place (flag) for future regime tests. Flip to
+# True to re-enable and A/B on live data before shipping.
+USE_VOLATILITY_SWITCH = False
+ADX_HIGH_VOL_THRESHOLD = 30.0
+TAKE_PROFIT_ATR_MULTIPLIER_HIGH_VOL = 3.0  # 1:2 RR when switch is on
+
+
+def add_adx14(df: "pd.DataFrame") -> "pd.DataFrame":
+    """Add Wilder ADX(14) as 'adx14' column. Idempotent — returns df unchanged if already present."""
+    if "adx14" in df.columns:
+        return df
+    import numpy as np  # local import — pandas already imported at module level
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+    close = df["close"].astype(float)
+    up = high.diff()
+    dn = -low.diff()
+    plus_dm = ((up > dn) & (up > 0)) * up.clip(lower=0)
+    minus_dm = ((dn > up) & (dn > 0)) * dn.clip(lower=0)
+    tr = pd.concat([high - low, (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
+    atr_w = tr.ewm(alpha=1.0 / 14, adjust=False).mean()
+    plus_di = 100 * plus_dm.ewm(alpha=1.0 / 14, adjust=False).mean() / atr_w
+    minus_di = 100 * minus_dm.ewm(alpha=1.0 / 14, adjust=False).mean() / atr_w
+    denom = (plus_di + minus_di).replace(0, np.nan)
+    dx = 100 * (plus_di - minus_di).abs() / denom
+    df = df.copy()
+    df["adx14"] = dx.ewm(alpha=1.0 / 14, adjust=False).mean()
+    return df
 
 
 def load_local_env(env_path: Path = ENV_PATH) -> None:
@@ -523,7 +560,16 @@ def simulate_forex_trade(
     entry_candle = entry_df.iloc[entry_index]
     entry_price = effective_entry_price(float(entry_candle["open"]), direction)
     position_size = risk_amount / risk_distance
-    take_profit_distance = float(signal_candle["atr14"]) * TAKE_PROFIT_ATR_MULTIPLIER
+    # Volatility switch: use wider TP in trending regime (ADX >= threshold on M15).
+    tp_mult = TAKE_PROFIT_ATR_MULTIPLIER
+    if USE_VOLATILITY_SWITCH:
+        try:
+            adx = float(trend_candle.get("adx14", 0.0) or 0.0)
+        except Exception:
+            adx = 0.0
+        if adx >= ADX_HIGH_VOL_THRESHOLD:
+            tp_mult = TAKE_PROFIT_ATR_MULTIPLIER_HIGH_VOL
+    take_profit_distance = float(signal_candle["atr14"]) * tp_mult
 
     if direction == "BUY":
         stop_loss = entry_price - risk_distance
@@ -751,6 +797,7 @@ def run_backtest(
     indicator_engine = IndicatorEngine()
     entry_df = indicator_engine.add_indicators(candles_5m)
     trend_df = indicator_engine.add_indicators(candles_15m)
+    trend_df = add_adx14(trend_df)  # for volatility switch — dynamic TP based on ADX
     trend_lookup = trend_df.set_index("timestamp", drop=False).sort_index()
 
     trades: list[dict[str, Any]] = []
