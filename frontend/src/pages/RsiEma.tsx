@@ -4,9 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useCandles, useXauStatus, useRunRsiBacktest, useLiveSignals, useBacktestHistory, useMarketStatus } from "@/hooks/use-trading-data";
+import { useCandles, useXauStatus, useRunRsiBacktest, useLiveSignals, useBacktestHistory, useMarketStatus, useBotStatus, useBotControl } from "@/hooks/use-trading-data";
 import { useMemo, useState } from "react";
-import { Play, BarChart2, History, SlidersHorizontal, TrendingUp, Send, Clock } from "lucide-react";
+import { Play, Square, BarChart2, History, SlidersHorizontal, TrendingUp, Send, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { LiveChart } from "@/components/LiveChart";
 import { BacktestResults } from "@/components/BacktestResults";
@@ -50,6 +50,20 @@ export default function RsiEma() {
   const { data: market } = useMarketStatus();
   const runBacktest = useRunRsiBacktest();
   const [loadingReport, setLoadingReport] = useState<string | null>(null);
+
+  // RSI EMA live bot (systemd sean-algo.service) status + start/stop
+  const { data: botStatus } = useBotStatus();
+  const botControl = useBotControl();
+  const rsiRunning = !!botStatus?.rsiEma?.running;
+  const toggleRsiBot = () => {
+    botControl.mutate(
+      { strategy: "rsi-ema", action: rsiRunning ? "STOP" : "START" },
+      {
+        onSuccess: (r: any) => toast({ title: `RSI EMA ${rsiRunning ? "Stopped" : "Started"}`, description: r?.message || "" }),
+        onError: (e: any) => toast({ title: "Bot control failed", description: String(e?.message || e), variant: "destructive" }),
+      },
+    );
+  };
 
   const openReport = async (id: string) => {
     setLoadingReport(id);
@@ -148,14 +162,20 @@ export default function RsiEma() {
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-primary" />
             <span className="font-bold text-lg tracking-tight">XAU/USD</span>
+            {rsiRunning && <Badge className="bg-accent/20 text-accent border-accent/40 text-[10px] font-bold px-2 animate-pulse">LIVE</Badge>}
             <Badge className="bg-primary/20 text-primary border-primary/40 text-[10px] font-bold px-2">RSI EMA</Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">Multi-timeframe RSI + EMA crossover · {activeTF}</p>
         </div>
-        <div className="text-right">
-          <div className="font-mono text-2xl font-bold tracking-tight">{livePrice ? livePrice.toFixed(2) : "—"}</div>
-          <div className={`font-mono text-sm font-bold ${changeAbs >= 0 ? "text-accent" : "text-destructive"}`}>
-            {changeAbs >= 0 ? "+" : ""}{changeAbs.toFixed(2)} ({changePct.toFixed(2)}%)
+        <div className="flex items-center gap-6">
+          <Button onClick={toggleRsiBot} disabled={botControl.isPending} variant={rsiRunning ? "destructive" : "default"} className="font-bold uppercase tracking-wider h-9">
+            {rsiRunning ? <><Square className="w-3.5 h-3.5 mr-1.5 fill-current" />Stop</> : <><Play className="w-3.5 h-3.5 mr-1.5 fill-current" />Start</>}
+          </Button>
+          <div className="text-right">
+            <div className="font-mono text-2xl font-bold tracking-tight">{livePrice ? livePrice.toFixed(2) : "—"}</div>
+            <div className={`font-mono text-sm font-bold ${changeAbs >= 0 ? "text-accent" : "text-destructive"}`}>
+              {changeAbs >= 0 ? "+" : ""}{changeAbs.toFixed(2)} ({changePct.toFixed(2)}%)
+            </div>
           </div>
         </div>
       </div>
