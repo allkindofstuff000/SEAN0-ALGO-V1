@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useCandles, useXauStatus, useRunRsiBacktest, useLiveSignals, useBacktestHistory, useMarketStatus, useBotStatus, useBotControl } from "@/hooks/use-trading-data";
+import { useCandles, useLivePrice, useRunRsiBacktest, useLiveSignals, useBacktestHistory, useMarketStatus, useBotStatus, useBotControl } from "@/hooks/use-trading-data";
 import { useMemo, useState } from "react";
 import { Play, Square, BarChart2, History, SlidersHorizontal, TrendingUp, Send, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -44,7 +44,7 @@ export default function RsiEma() {
 
   const tf = TF_MAP[activeTF];
   const { data: candleData } = useCandles(tf, 240);
-  const { data: status } = useXauStatus();
+  const { data: livePrice } = useLivePrice();
   const { data: signalsData } = useLiveSignals(100);
   const { data: history } = useBacktestHistory();
   const { data: market } = useMarketStatus();
@@ -78,8 +78,11 @@ export default function RsiEma() {
     }
   };
 
-  // Only RSI EMA forex runs (xau-scalp reports use a different schema)
-  const rsiReports = (history?.reports || []).filter((r) => r.params?.strategy !== "xau-scalp" && r.metrics?.total_trades != null);
+  // Only RSI EMA forex runs — filter out VWAP+ST (shown on its own page) and any legacy XAU Scalp runs
+  const rsiReports = (history?.reports || []).filter((r) => {
+    const strat = r.params?.strategy;
+    return strat !== "xau-scalp" && strat !== "vwap-st" && r.metrics?.total_trades != null;
+  });
 
   // Forex-only signal history — exclude ETH/crypto strategies (this is a XAU dashboard)
   const forexSignals = (signalsData?.signals || []).filter((s) => {
@@ -88,7 +91,7 @@ export default function RsiEma() {
   });
 
   const ind = useMemo(() => computeIndicators(candleData?.candles ?? []), [candleData]);
-  const livePrice = status?.livePrice?.price || ind?.price || 0;
+  const price = livePrice?.price || ind?.price || 0;
   const changeAbs = ind?.changeAbs ?? 0;
   const changePct = ind?.changePct ?? 0;
 
@@ -172,7 +175,7 @@ export default function RsiEma() {
             {rsiRunning ? <><Square className="w-3.5 h-3.5 mr-1.5 fill-current" />Stop</> : <><Play className="w-3.5 h-3.5 mr-1.5 fill-current" />Start</>}
           </Button>
           <div className="text-right">
-            <div className="font-mono text-2xl font-bold tracking-tight">{livePrice ? livePrice.toFixed(2) : "—"}</div>
+            <div className="font-mono text-2xl font-bold tracking-tight">{price ? price.toFixed(2) : "—"}</div>
             <div className={`font-mono text-sm font-bold ${changeAbs >= 0 ? "text-accent" : "text-destructive"}`}>
               {changeAbs >= 0 ? "+" : ""}{changeAbs.toFixed(2)} ({changePct.toFixed(2)}%)
             </div>
@@ -341,7 +344,7 @@ export default function RsiEma() {
                 </TableHeader>
                 <TableBody>
                   {forexSignals.length === 0 ? (
-                    <TableRow><TableCell colSpan={10} className="text-center py-10 text-xs text-muted-foreground">No signals fired yet. When the RSI EMA or XAU Scalp strategy fires and sends a Telegram alert, it appears here.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={10} className="text-center py-10 text-xs text-muted-foreground">No signals fired yet. When the RSI EMA strategy fires and sends a Telegram alert, it appears here.</TableCell></TableRow>
                   ) : (
                     forexSignals.map((s) => {
                       const t = s.sent_at ? new Date(s.sent_at) : s.timestamp ? new Date(s.timestamp) : null;

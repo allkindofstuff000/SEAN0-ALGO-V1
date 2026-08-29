@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Api, type BacktestParams, type RsiBacktestParams } from "@/lib/api";
+import { Api, type RsiBacktestParams, type VwapStBacktestParams } from "@/lib/api";
 
 // ── Live data queries ────────────────────────────────────────────────────────
 export function useCandles(tf: string, count = 240) {
@@ -10,43 +10,11 @@ export function useCandles(tf: string, count = 240) {
   });
 }
 
-export function useXauStatus() {
+export function useLivePrice() {
   return useQuery({
-    queryKey: ["xau-status"],
-    queryFn: Api.xauStatus,
+    queryKey: ["live-price"],
+    queryFn: Api.livePrice,
     refetchInterval: 3_000,
-  });
-}
-
-export function useXauStats() {
-  return useQuery({
-    queryKey: ["xau-stats"],
-    queryFn: Api.xauStats,
-    refetchInterval: 5_000,
-  });
-}
-
-export function useXauConditions() {
-  return useQuery({
-    queryKey: ["xau-conditions"],
-    queryFn: Api.xauConditions,
-    refetchInterval: 3_000,
-  });
-}
-
-export function useXauSignals(limit = 20) {
-  return useQuery({
-    queryKey: ["xau-signals", limit],
-    queryFn: () => Api.xauSignals(limit),
-    refetchInterval: 10_000,
-  });
-}
-
-export function useXauLog(limit = 100) {
-  return useQuery({
-    queryKey: ["xau-log", limit],
-    queryFn: () => Api.xauLog(limit),
-    refetchInterval: 5_000,
   });
 }
 
@@ -84,18 +52,22 @@ export function useLiveSignals(limit = 100) {
 }
 
 // ── Mutations ────────────────────────────────────────────────────────────────
-export function useRunBacktest() {
+
+// RSI EMA forex engine backtest (POST /backtest)
+export function useRunRsiBacktest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (params: BacktestParams) => Api.runBacktest(params),
+    mutationFn: (params: RsiBacktestParams) => Api.runRsiBacktest(params),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["backtest-history"] }),
   });
 }
 
-// RSI EMA forex engine backtest (POST /backtest)
-export function useRunRsiBacktest() {
+// VWAP + Supertrend backtest (POST /api/vwap-st/backtest)
+export function useRunVwapStBacktest() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (params: RsiBacktestParams) => Api.runRsiBacktest(params),
+    mutationFn: (params: VwapStBacktestParams) => Api.runVwapStBacktest(params),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["backtest-history"] }),
   });
 }
 
@@ -107,11 +79,10 @@ export function useBotControl() {
       strategy,
     }: {
       action: "START" | "STOP";
-      strategy: "rsi-ema" | "xau-scalp";
+      strategy: "rsi-ema";
     }) => (action === "START" ? Api.startBot(strategy) : Api.stopBot(strategy)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["bot-status"] });
-      qc.invalidateQueries({ queryKey: ["xau-status"] });
     },
   });
 }

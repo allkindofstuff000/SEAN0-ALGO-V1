@@ -1,10 +1,10 @@
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useBotControl, useBotStatus, useXauLog, useXauStatus, useCandles, useMarketStatus } from "@/hooks/use-trading-data";
-import { Play, Square, Activity, Wifi, Server, Clock } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useBotControl, useBotStatus, useLivePrice, useCandles, useMarketStatus } from "@/hooks/use-trading-data";
+import { Play, Square, Wifi, Server, Clock, BarChart2 } from "lucide-react";
+import { useMemo } from "react";
+import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { computeIndicators } from "@/lib/indicators";
 
@@ -73,37 +73,24 @@ function StrategyCard({
   );
 }
 
-const FILTERS = ["ALL", "SIGNALS", "WAITING", "CLR"];
-
 export default function LiveBot() {
-  const [filter, setFilter] = useState("ALL");
   const { toast } = useToast();
   const { data: bot } = useBotStatus();
-  const { data: status } = useXauStatus();
+  const { data: live } = useLivePrice();
   const { data: candleData } = useCandles("M5", 60);
   const { data: market } = useMarketStatus();
-  const { data: logData } = useXauLog(80);
   const botControl = useBotControl();
 
   const ind = useMemo(() => computeIndicators(candleData?.candles ?? []), [candleData]);
-  const price = status?.livePrice?.price || ind?.price || 0;
-  const sessionText = status?.conditions?.session?.headline || "—";
-  const runningCount = [bot?.rsiEma?.running, bot?.xauScalp?.running].filter(Boolean).length;
+  const price = live?.price || ind?.price || 0;
+  const sessionText = market?.closed ? (market?.reason || "Market Closed") : "Market Open";
 
-  const handleToggle = (strategy: "rsi-ema" | "xau-scalp", label: string, action: "START" | "STOP") => {
+  const handleToggle = (strategy: "rsi-ema", label: string, action: "START" | "STOP") => {
     botControl.mutate({ strategy, action }, {
       onSuccess: (r) => toast({ title: `${label} ${action === "START" ? "Started" : "Stopped"}`, description: (r as any).message || "", variant: action === "START" ? "default" : "destructive" }),
       onError: (e: any) => toast({ title: "Action failed", description: String(e.message || e), variant: "destructive" }),
     });
   };
-
-  const logs = (logData?.log ?? []).filter((l) => {
-    if (filter === "ALL") return true;
-    if (filter === "SIGNALS") return l.decision !== "NO_SIGNAL";
-    if (filter === "WAITING") return l.decision === "NO_SIGNAL";
-    if (filter === "CLR") return false;
-    return true;
-  });
 
   return (
     <PageLayout>
@@ -130,8 +117,8 @@ export default function LiveBot() {
           <span className="text-foreground">{price ? price.toFixed(2) : "—"}</span>
         </div>
         <div className="ml-auto flex items-center gap-1.5 text-muted-foreground">
-          <span>BOTS ACTIVE:</span>
-          <span className="text-accent font-bold">{runningCount} / 2</span>
+          <span>LIVE STRATEGIES:</span>
+          <span className="text-accent font-bold">{bot?.rsiEma?.running ? 1 : 0} / 1</span>
         </div>
       </div>
 
@@ -147,60 +134,31 @@ export default function LiveBot() {
             onToggle={(a) => handleToggle("rsi-ema", "RSI EMA", a)}
             sessionText={sessionText}
           />
-          <StrategyCard
-            title="XAU SCALP"
-            subtitle="XAUUSD · 1M / 5M · ICT execution"
-            running={!!bot?.xauScalp?.running}
-            uptime={uptimeFrom(bot?.xauScalp?.startedAt)}
-            pending={botControl.isPending}
-            onToggle={(a) => handleToggle("xau-scalp", "XAU Scalp", a)}
-            sessionText={sessionText}
-          />
-        </div>
 
-        {/* Decision Log */}
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 py-3 border-b border-border bg-secondary/10 gap-3">
-            <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-muted-foreground" />
-              <span className="font-mono font-bold text-sm">SEAN ALGO · decision_log</span>
+          {/* VWAP+ST — backtest-only for now, link to its page */}
+          <div className="flex flex-col rounded-lg border border-border border-dashed bg-card/50 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-secondary/10">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm tracking-wider">VWAP + SUPERTREND</span>
+              </div>
+              <Badge variant="secondary" className="text-[10px] font-mono font-bold px-2 py-0.5 bg-primary/15 text-primary border border-primary/30">
+                BACKTEST
+              </Badge>
             </div>
-            <div className="flex items-center gap-1 bg-secondary/60 p-1 rounded-lg">
-              {FILTERS.map((f) => (
-                <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1 text-xs font-bold uppercase rounded-md transition-all ${filter === f ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-background/50"}`}>
-                  {f}
-                </button>
-              ))}
+            <div className="px-4 pt-3 pb-1">
+              <p className="text-xs text-muted-foreground font-mono">XAUUSD · M5 · ST(10, 3.0) @ 1:2 RR</p>
+            </div>
+            <div className="px-4 pb-3 pt-2 text-xs text-muted-foreground leading-relaxed">
+              Backtest-validated on 2×60-day windows (walk-forward). Live bot ships in a follow-up — use the backtest page to explore parameters.
+            </div>
+            <div className="px-4 pb-4 mt-auto">
+              <Link href="/vwap-st">
+                <Button variant="outline" className="w-full font-bold tracking-wider">
+                  <BarChart2 className="w-4 h-4 mr-2" /> OPEN BACKTEST
+                </Button>
+              </Link>
             </div>
           </div>
-          <Table>
-            <TableHeader className="bg-secondary/30">
-              <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="w-[130px] font-mono text-[10px] text-muted-foreground uppercase">Time</TableHead>
-                <TableHead className="w-[140px] font-mono text-[10px] text-muted-foreground uppercase">Decision</TableHead>
-                <TableHead className="w-[110px] font-mono text-[10px] text-muted-foreground uppercase">Price</TableHead>
-                <TableHead className="font-mono text-[10px] text-muted-foreground uppercase">Reason</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {logs.length === 0 ? (
-                <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground text-xs">{filter === "CLR" ? "Log cleared — select ALL to view." : "No log entries for this filter."}</TableCell></TableRow>
-              ) : (
-                logs.slice(0, 50).map((log, i) => (
-                  <TableRow key={i} className="border-border hover:bg-secondary/20 transition-colors">
-                    <TableCell className="font-mono text-xs text-muted-foreground">{new Date(log.ts).toLocaleTimeString()}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={`font-mono text-[10px] ${log.decision !== "NO_SIGNAL" ? "text-accent border-accent/40 bg-accent/10" : "bg-secondary/50 border-border"}`}>
-                        {log.decision}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs font-bold">{log.price?.toFixed?.(2) ?? "—"}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground max-w-[360px] truncate" title={log.reason}>{log.reason}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
         </div>
       </div>
     </PageLayout>

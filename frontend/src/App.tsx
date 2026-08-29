@@ -7,7 +7,7 @@ import NotFound from "@/pages/not-found";
 // Pages
 import LiveBot from "./pages/LiveBot";
 import RsiEma from "./pages/RsiEma";
-import XauScalp from "./pages/XauScalp";
+import VwapSt from "./pages/VwapSt";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,7 +24,7 @@ function Router() {
       <Route path="/" component={LiveBot} />
       <Route path="/live-bot" component={LiveBot} />
       <Route path="/rsi-ema" component={RsiEma} />
-      <Route path="/xau-scalp" component={XauScalp} />
+      <Route path="/vwap-st" component={VwapSt} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -7,7 +7,7 @@ export function TopNav() {
 
   const navItems = [
     { href: "/rsi-ema", label: "RSI EMA" },
-    { href: "/xau-scalp", label: "XAU SCALP" },
+    { href: "/vwap-st", label: "VWAP+ST" },
   ];
 
   return (

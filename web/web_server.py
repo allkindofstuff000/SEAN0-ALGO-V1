@@ -79,17 +79,13 @@ except Exception as _eng_exc:
 
 _stream_engine: "OandaStreamEngine | None" = None
 
-# ── XAU Scalp strategy (isolated — does NOT touch existing RSI EMA code) ──────
+# ── VWAP + Supertrend strategy (backtest-only for now; live bot deploys later) ─
 try:
-    from strategies.xau_scalp import XauScalpSignal as _XauScalpSignal
-    _XAU_SCALP_AVAILABLE = True
-except Exception as _xau_exc:
-    _XAU_SCALP_AVAILABLE = False
-    LOGGER = logging.getLogger("dashboard")
-    logging.basicConfig(level=logging.INFO)
-    logging.getLogger("dashboard").warning("[XAU-SCALP] import failed: %s", _xau_exc)
-
-_xau_scalp: "_XauScalpSignal | None" = None
+    from strategies.vwap_supertrend import run_backtest as _vwap_st_run_backtest
+    _VWAP_ST_AVAILABLE = True
+except Exception as _vwap_st_exc:
+    _VWAP_ST_AVAILABLE = False
+    logging.getLogger("dashboard").warning("[VWAP-ST] import failed: %s", _vwap_st_exc)
 
 # ── Binance ETH engine (isolated — does NOT touch OANDA code) ─────────────────
 try:
@@ -175,8 +171,8 @@ def is_market_open(now_utc: _dt.datetime | None = None) -> dict[str, Any]:
 
 
 # Prevent two backtest runs overlapping
-_backtest_lock     = threading.Lock()
-_xau_backtest_lock = threading.Lock()
+_backtest_lock      = threading.Lock()
+_vwap_backtest_lock = threading.Lock()
 
 # ── Bot process management ────────────────────────────────────────────────────
 _bot_process: subprocess.Popen | None = None
@@ -209,12 +205,16 @@ class BacktestRequest(BaseModel):
     risk_per_trade_pct: float = 5.0
 
 
-class XauBacktestRequest(BaseModel):
+class VwapStBacktestRequest(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
-    starting_balance: float = 10_000.0
-    risk_per_trade_pct: float = 1.0   # 0.5–5 %
-    max_hold_bars: int = 200          # M1 bars to wait for TP/SL before TIMEOUT
+    starting_balance: float = 5_000.0
+    risk_per_trade_pct: float = 2.0   # 0.5–5 %
+    st_period: int = 10
+    st_mult: float = 3.0
+    sl_atr: float = 1.5
+    tp_atr: float = 3.0
+    max_hold_bars: int = 12
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -682,13 +682,6 @@ async def _init_candle_engine() -> None:
         await engine.start(loop)
         _stream_engine = engine
         LOGGER.info("[ENGINE] candle engine started")
-
-        # Start XAU Scalp strategy (subscribes to same stream — no second OANDA conn)
-        if _XAU_SCALP_AVAILABLE:
-            global _xau_scalp
-            _xau_scalp = _XauScalpSignal(engine)
-            await _xau_scalp.initialize()
-            LOGGER.info("[XAU-SCALP] strategy engine started")
     except Exception as exc:
         LOGGER.error("[ENGINE] startup failed: %s", exc)
 
@@ -979,78 +972,44 @@ async def stream_chart_candles(granularity: str = "M5") -> StreamingResponse:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# XAU SCALP STRATEGY — API Routes  (completely isolated from RSI EMA routes)
+# LIVE PRICE — lightweight snapshot from the OANDA stream engine
+# (replaces the deprecated /api/xau-scalp/status endpoint that page headers
+#  used to poll for live XAU/USD price)
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.get("/api/xau-scalp/status", tags=["xau-scalp"])
-async def xau_scalp_status():
-    """Current conditions + latest signal + live price."""
-    if _xau_scalp is None:
-        return {"initialized": False, "error": "XAU Scalp strategy not available"}
-    return _xau_scalp.get_status()
-
-
-@app.get("/api/xau-scalp/signal/latest", tags=["xau-scalp"])
-async def xau_scalp_latest():
-    """Most recent signal object."""
-    if _xau_scalp is None:
-        return {"signal": None}
-    return {"signal": _xau_scalp.get_latest_signal()}
-
-
-@app.get("/api/xau-scalp/signals/history", tags=["xau-scalp"])
-async def xau_scalp_history(limit: int = 20):
-    """Last N signals."""
-    if _xau_scalp is None:
-        return {"signals": []}
-    return {"signals": _xau_scalp.get_signal_history(limit=min(limit, 100))}
-
-
-@app.get("/api/xau-scalp/stats", tags=["xau-scalp"])
-async def xau_scalp_stats():
-    """Strategy performance statistics."""
-    if _xau_scalp is None:
-        return {}
-    return _xau_scalp.get_strategy_stats()
-
-
-@app.get("/api/xau-scalp/conditions", tags=["xau-scalp"])
-async def xau_scalp_conditions():
-    """Real-time status of all 5 strategy conditions."""
-    if _xau_scalp is None:
-        return {}
-    return _xau_scalp.get_current_conditions()
-
-
-@app.get("/api/xau-scalp/stream", tags=["xau-scalp"])
-async def xau_scalp_stream():
-    """SSE stream: status updates every 2 s + signal alerts."""
-    import json as _json
-
-    async def _gen():
-        while True:
-            try:
-                data: dict = {}
-                if _xau_scalp:
-                    data = _xau_scalp.get_status()
-                yield f"data: {_json.dumps(data, default=str)}\n\n"
-            except Exception:
-                pass
-            await asyncio.sleep(2)
-
-    return StreamingResponse(_gen(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
-
-
-@app.post("/api/xau-scalp/backtest", tags=["xau-scalp"])
-def xau_scalp_backtest(req: XauBacktestRequest) -> dict[str, Any]:
-    """Run the XAU Scalp strategy over M1 historical candles."""
-    if not _xau_backtest_lock.acquire(blocking=False):
-        raise HTTPException(status_code=429, detail="XAU backtest already running. Please wait.")
+@app.get("/api/live/price", tags=["live"])
+def api_live_price() -> dict[str, Any]:
+    """Latest XAU/USD price + timestamp (from the M1 candle stream)."""
+    if _stream_engine is None:
+        return {"price": None, "time": None, "initialized": False}
     try:
-        from strategies.xau_scalp.backtester import run_backtest  # noqa: PLC0415
+        candles = _stream_engine.store.get_all("M1") or []
+        if not candles:
+            return {"price": None, "time": None, "initialized": False}
+        last = candles[-1]
+        return {
+            "price": float(last.get("close", 0.0)),
+            "time": int(last.get("time", 0)),
+            "initialized": True,
+        }
+    except Exception as exc:
+        LOGGER.warning("[LIVE_PRICE] error: %s", exc)
+        return {"price": None, "time": None, "initialized": False}
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VWAP + SUPERTREND STRATEGY — API Routes
+# Backtest only for now. Live bot deploys in a follow-up (separate systemd svc).
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/vwap-st/backtest", tags=["vwap-st"])
+def vwap_st_backtest(req: VwapStBacktestRequest) -> dict[str, Any]:
+    """Run the VWAP + Supertrend strategy over historical M5 XAUUSD candles."""
+    if not _VWAP_ST_AVAILABLE:
+        raise HTTPException(status_code=503, detail="VWAP+ST strategy module not available.")
+    if not _vwap_backtest_lock.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="VWAP+ST backtest already running. Please wait.")
+    try:
         now_utc       = pd.Timestamp.now(tz="UTC")
         today         = now_utc.normalize()
         yesterday_end = today - pd.Timedelta(seconds=1)
@@ -1058,13 +1017,12 @@ def xau_scalp_backtest(req: XauBacktestRequest) -> dict[str, Any]:
         if req.start_date:
             start_utc = pd.Timestamp(req.start_date).tz_localize("UTC")
         else:
-            start_utc = today - pd.Timedelta(days=30)
+            start_utc = today - pd.Timedelta(days=60)
 
         if req.end_date:
             end_utc = pd.Timestamp(req.end_date).tz_localize("UTC") + pd.Timedelta(days=1)
         else:
             end_utc = yesterday_end
-
         end_utc = min(end_utc, yesterday_end)
 
         if end_utc <= start_utc:
@@ -1072,62 +1030,65 @@ def xau_scalp_backtest(req: XauBacktestRequest) -> dict[str, Any]:
 
         risk_frac = max(0.005, min(0.05, req.risk_per_trade_pct / 100.0))
 
-        trades, metrics, equity_curve = run_backtest(
-            start_utc        = start_utc,
-            end_utc          = end_utc,
-            starting_balance = req.starting_balance,
-            risk_per_trade   = risk_frac,
-            max_hold_bars    = req.max_hold_bars,
+        trades_df, metrics, equity_curve = _vwap_st_run_backtest(
+            start_utc         = start_utc,
+            end_utc           = end_utc,
+            starting_balance  = req.starting_balance,
+            risk_per_trade    = risk_frac,
+            st_period         = req.st_period,
+            st_mult           = req.st_mult,
+            sl_atr_multiplier = req.sl_atr,
+            tp_atr_multiplier = req.tp_atr,
+            max_hold_bars     = req.max_hold_bars,
         )
 
-        # Sanitise NaN / Inf before serialisation (reuse top-level _safe_num)
-        trades_out = [
-            {k: _safe_num(v) for k, v in t.items()} for t in trades
-        ]
+        trades_out: list[dict[str, Any]] = []
+        if not trades_df.empty:
+            for row in trades_df.fillna("").to_dict(orient="records"):
+                for k in ("timestamp", "entry_timestamp", "exit_timestamp"):
+                    if k in row and not isinstance(row[k], str):
+                        row[k] = str(row[k])[:19]
+                trades_out.append({k: _safe_num(v) if not isinstance(v, str) else v for k, v in row.items()})
+
         metrics_out = {k: _safe_num(v) for k, v in metrics.items()}
 
         LOGGER.info(
-            "XAU Scalp backtest complete  trades=%s  win_rate=%.1f%%  balance=$%.2f",
-            metrics_out.get("totalTrades", 0),
-            metrics_out.get("winRate", 0.0) or 0.0,
-            metrics_out.get("finalBalance", 0.0) or 0.0,
+            "VWAP+ST backtest complete  trades=%s  win_rate=%.1f%%  balance=$%.2f",
+            metrics_out.get("total_trades", 0),
+            metrics_out.get("win_rate", 0.0) or 0.0,
+            metrics_out.get("ending_balance", 0.0) or 0.0,
         )
 
-        # ── Persist to MongoDB ────────────────────────────────────────────────
         mongo_id = save_backtest_report(
             metrics=metrics_out,
             trades=trades_out,
             equity_curve=equity_curve,
             params={
-                "strategy":          "xau-scalp",
-                "start_date":        req.start_date,
-                "end_date":          req.end_date,
-                "starting_balance":  req.starting_balance,
+                "strategy":           "vwap-st",
+                "start_date":         req.start_date,
+                "end_date":           req.end_date,
+                "starting_balance":   req.starting_balance,
                 "risk_per_trade_pct": req.risk_per_trade_pct,
-                "max_hold_bars":     req.max_hold_bars,
+                "st_period":          req.st_period,
+                "st_mult":            req.st_mult,
+                "sl_atr":             req.sl_atr,
+                "tp_atr":             req.tp_atr,
+                "max_hold_bars":      req.max_hold_bars,
             },
         )
 
         return {
-            "metrics": metrics_out,
-            "trades": trades_out,
+            "metrics":      metrics_out,
+            "trades":       trades_out,
             "equity_curve": equity_curve,
-            "mongo_id": mongo_id,
+            "mongo_id":     mongo_id,
         }
 
     except Exception as exc:
-        LOGGER.error("XAU backtest error: %s", exc, exc_info=True)
+        LOGGER.error("VWAP+ST backtest error: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     finally:
-        _xau_backtest_lock.release()
-
-
-@app.get("/api/xau-scalp/log", tags=["xau-scalp"])
-async def xau_scalp_log(limit: int = 100) -> dict[str, Any]:
-    """Return the XAU Scalp decision log (latest N candle evaluations)."""
-    if _xau_scalp is None:
-        return {"log": [], "error": "XAU Scalp strategy not running."}
-    return {"log": _xau_scalp.get_decision_log(limit=min(limit, 100))}
+        _vwap_backtest_lock.release()
 
 
 # ── Static files (React SPA) ──────────────────────────────────────────────────
@@ -1152,9 +1113,6 @@ def api_bot_status() -> dict[str, Any]:
         rsi_running = True
         rsi_pid = _bot_process.pid
 
-    # XAU Scalp strategy status
-    xau_running = _xau_scalp is not None and getattr(_xau_scalp, "_initialized", False) and not getattr(_xau_scalp, "_paused", False)
-
     market = is_market_open()
 
     # ETH strategies
@@ -1163,12 +1121,10 @@ def api_bot_status() -> dict[str, Any]:
 
     # Load uptime started_at from MongoDB
     rsi_started = load_strategy_started_at("rsi-ema") if rsi_running else None
-    xau_started = load_strategy_started_at("xau-scalp") if xau_running else None
     eth_started = load_strategy_started_at("rsi-eth") if rsi_eth_running else None
 
     return {
         "rsiEma": {"running": rsi_running, "pid": rsi_pid, "startedAt": rsi_started},
-        "xauScalp": {"running": xau_running, "pid": None, "paused": getattr(_xau_scalp, "_paused", False) if _xau_scalp else False, "startedAt": xau_started},
         "rsiEth": {
             "running": rsi_eth_running,
             "paused": getattr(_rsi_eth, "_paused", False) if _rsi_eth else False,
@@ -1179,7 +1135,7 @@ def api_bot_status() -> dict[str, Any]:
             "strategy_behavior": rsi_eth_status.get("strategy_behavior"),
             "market_open": rsi_eth_status.get("market_open", True),
         },
-        "anyRunning": rsi_running or xau_running or rsi_eth_running,
+        "anyRunning": rsi_running or rsi_eth_running,
         "market": market,
     }
 
@@ -1206,39 +1162,12 @@ def api_rsi_stop() -> dict[str, Any]:
     return result
 
 
-@app.post("/api/bot/xau-scalp/start", tags=["bot"])
-async def api_xau_start() -> dict[str, Any]:
-    """Start (resume) the XAU Scalp strategy."""
-    if _xau_scalp is None:
-        raise HTTPException(status_code=503, detail="XAU Scalp strategy not available.")
-    if _xau_scalp._initialized and not _xau_scalp._paused:
-        return {"status": "already_running", "message": "XAU Scalp is already running."}
-    await _xau_scalp.resume()
-    save_strategy_state("xau-scalp", "running")
-    LOGGER.info("[XAU-SCALP] strategy resumed via API")
-    return {"status": "started", "message": "XAU Scalp strategy resumed."}
-
-
-@app.post("/api/bot/xau-scalp/stop", tags=["bot"])
-def api_xau_stop() -> dict[str, Any]:
-    """Stop (pause) the XAU Scalp strategy."""
-    if _xau_scalp is None:
-        raise HTTPException(status_code=503, detail="XAU Scalp strategy not available.")
-    if _xau_scalp._paused:
-        return {"status": "already_stopped", "message": "XAU Scalp is already stopped."}
-    _xau_scalp.stop()
-    save_strategy_state("xau-scalp", "stopped")
-    LOGGER.info("[XAU-SCALP] strategy stopped via API")
-    return {"status": "stopped", "message": "XAU Scalp strategy stopped."}
-
-
 @app.get("/api/bot/log-stream", tags=["bot"])
 async def api_bot_log_stream():
     """Unified SSE log stream merging RSI EMA logs + XAU Scalp decision log."""
     async def event_generator():
         # FIX: Start from end of file — only show NEW logs, not the entire history
         last_log_line = 0
-        last_xau_ts = 0
         last_rsi_eth_ts = 0
         first_poll = True
         yield f"data: {_json.dumps({'type':'connected','message':'Unified log stream connected'})}\n\n"
@@ -1319,29 +1248,6 @@ async def api_bot_log_stream():
                     last_log_line = len(lines)
             except Exception:
                 pass
-            # XAU Scalp decision log — only last 5 entries on first connect
-            try:
-                if _xau_scalp is not None:
-                    import datetime as _dt
-                    log_entries = _xau_scalp.get_decision_log(limit=5)
-                    for entry in log_entries:
-                        ts = entry.get("ts", 0)
-                        if ts > last_xau_ts:
-                            last_xau_ts = ts
-                            t_str = _dt.datetime.utcfromtimestamp(ts / 1000).strftime("%H:%M:%S") if ts else ""
-                            decision = entry.get("decision", "")
-                            reason = entry.get("reason", "")
-                            price = entry.get("price", "")
-                            events.append({
-                                "strategy": "XAU-SCALP",
-                                "level": "SIGNAL" if decision == "SIGNAL" else "INFO",
-                                "message": f"{decision} @ {price} — {reason}",
-                                "time": t_str,
-                                "raw": _json.dumps(entry),
-                                "entry": entry,
-                            })
-            except Exception:
-                pass
             # RSI-ETH decision log
             try:
                 if _rsi_eth is not None:
@@ -1388,16 +1294,6 @@ def serve_live_bot_dashboard():
     """Live Bot control + unified log page."""
     return FileResponse(
         str(STATIC_DIR / "live_bot.html"),
-        media_type="text/html",
-        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
-    )
-
-
-@app.get("/dashboard/xau-scalp", include_in_schema=False)
-def serve_xau_scalp_dashboard():
-    """Dedicated XAU Scalp Strategy dashboard page."""
-    return FileResponse(
-        str(STATIC_DIR / "xau_scalp.html"),
         media_type="text/html",
         headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
     )

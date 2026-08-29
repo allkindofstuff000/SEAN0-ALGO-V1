@@ -42,68 +42,10 @@ export type Candle = {
   complete?: boolean;
 };
 
-export type Condition = {
-  active: boolean;
-  headline: string;
-  detail: string;
-  badge: string;
-  allowed?: boolean;
-  session?: string;
-  zoneName?: string;
-  countdown?: { sessionName?: string; startsIn_minutes?: number };
-};
-
-export type Conditions = {
-  session: Condition;
-  bias15m: Condition;
-  zone5m: Condition;
-  sslSweep: Condition;
-  displacement: Condition;
-  cisd: Condition;
-  entryFVG: Condition;
-  pdaCheck: Condition;
-};
-
-export type XauStatus = {
-  initialized: boolean;
-  paused: boolean;
-  candleCount: number;
-  livePrice: { price: number; time: number };
-  conditions: Conditions;
-};
-
-export type XauStats = {
-  totalSignals: number;
-  strongSignals: number;
-  mediumSignals: number;
-  lastSignalTime: number | null;
-  candleCount: number;
-  initialized: boolean;
-};
-
-export type XauSignal = {
-  ts?: number;
-  time?: string;
-  price?: number;
-  direction?: "BUY" | "SELL" | string;
-  strength?: string;
-  score?: number;
-  reason?: string;
-  session?: string;
-};
-
-export type DecisionLogRow = {
-  ts: number;
-  candleTime: number;
+export type LivePrice = {
   price: number;
-  reason: string;
-  decision: string;
-  score: number;
-  strength: string | null;
-  direction: string | null;
-  conditions: Record<string, boolean>;
-  session: string;
-  bias: string;
+  time: number;
+  initialized: boolean;
 };
 
 export type MarketStatus = {
@@ -115,36 +57,9 @@ export type MarketStatus = {
 
 export type BotStatus = {
   rsiEma: { running: boolean; pid: number | null; startedAt: string | null };
-  xauScalp: { running: boolean; paused: boolean; startedAt: string | null };
   rsiEth: Record<string, any>;
   anyRunning: boolean;
   market: MarketStatus;
-};
-
-export type BacktestMetrics = {
-  totalTrades?: number;
-  winRate?: number;
-  profitFactor?: number;
-  finalBalance?: number;
-  netProfit?: number;
-  maxDrawdown?: number;
-  [k: string]: any;
-};
-
-export type BacktestResult = {
-  metrics: BacktestMetrics;
-  trades: any[];
-  equity_curve: any[];
-  mongo_id?: string;
-  error?: string;
-};
-
-export type BacktestParams = {
-  start_date?: string | null;
-  end_date?: string | null;
-  starting_balance: number;
-  risk_per_trade_pct: number;
-  max_hold_bars?: number;
 };
 
 // ── RSI EMA forex backtest (POST /backtest) ──────────────────────────────────
@@ -198,6 +113,22 @@ export type RsiBacktestResult = {
   error?: string;
 };
 
+// ── VWAP + Supertrend backtest (POST /api/vwap-st/backtest) ─────────────────
+export type VwapStBacktestParams = {
+  start_date?: string | null;
+  end_date?: string | null;
+  starting_balance: number;
+  risk_per_trade_pct: number;
+  st_period: number;
+  st_mult: number;
+  sl_atr: number;
+  tp_atr: number;
+  max_hold_bars: number;
+};
+
+// VWAP+ST backtest returns the same shape as the RSI EMA one (metrics + trades + equity_curve)
+export type VwapStBacktestResult = RsiBacktestResult;
+
 export type BacktestHistoryItem = {
   _id: string;
   saved_at: string;
@@ -244,24 +175,18 @@ export const Api = {
     apiGet<{ candles: Candle[]; granularity: string; source: string }>(
       `/api/candles/${tf}?count=${count}`,
     ),
-  xauStatus: () => apiGet<XauStatus>("/api/xau-scalp/status"),
-  xauStats: () => apiGet<XauStats>("/api/xau-scalp/stats"),
-  xauConditions: () => apiGet<Conditions>("/api/xau-scalp/conditions"),
-  xauSignals: (limit = 20) =>
-    apiGet<{ signals: XauSignal[] }>(`/api/xau-scalp/signals/history?limit=${limit}`),
-  xauLog: (limit = 100) =>
-    apiGet<{ log: DecisionLogRow[] }>(`/api/xau-scalp/log?limit=${limit}`),
+  livePrice: () => apiGet<LivePrice>("/api/live/price"),
   marketStatus: () => apiGet<MarketStatus>("/api/market/status"),
   botStatus: () => apiGet<BotStatus>("/api/bot/status"),
   backtestHistory: (limit = 50) =>
     apiGet<{ reports: BacktestHistoryItem[]; count: number; mongo_available: boolean }>(`/backtest/history?limit=${limit}`),
   backtestReport: (id: string) => apiGet<RsiBacktestResult & { params?: any; saved_at?: string }>(`/backtest/history/${id}`),
-  runBacktest: (p: BacktestParams) => apiPost<BacktestResult>("/api/xau-scalp/backtest", p),
   runRsiBacktest: (p: RsiBacktestParams) => apiPost<RsiBacktestResult>("/backtest", p),
+  runVwapStBacktest: (p: VwapStBacktestParams) => apiPost<VwapStBacktestResult>("/api/vwap-st/backtest", p),
   liveSignals: (limit = 100) => apiGet<{ signals: LiveSignal[]; count: number }>(`/signals?limit=${limit}`),
-  startBot: (strategy: "rsi-ema" | "xau-scalp") =>
+  startBot: (strategy: "rsi-ema") =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/start`),
-  stopBot: (strategy: "rsi-ema" | "xau-scalp") =>
+  stopBot: (strategy: "rsi-ema") =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/stop`),
 };
 
