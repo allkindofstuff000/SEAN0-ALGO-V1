@@ -1,0 +1,18 @@
+[Unit]
+Description=SEAN ALGO — VWAP + Supertrend live signal bot
+After=network-online.target sean0algo.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sean0algo
+EnvironmentFile=/opt/sean0algo/.env
+ExecStart=/opt/sean0algo/.venv/bin/python /opt/sean0algo/vwap_st_live.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/var/log/vwap-st.log
+StandardError=append:/var/log/vwap-st.log
+
+[Install]
+WantedBy=multi-user.target

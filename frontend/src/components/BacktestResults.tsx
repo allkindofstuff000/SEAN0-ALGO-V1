@@ -3,6 +3,7 @@ import Chart from "chart.js/auto";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { RsiBacktestResult } from "@/lib/api";
+import { fmtLocal, toUtcDate, TZ_LABEL } from "@/lib/tz";
 
 const GREEN = "#26a69a";
 const RED = "#ef5350";
@@ -12,6 +13,25 @@ const TICK = "#8b8f9a";
 
 const money = (v: number) =>
   (v < 0 ? "-" : "") + "$" + Math.abs(Math.round(v)).toLocaleString();
+
+// Entry/exit timestamps shown in the dashboard display timezone (UTC+6 Dhaka).
+const fmtTime = (iso?: string): string => fmtLocal(iso);
+
+// Duration from entry_timestamp to exit_timestamp, human-readable (tz-agnostic)
+const fmtDuration = (entryIso?: string, exitIso?: string): string => {
+  const e = toUtcDate(entryIso);
+  const x = toUtcDate(exitIso);
+  if (!e || !x) return "—";
+  const dur = x.getTime() - e.getTime();
+  if (!Number.isFinite(dur) || dur < 0) return "—";
+  const totalSec = Math.round(dur / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+};
 
 function MetricCard({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "good" | "bad" | "neutral" }) {
   const color = tone === "good" ? "text-accent" : tone === "bad" ? "text-destructive" : "text-foreground";
@@ -89,7 +109,7 @@ export function BacktestResults({ result, startBalance }: { result: RsiBacktestR
       data: { labels: trades.map((_, i) => `#${i + 1}`), datasets: [{ data: pnls, backgroundColor: plColors, borderRadius: 2 }] },
       options: {
         responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => money(c.parsed.y) + "  (" + (trades[c.dataIndex]?.exit_timestamp || "").slice(5, 16) + ")" } } },
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => money(c.parsed.y) + "  (" + fmtLocal(trades[c.dataIndex]?.exit_timestamp) + ")" } } },
         scales: { x: { grid: { display: false }, ticks: { color: TICK, font: { size: 9 }, autoSkip: true, maxTicksLimit: 25 } }, y: { ...baseScale.y, ticks: { ...baseScale.y.ticks, callback: (v) => money(v as number) } } },
       },
     }));
@@ -111,6 +131,26 @@ export function BacktestResults({ result, startBalance }: { result: RsiBacktestR
         <MetricCard label="Max Drawdown" value={`${fmt(maxDDpct)}%`} sub={`${fmt(m.max_drawdown_r)}R`} tone="bad" />
         <MetricCard label="Avg R / Trade" value={`${m.average_r >= 0 ? "+" : ""}${fmt(m.average_r)}`} sub={`${m.total_trades} trades`} tone={m.average_r >= 0 ? "good" : "bad"} />
       </div>
+
+      {/* Data integrity — flags runs built on an incomplete feed */}
+      {m.data_completeness_pct != null && (() => {
+        const pct = m.data_completeness_pct as number;
+        const good = pct >= 98, warn = pct >= 90;
+        const color = good ? "text-accent" : warn ? "text-yellow-500" : "text-destructive";
+        const dot = good ? "bg-accent" : warn ? "bg-yellow-500" : "bg-destructive";
+        const worst = (m.data_gap_days || []).slice(0, 3);
+        return (
+          <div className="rounded-lg border border-border bg-secondary/20 px-4 py-2 flex items-center gap-2 flex-wrap text-xs">
+            <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+            <span className="font-bold uppercase tracking-wider text-[10px] text-muted-foreground">Data completeness</span>
+            <span className={`font-mono font-bold ${color}`}>{pct.toFixed(1)}%</span>
+            {(m.data_missing_bars ?? 0) > 0 && (
+              <span className="text-[11px] text-muted-foreground font-mono">· {m.data_missing_bars} bars missing in session{worst.length ? ` (worst: ${worst.map((d) => `${d.date} −${d.missing}`).join(", ")})` : ""}</span>
+            )}
+            {!good && <span className="text-[10px] text-yellow-500/90">— treat results with caution; the feed had gaps</span>}
+          </div>
+        );
+      })()}
 
       {/* Equity curve */}
       <div className="rounded-lg border border-border bg-card p-4">
@@ -149,19 +189,21 @@ export function BacktestResults({ result, startBalance }: { result: RsiBacktestR
           <Table>
             <TableHeader className="sticky top-0 bg-card z-10">
               <TableRow className="hover:bg-transparent border-border">
-                {["#", "Exit Time", "Dir", "Entry", "Exit", "SL", "TP", "P&L", "R", "Result", "Exit", "Bars"].map((h) => (
-                  <TableHead key={h} className={`font-mono text-[10px] uppercase text-muted-foreground ${["Entry", "Exit", "SL", "TP", "P&L", "R", "Bars"].includes(h) ? "text-right" : ""}`}>{h}</TableHead>
+                {["#", `Entry (${TZ_LABEL})`, `Exit (${TZ_LABEL})`, "Hold", "Dir", "Entry", "Exit", "SL", "TP", "P&L", "R", "Result", "Reason", "Bars"].map((h) => (
+                  <TableHead key={h} className={`font-mono text-[10px] uppercase text-muted-foreground ${["Entry", "Exit", "SL", "TP", "P&L", "R", "Bars", "Hold"].includes(h) ? "text-right" : ""}`}>{h}</TableHead>
                 ))}
               </TableRow>
             </TableHeader>
             <TableBody>
               {trades.length === 0 ? (
-                <TableRow><TableCell colSpan={12} className="text-center py-8 text-xs text-muted-foreground">No trades in this window.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={14} className="text-center py-8 text-xs text-muted-foreground">No trades in this window.</TableCell></TableRow>
               ) : (
                 trades.map((t, i) => (
                   <TableRow key={i} className="border-border/50 hover:bg-secondary/20">
                     <TableCell className="font-mono text-xs font-bold">{i + 1}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{(t.exit_timestamp || "").slice(0, 16).replace("T", " ")}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{fmtTime(t.entry_timestamp)}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{fmtTime(t.exit_timestamp)}</TableCell>
+                    <TableCell className="font-mono text-xs text-right text-primary font-bold">{fmtDuration(t.entry_timestamp, t.exit_timestamp)}</TableCell>
                     <TableCell><Badge variant={t.direction === "BUY" ? "default" : "destructive"} className="text-[9px] font-bold w-12 justify-center">{t.direction}</Badge></TableCell>
                     <TableCell className="font-mono text-xs text-right">{t.entry_price?.toFixed(2)}</TableCell>
                     <TableCell className="font-mono text-xs text-right">{t.exit_price?.toFixed(2)}</TableCell>

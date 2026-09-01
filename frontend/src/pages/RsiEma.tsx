@@ -5,19 +5,23 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useCandles, useLivePrice, useRunRsiBacktest, useLiveSignals, useBacktestHistory, useMarketStatus, useBotStatus, useBotControl } from "@/hooks/use-trading-data";
-import { useMemo, useState } from "react";
-import { Play, Square, BarChart2, History, SlidersHorizontal, TrendingUp, Send, Clock } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { Play, Square, BarChart2, History, TrendingUp, Send, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { LiveChart } from "@/components/LiveChart";
 import { BacktestResults } from "@/components/BacktestResults";
+import { WalkForwardResults } from "@/components/WalkForwardResults";
+import { SignalDetail } from "@/components/SignalDetail";
+import { SessionPill } from "@/components/SessionPill";
 import { computeIndicators } from "@/lib/indicators";
 import { Api, type RsiBacktestResult } from "@/lib/api";
+import { fmtLocal, TZ_LABEL } from "@/lib/tz";
+import { splitWindow } from "@/lib/walkforward";
 
 const TABS = [
   { id: "chart", label: "Chart", icon: BarChart2 },
   { id: "backtest", label: "Backtest", icon: Play },
   { id: "signals", label: "Signal History", icon: History },
-  { id: "optimizer", label: "Optimizer", icon: SlidersHorizontal },
 ];
 
 const TF_MAP: Record<string, string> = { "1M": "M1", "5M": "M5", "15M": "M15", "1H": "H1" };
@@ -28,6 +32,22 @@ const isoDaysAgo = (n: number) => {
   return d.toISOString().split("T")[0];
 };
 
+// P&L of a resolved signal: price points ("pips") and R multiple.
+function signalPnl(s: {
+  direction?: string;
+  entry_price?: number;
+  exit_price?: number | null;
+  stop_loss?: number | null;
+  outcome?: string | null;
+}): { pips: number; r: number } | null {
+  if (!s.outcome || s.exit_price == null || s.entry_price == null) return null;
+  const isBuy = (s.direction || "").toUpperCase() === "BUY";
+  const pips = isBuy ? s.exit_price - s.entry_price : s.entry_price - s.exit_price;
+  const risk = s.stop_loss != null ? Math.abs(s.entry_price - s.stop_loss) : 0;
+  const r = risk > 0 ? pips / risk : 0;
+  return { pips, r };
+}
+
 export default function RsiEma() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("chart");
@@ -36,11 +56,15 @@ export default function RsiEma() {
   const [sl, setSl] = useState([1.5]);
   const [tp, setTp] = useState([1.5]);
   const [risk, setRisk] = useState([2]);
-  const [startDate, setStartDate] = useState(isoDaysAgo(30));
+  const [lag, setLag] = useState([0]); // detection-lag stress (points)
+  const [startDate, setStartDate] = useState(isoDaysAgo(90));
   const [endDate, setEndDate] = useState(isoDaysAgo(1));
   const [balance, setBalance] = useState(10000);
   const [result, setResult] = useState<RsiBacktestResult | null>(null);
   const [ranBalance, setRanBalance] = useState(10000);
+  const [wf, setWf] = useState<{ train: RsiBacktestResult; test: RsiBacktestResult; split: string } | null>(null);
+  const [wfRunning, setWfRunning] = useState(false);
+  const [expandedSig, setExpandedSig] = useState<string | null>(null);
 
   const tf = TF_MAP[activeTF];
   const { data: candleData } = useCandles(tf, 240);
@@ -90,6 +114,14 @@ export default function RsiEma() {
     return !blob.includes("eth") && !blob.includes("btc") && !blob.includes("crypto");
   });
 
+  // Win/loss summary over resolved signals
+  const sigResolved = forexSignals.filter((s) => s.outcome === "WIN" || s.outcome === "LOSS");
+  const sigWins = sigResolved.filter((s) => s.outcome === "WIN").length;
+  const sigLosses = sigResolved.filter((s) => s.outcome === "LOSS").length;
+  const sigWinRate = sigResolved.length ? (sigWins / sigResolved.length) * 100 : 0;
+  const sigOpen = forexSignals.length - sigResolved.length;
+  const sigNetR = sigResolved.reduce((acc, s) => acc + (signalPnl(s)?.r ?? 0), 0);
+
   const ind = useMemo(() => computeIndicators(candleData?.candles ?? []), [candleData]);
   const price = livePrice?.price || ind?.price || 0;
   const changeAbs = ind?.changeAbs ?? 0;
@@ -102,34 +134,57 @@ export default function RsiEma() {
     { label: "ATR", val: ind ? ind.atr.toFixed(2) : "—", color: "text-primary" },
   ];
 
+  const rsiParams = (start: string, end: string) => ({
+    start_date: start || null,
+    end_date: end || null,
+    sl_candles: Math.max(1, Math.round(sl[0] / 0.3)),
+    tp_candles: Math.max(1, Math.round(tp[0] / 0.3)),
+    starting_balance: balance,
+    risk_per_trade_pct: risk[0],
+    detection_lag_points: lag[0] || 0,
+  });
+
   const handleRunTest = () => {
     const bal = balance;
-    runBacktest.mutate(
-      {
-        start_date: startDate || null,
-        end_date: endDate || null,
-        sl_candles: Math.max(1, Math.round(sl[0] / 0.3)),
-        tp_candles: Math.max(1, Math.round(tp[0] / 0.3)),
-        starting_balance: bal,
-        risk_per_trade_pct: risk[0],
+    setWf(null);
+    runBacktest.mutate(rsiParams(startDate, endDate), {
+      onSuccess: (res) => {
+        if (res.error) {
+          toast({ title: "Backtest error", description: res.error, variant: "destructive" });
+          return;
+        }
+        setResult(res);
+        setRanBalance(bal);
+        const m = res.metrics;
+        toast({
+          title: "Backtest Complete",
+          description: `${m.total_trades} trades · ${m.win_rate.toFixed(1)}% win · final $${m.ending_balance.toFixed(2)}`,
+        });
       },
-      {
-        onSuccess: (res) => {
-          if (res.error) {
-            toast({ title: "Backtest error", description: res.error, variant: "destructive" });
-            return;
-          }
-          setResult(res);
-          setRanBalance(bal);
-          const m = res.metrics;
-          toast({
-            title: "Backtest Complete",
-            description: `${m.total_trades} trades · ${m.win_rate.toFixed(1)}% win · final $${m.ending_balance.toFixed(2)}`,
-          });
-        },
-        onError: (e: any) => toast({ title: "Backtest failed", description: String(e.message || e), variant: "destructive" }),
-      },
-    );
+      onError: (e: any) => toast({ title: "Backtest failed", description: String(e.message || e), variant: "destructive" }),
+    });
+  };
+
+  const handleWalkForward = async () => {
+    const split = splitWindow(startDate, endDate, 0.6);
+    if (split === startDate) {
+      toast({ title: "Window too short", description: "Pick a wider date range to split into train/test.", variant: "destructive" });
+      return;
+    }
+    setWfRunning(true);
+    setWf(null);
+    try {
+      const train = await Api.runRsiBacktest(rsiParams(startDate, split));
+      if (train.error) throw new Error(train.error);
+      const test = await Api.runRsiBacktest(rsiParams(split, endDate));
+      if (test.error) throw new Error(test.error);
+      setWf({ train, test, split });
+      toast({ title: "Walk-Forward Complete", description: `Train ${startDate}→${split} · Test ${split}→${endDate}` });
+    } catch (e: any) {
+      toast({ title: "Walk-forward failed", description: String(e.message || e), variant: "destructive" });
+    } finally {
+      setWfRunning(false);
+    }
   };
 
   const marketClosed = market && market.closed;
@@ -151,12 +206,13 @@ export default function RsiEma() {
         ))}
       </div>
 
-      {/* Market Pill */}
-      <div className="px-4 py-2 border-b border-border/30 shrink-0">
+      {/* Market + Session Pills */}
+      <div className="px-4 py-2 border-b border-border/30 shrink-0 flex items-center gap-2 flex-wrap">
         <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-bold ${marketClosed ? "bg-secondary/60 border-border text-muted-foreground" : "bg-accent/10 border-accent/20 text-accent"}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${marketClosed ? "bg-yellow-500/80" : "bg-accent animate-pulse"}`} />
           XAUUSD · Forex Market · <span className={marketClosed ? "text-yellow-500" : "text-accent"}>{marketClosed ? (market?.reason || "Closed") : "Open"}</span>
         </div>
+        <SessionPill />
       </div>
 
       {/* Header Card */}
@@ -253,11 +309,24 @@ export default function RsiEma() {
                   <div className="flex justify-between"><label className="text-[10px] font-bold text-muted-foreground uppercase">Risk</label><span className="text-xs font-mono text-destructive font-bold">{risk[0]}%</span></div>
                   <Slider value={risk} onValueChange={setRisk} min={1} max={10} step={0.5} />
                 </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between"><label className="text-[10px] font-bold text-muted-foreground uppercase" title="Adverse entry slippage to model the up-to-60s polling delay">Lag pts</label><span className="text-xs font-mono text-yellow-500 font-bold">{lag[0].toFixed(2)}</span></div>
+                  <Slider value={lag} onValueChange={setLag} min={0} max={1} step={0.05} />
+                </div>
               </div>
-              <Button className="w-full mt-4 font-bold uppercase tracking-wider" onClick={handleRunTest} disabled={runBacktest.isPending}>
-                {runBacktest.isPending ? "Running backtest… (fetching OANDA history)" : <><Play className="w-4 h-4 mr-2" />Run Backtest</>}
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                <Button className="flex-1 font-bold uppercase tracking-wider" onClick={handleRunTest} disabled={runBacktest.isPending || wfRunning}>
+                  {runBacktest.isPending ? "Running backtest…" : <><Play className="w-4 h-4 mr-2" />Run Backtest</>}
+                </Button>
+                <Button variant="outline" className="flex-1 font-bold uppercase tracking-wider" onClick={handleWalkForward} disabled={runBacktest.isPending || wfRunning} title="Split the window: tune on the first 60%, validate on the unseen last 40%">
+                  {wfRunning ? "Running walk-forward…" : <><BarChart2 className="w-4 h-4 mr-2" />Walk-Forward</>}
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">Lag pts = adverse entry slippage to stress-test the polling delay. Walk-Forward splits train/test to catch curve-fitting.</p>
             </div>
+
+            {/* Walk-forward validation */}
+            {wf && <WalkForwardResults train={wf.train} test={wf.test} startBalance={balance} splitDate={wf.split} />}
 
             {/* Results */}
             {runBacktest.isPending ? (
@@ -267,13 +336,13 @@ export default function RsiEma() {
               </div>
             ) : result ? (
               <BacktestResults result={result} startBalance={ranBalance} />
-            ) : (
+            ) : !wf ? (
               <div className="rounded-lg border border-border border-dashed bg-card/50 p-12 text-center">
                 <BarChart2 className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
                 <p className="font-bold text-sm uppercase tracking-wider">No backtest yet</p>
                 <p className="text-xs text-muted-foreground mt-1">Set your window and risk, then click Run Backtest to see the full equity curve, drawdown, and every trade.</p>
               </div>
-            )}
+            ) : null}
 
             {/* Backtest history */}
             <div className="rounded-lg border border-border bg-card overflow-hidden">
@@ -301,7 +370,7 @@ export default function RsiEma() {
                         const profit = (m.ending_balance ?? 0) - start;
                         return (
                           <TableRow key={r._id} className="border-border/50 hover:bg-secondary/20 cursor-pointer" onClick={() => openReport(r._id)}>
-                            <TableCell className="font-mono text-xs text-muted-foreground">{(r.saved_at || "").slice(0, 16).replace("T", " ")}</TableCell>
+                            <TableCell className="font-mono text-xs text-muted-foreground">{fmtLocal(r.saved_at)}</TableCell>
                             <TableCell className="font-mono text-[11px] text-muted-foreground">{(r.params?.start_date || "?")} → {(r.params?.end_date || "?")}</TableCell>
                             <TableCell className="font-mono text-xs text-right">{m.total_trades ?? r.trade_count ?? 0}</TableCell>
                             <TableCell className="font-mono text-xs text-right font-bold text-primary">{(m.win_rate ?? 0).toFixed(1)}%</TableCell>
@@ -325,33 +394,41 @@ export default function RsiEma() {
         {/* SIGNAL HISTORY TAB — all fired signals (sent to Telegram) */}
         {activeTab === "signals" && (
           <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <div className="px-4 py-3 border-b border-border bg-secondary/20 flex items-center justify-between">
+            <div className="px-4 py-3 border-b border-border bg-secondary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Send className="w-3.5 h-3.5 text-muted-foreground" />
                 <p className="text-xs font-bold uppercase tracking-wider">Signal History</p>
-                <p className="text-[10px] text-muted-foreground font-mono ml-1">every signal fired across strategies · sent to Telegram</p>
+                <p className="text-[10px] text-muted-foreground font-mono ml-1 hidden md:inline">every fired signal · auto-marked WIN/LOSS when price hits TP or SL</p>
               </div>
-              <span className="text-[10px] font-mono text-muted-foreground">{forexSignals.length} signals</span>
+              <div className="flex items-center gap-3 text-[11px] font-mono">
+                <span className="text-accent font-bold">{sigWins}W</span>
+                <span className="text-destructive font-bold">{sigLosses}L</span>
+                <span className="text-muted-foreground">{sigOpen} open</span>
+                <span className="h-3 w-px bg-border/60" />
+                <span className="text-foreground font-bold">{sigWinRate.toFixed(0)}% win</span>
+                <span className={`font-bold ${sigNetR >= 0 ? "text-accent" : "text-destructive"}`}>{sigNetR >= 0 ? "+" : ""}{sigNetR.toFixed(2)}R</span>
+              </div>
             </div>
             <div className="overflow-auto max-h-[560px]">
               <Table>
                 <TableHeader className="sticky top-0 bg-card z-10">
                   <TableRow className="border-border hover:bg-transparent bg-secondary/30">
-                    {["Time (UTC)", "Strategy", "Symbol", "Dir", "Entry", "SL", "TP", "Score", "TG", "Outcome"].map((h) => (
-                      <TableHead key={h} className={`font-mono text-[10px] uppercase text-muted-foreground ${["Entry", "SL", "TP", "Score"].includes(h) ? "text-right" : ""}`}>{h}</TableHead>
+                    {[`Time (${TZ_LABEL})`, "Strategy", "Symbol", "Dir", "Entry", "SL", "TP", "Score", "TG", "Outcome", "P&L"].map((h) => (
+                      <TableHead key={h} className={`font-mono text-[10px] uppercase text-muted-foreground ${["Entry", "SL", "TP", "Score", "P&L"].includes(h) ? "text-right" : ""}`}>{h}</TableHead>
                     ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {forexSignals.length === 0 ? (
-                    <TableRow><TableCell colSpan={10} className="text-center py-10 text-xs text-muted-foreground">No signals fired yet. When the RSI EMA strategy fires and sends a Telegram alert, it appears here.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={11} className="text-center py-10 text-xs text-muted-foreground">No signals fired yet. When the RSI EMA strategy fires and sends a Telegram alert, it appears here.</TableCell></TableRow>
                   ) : (
                     forexSignals.map((s) => {
-                      const t = s.sent_at ? new Date(s.sent_at) : s.timestamp ? new Date(s.timestamp) : null;
                       const isBuy = (s.direction || "").toUpperCase() === "BUY";
+                      const open = expandedSig === s._id;
                       return (
-                        <TableRow key={s._id} className="border-border/50 hover:bg-secondary/20">
-                          <TableCell className="font-mono text-[11px] text-muted-foreground">{t ? t.toISOString().slice(0, 16).replace("T", " ") : "—"}</TableCell>
+                        <Fragment key={s._id}>
+                        <TableRow className="border-border/50 hover:bg-secondary/20 cursor-pointer" onClick={() => setExpandedSig(open ? null : s._id)} title="Click for full signal details">
+                          <TableCell className="font-mono text-[11px] text-muted-foreground"><span className="inline-block w-3 text-primary">{open ? "▾" : "▸"}</span>{fmtLocal(s.sent_at ?? s.timestamp)}</TableCell>
                           <TableCell><Badge variant="outline" className="text-[9px] font-mono">{s.strategyName || s.strategy || s.signal_kind || "—"}</Badge></TableCell>
                           <TableCell className="font-mono text-xs">{s.symbol}</TableCell>
                           <TableCell><Badge variant={isBuy ? "default" : "destructive"} className="text-[9px] font-bold w-12 justify-center">{s.direction}</Badge></TableCell>
@@ -368,12 +445,33 @@ export default function RsiEma() {
                           </TableCell>
                           <TableCell>
                             {s.outcome ? (
-                              <Badge variant="outline" className={`text-[9px] font-bold ${s.outcome === "WIN" ? "text-accent border-accent/30 bg-accent/10" : s.outcome === "LOSS" ? "text-destructive border-destructive/30 bg-destructive/10" : "text-muted-foreground"}`}>{s.outcome}</Badge>
+                              <Badge variant="outline" title={s.outcome_note || undefined} className={`text-[9px] font-bold ${s.outcome === "WIN" ? "text-accent border-accent/30 bg-accent/10" : s.outcome === "LOSS" ? "text-destructive border-destructive/30 bg-destructive/10" : "text-muted-foreground"}`}>{s.outcome}</Badge>
                             ) : (
-                              <span className="text-[10px] text-muted-foreground">open</span>
+                              <span className="text-[10px] text-muted-foreground animate-pulse">● open</span>
                             )}
                           </TableCell>
+                          <TableCell className="text-right">
+                            {(() => {
+                              const pnl = signalPnl(s);
+                              if (!pnl) return <span className="text-[10px] text-muted-foreground">—</span>;
+                              const good = pnl.r >= 0;
+                              return (
+                                <span className={`font-mono text-xs font-bold ${good ? "text-accent" : "text-destructive"}`}>
+                                  {good ? "+" : ""}{pnl.r.toFixed(2)}R
+                                  <span className="block text-[9px] font-normal text-muted-foreground">{good ? "+" : ""}{pnl.pips.toFixed(1)} pts</span>
+                                </span>
+                              );
+                            })()}
+                          </TableCell>
                         </TableRow>
+                        {open && (
+                          <TableRow className="hover:bg-transparent">
+                            <TableCell colSpan={11} className="p-0">
+                              <SignalDetail s={s} />
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        </Fragment>
                       );
                     })
                   )}
@@ -383,14 +481,6 @@ export default function RsiEma() {
           </div>
         )}
 
-        {/* OPTIMIZER TAB */}
-        {activeTab === "optimizer" && (
-          <div className="rounded-lg border border-border bg-card p-6 text-center">
-            <SlidersHorizontal className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-            <p className="font-bold text-sm uppercase tracking-wider text-foreground">Parameter Optimizer</p>
-            <p className="text-xs text-muted-foreground mt-1">Grid search and walk-forward optimization coming soon</p>
-          </div>
-        )}
       </div>
     </PageLayout>
   );

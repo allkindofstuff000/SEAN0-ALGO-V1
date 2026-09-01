@@ -88,26 +88,95 @@ def _simulate_trade(
     max_hold: int,
     balance: float,
     risk_pct: float,
+    m1_lookup: "pd.DataFrame | None" = None,
 ) -> dict[str, Any] | None:
     entry_index = signal_index + 1
     if entry_index >= len(df):
         return None
-    slippage = cfg.SLIPPAGE_POINTS
     comm_rate = cfg.COMMISSION_RATE
-    open_price = float(df["open"].iat[entry_index])
-    entry = open_price + slippage if direction == "BUY" else open_price - slippage
     risk_dist = atr * sl_mult
     tp_dist = atr * tp_mult
+    if risk_dist <= 0:
+        return None
+    size = (balance * risk_pct) / risk_dist
+    if size <= 0:
+        return None
+
+    # Realistic fills (bid/ask + M1 intrabar) mirror the RSI EMA engine so the
+    # two strategies report on the same honest basis. Falls back to the legacy
+    # mid-price + flat-slippage model if bid/ask columns are absent.
+    realistic = engine.USE_REALISTIC_FILLS and engine.has_bidask(df)
+    entry_row = df.iloc[entry_index]
+
+    if realistic:
+        entry = engine.realistic_entry_price(entry_row, direction)
+    else:
+        slippage = cfg.SLIPPAGE_POINTS
+        open_price = float(df["open"].iat[entry_index])
+        entry = open_price + slippage if direction == "BUY" else open_price - slippage
+
+    # Detection-lag stress: worsen the fill by engine.DETECTION_LAG_POINTS (adverse).
+    _lag = getattr(engine, "DETECTION_LAG_POINTS", 0.0)
+    if _lag:
+        entry = (entry + _lag) if direction == "BUY" else (entry - _lag)
+
     if direction == "BUY":
         sl = entry - risk_dist
         tp = entry + tp_dist
     else:
         sl = entry + risk_dist
         tp = entry - tp_dist
-    size = (balance * risk_pct) / risk_dist if risk_dist > 0 else 0.0
-    if size <= 0:
-        return None
+
     last_index = min(len(df) - 1, entry_index + max_hold - 1)
+
+    def _record(j: int, exit_p: float, result: str, exit_reason: str) -> dict[str, Any]:
+        gross = (exit_p - entry) * size if direction == "BUY" else (entry - exit_p) * size
+        comm = (abs(entry * size) + abs(exit_p * size)) * comm_rate
+        pnl = gross - comm
+        return {
+            "timestamp": pd.Timestamp(df["timestamp"].iat[signal_index]),
+            "entry_timestamp": pd.Timestamp(df["timestamp"].iat[entry_index]),
+            "exit_timestamp": pd.Timestamp(df["timestamp"].iat[j]),
+            "direction": direction,
+            "entry_price": round(entry, 4),
+            "exit_price": round(exit_p, 4),
+            "sl": round(sl, 4),
+            "tp": round(tp, 4),
+            "result": result,
+            "R_multiple": pnl / (balance * risk_pct) if balance > 0 else 0.0,
+            "position_size": float(size),
+            "gross_pnl": float(gross),
+            "commission": float(comm),
+            "pnl": float(pnl),
+            "equity_before": float(balance),
+            "atr": float(atr),
+            "reason": "vwap_supertrend_flip",
+            "exit_reason": exit_reason,
+            "bars_held": j - entry_index + 1,
+            "exit_index": j,
+        }
+
+    if realistic:
+        hit = engine.resolve_realistic_exit(
+            entry_df=df,
+            entry_index=entry_index,
+            last_index=last_index,
+            direction=direction,
+            stop_loss=sl,
+            take_profit=tp,
+            m1_lookup=m1_lookup,
+        )
+        if hit is not None:
+            j, exit_p, result, exit_reason = hit
+            return _record(j, exit_p, result, exit_reason)
+        # time-stop: BUY closes on the bid, SELL on the ask
+        close = float(df["bid_c"].iat[last_index]) if direction == "BUY" else float(df["ask_c"].iat[last_index])
+        rec = _record(last_index, close, "PENDING", f"max_hold_{max_hold}")
+        rec["result"] = "WIN" if rec["pnl"] > 0 else "LOSS"
+        return rec
+
+    # ── legacy mid-price path ────────────────────────────────────────────
+    slippage = cfg.SLIPPAGE_POINTS
     for j in range(entry_index, last_index + 1):
         high = float(df["high"].iat[j])
         low = float(df["low"].iat[j])
@@ -134,59 +203,12 @@ def _simulate_trade(
             exit_reason = "take_profit_hit"
         if raw_exit is not None:
             exit_p = raw_exit - slippage if direction == "BUY" else raw_exit + slippage
-            gross = (exit_p - entry) * size if direction == "BUY" else (entry - exit_p) * size
-            comm = (abs(entry * size) + abs(exit_p * size)) * comm_rate
-            pnl = gross - comm
-            return {
-                "timestamp": pd.Timestamp(df["timestamp"].iat[signal_index]),
-                "entry_timestamp": pd.Timestamp(df["timestamp"].iat[entry_index]),
-                "exit_timestamp": pd.Timestamp(df["timestamp"].iat[j]),
-                "direction": direction,
-                "entry_price": round(entry, 4),
-                "exit_price": round(exit_p, 4),
-                "sl": round(sl, 4),
-                "tp": round(tp, 4),
-                "result": result,
-                "R_multiple": pnl / (balance * risk_pct) if balance > 0 else 0.0,
-                "position_size": float(size),
-                "gross_pnl": float(gross),
-                "commission": float(comm),
-                "pnl": float(pnl),
-                "equity_before": float(balance),
-                "atr": float(atr),
-                "reason": "vwap_supertrend_flip",
-                "exit_reason": exit_reason,
-                "bars_held": j - entry_index + 1,
-                "exit_index": j,
-            }
-    # timeout
+            return _record(j, exit_p, result, exit_reason)
     close = float(df["close"].iat[last_index])
     exit_p = close - slippage if direction == "BUY" else close + slippage
-    gross = (exit_p - entry) * size if direction == "BUY" else (entry - exit_p) * size
-    comm = (abs(entry * size) + abs(exit_p * size)) * comm_rate
-    pnl = gross - comm
-    return {
-        "timestamp": pd.Timestamp(df["timestamp"].iat[signal_index]),
-        "entry_timestamp": pd.Timestamp(df["timestamp"].iat[entry_index]),
-        "exit_timestamp": pd.Timestamp(df["timestamp"].iat[last_index]),
-        "direction": direction,
-        "entry_price": round(entry, 4),
-        "exit_price": round(exit_p, 4),
-        "sl": round(sl, 4),
-        "tp": round(tp, 4),
-        "result": "WIN" if pnl > 0 else "LOSS",
-        "R_multiple": pnl / (balance * risk_pct) if balance > 0 else 0.0,
-        "position_size": float(size),
-        "gross_pnl": float(gross),
-        "commission": float(comm),
-        "pnl": float(pnl),
-        "equity_before": float(balance),
-        "atr": float(atr),
-        "reason": "vwap_supertrend_flip",
-        "exit_reason": f"max_hold_{max_hold}",
-        "bars_held": last_index - entry_index + 1,
-        "exit_index": last_index,
-    }
+    rec = _record(last_index, exit_p, "PENDING", f"max_hold_{max_hold}")
+    rec["result"] = "WIN" if rec["pnl"] > 0 else "LOSS"
+    return rec
 
 
 # ── Metrics ──────────────────────────────────────────────────────────────
@@ -249,6 +271,12 @@ def run_backtest(
     df = add_supertrend(df, st_period, st_mult)
     df = add_session_vwap(df)
 
+    # M1 bid/ask cache for intrabar SL/TP resolution — lazy, fetches only the
+    # day a straddle bar lands on (usually 0-3 tiny fetches per run).
+    m1_lookup = None
+    if engine.USE_REALISTIC_FILLS and engine.USE_M1_INTRABAR and engine.has_bidask(df):
+        m1_lookup = engine.M1Cache()
+
     trades: list[dict[str, Any]] = []
     balance = float(starting_balance)
     i = 30  # skip warmup
@@ -288,6 +316,7 @@ def run_backtest(
             max_hold=max_hold_bars,
             balance=balance,
             risk_pct=risk_per_trade,
+            m1_lookup=m1_lookup,
         )
         if trade is None:
             i += 1
@@ -305,6 +334,16 @@ def run_backtest(
         t.pop("exit_index", None)
 
     metrics = _compute_metrics(trades, starting_balance)
+
+    # Data-integrity: how complete was the M5 feed over the traded window?
+    try:
+        in_window = df[(df["timestamp"] >= start_utc) & (df["timestamp"] < end_utc)]
+        integ = engine.assess_data_integrity(in_window, session_start_hour, session_end_hour)
+        metrics["data_completeness_pct"] = integ["completeness_pct"]
+        metrics["data_missing_bars"] = integ["missing_bars"]
+        metrics["data_gap_days"] = integ["gap_days"]
+    except Exception:  # noqa: BLE001 — advisory only
+        pass
 
     equity_curve: list[dict[str, Any]] = []
     for i2, t in enumerate(trades):

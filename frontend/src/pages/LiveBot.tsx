@@ -2,9 +2,9 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useBotControl, useBotStatus, useLivePrice, useCandles, useMarketStatus } from "@/hooks/use-trading-data";
-import { Play, Square, Wifi, Server, Clock, BarChart2 } from "lucide-react";
+import { SessionSchedule } from "@/components/SessionSchedule";
+import { Play, Square, Wifi, Server, Clock } from "lucide-react";
 import { useMemo } from "react";
-import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { computeIndicators } from "@/lib/indicators";
 
@@ -85,7 +85,7 @@ export default function LiveBot() {
   const price = live?.price || ind?.price || 0;
   const sessionText = market?.closed ? (market?.reason || "Market Closed") : "Market Open";
 
-  const handleToggle = (strategy: "rsi-ema", label: string, action: "START" | "STOP") => {
+  const handleToggle = (strategy: "rsi-ema" | "vwap-st", label: string, action: "START" | "STOP") => {
     botControl.mutate({ strategy, action }, {
       onSuccess: (r) => toast({ title: `${label} ${action === "START" ? "Started" : "Stopped"}`, description: (r as any).message || "", variant: action === "START" ? "default" : "destructive" }),
       onError: (e: any) => toast({ title: "Action failed", description: String(e.message || e), variant: "destructive" }),
@@ -118,7 +118,7 @@ export default function LiveBot() {
         </div>
         <div className="ml-auto flex items-center gap-1.5 text-muted-foreground">
           <span>LIVE STRATEGIES:</span>
-          <span className="text-accent font-bold">{bot?.rsiEma?.running ? 1 : 0} / 1</span>
+          <span className="text-accent font-bold">{[bot?.rsiEma?.running, bot?.vwapSt?.running].filter(Boolean).length} / 2</span>
         </div>
       </div>
 
@@ -135,31 +135,19 @@ export default function LiveBot() {
             sessionText={sessionText}
           />
 
-          {/* VWAP+ST — backtest-only for now, link to its page */}
-          <div className="flex flex-col rounded-lg border border-border border-dashed bg-card/50 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-secondary/10">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-sm tracking-wider">VWAP + SUPERTREND</span>
-              </div>
-              <Badge variant="secondary" className="text-[10px] font-mono font-bold px-2 py-0.5 bg-primary/15 text-primary border border-primary/30">
-                BACKTEST
-              </Badge>
-            </div>
-            <div className="px-4 pt-3 pb-1">
-              <p className="text-xs text-muted-foreground font-mono">XAUUSD · M5 · ST(10, 3.0) @ 1:2 RR</p>
-            </div>
-            <div className="px-4 pb-3 pt-2 text-xs text-muted-foreground leading-relaxed">
-              Backtest-validated on 2×60-day windows (walk-forward). Live bot ships in a follow-up — use the backtest page to explore parameters.
-            </div>
-            <div className="px-4 pb-4 mt-auto">
-              <Link href="/vwap-st">
-                <Button variant="outline" className="w-full font-bold tracking-wider">
-                  <BarChart2 className="w-4 h-4 mr-2" /> OPEN BACKTEST
-                </Button>
-              </Link>
-            </div>
-          </div>
+          <StrategyCard
+            title="VWAP + SUPERTREND"
+            subtitle="XAUUSD · M5 · ST(10, 3.0) @ 1:2 RR"
+            running={!!bot?.vwapSt?.running}
+            uptime={uptimeFrom(bot?.vwapSt?.startedAt)}
+            pending={botControl.isPending}
+            onToggle={(a) => handleToggle("vwap-st", "VWAP+ST", a)}
+            sessionText={sessionText}
+          />
         </div>
+
+        {/* Trading session schedule (Dhaka time) */}
+        <SessionSchedule />
       </div>
     </PageLayout>
   );

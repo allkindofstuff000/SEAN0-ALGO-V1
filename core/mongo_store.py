@@ -147,19 +147,20 @@ def save_live_signal(
     stop_loss:       float | None,
     take_profit:     float | None,
     atr:             float,
-    score:           int,
-    score_threshold: int,
-    session:         str,
-    market_regime:   str,
-    regime_confidence: float,
-    trend_alignment: bool,
-    price_trigger:   bool,
-    rsi_filter:      bool,
-    atr_expansion:   bool,
-    reason:          str,
+    score:           int | None = None,
+    score_threshold: int | None = None,
+    session:         str = "",
+    market_regime:   str = "",
+    regime_confidence: float | None = None,
+    trend_alignment: bool | None = None,
+    price_trigger:   bool | None = None,
+    rsi_filter:      bool | None = None,
+    atr_expansion:   bool | None = None,
+    reason:          str = "",
     signal_kind:     str = "forex",
     telegram_sent:   bool = False,
     candle_time_utc: str | None = None,
+    **extra,
 ) -> str | None:
     """
     Insert one live signal into 'live_signals' collection.
@@ -184,7 +185,7 @@ def save_live_signal(
             "score_threshold":   score_threshold,
             "session":           session,
             "market_regime":     market_regime,
-            "regime_confidence": round(regime_confidence, 4),
+            "regime_confidence": round(regime_confidence, 4) if regime_confidence is not None else None,
             "trend_alignment":   trend_alignment,
             "price_trigger":     price_trigger,
             "rsi_filter":        rsi_filter,
@@ -197,6 +198,11 @@ def save_live_signal(
             "exit_price":        None,
             "outcome_note":      None,
         }
+        # forward-compatible per-strategy fields (e.g. strategy, strategyName,
+        # timestamp). Stored without clobbering the core keys above so a new
+        # strategy can tag its signals without changing this signature.
+        for _k, _v in extra.items():
+            doc.setdefault(_k, _v)
         result = col.insert_one(doc)
         inserted_id = str(result.inserted_id)
         LOGGER.info("[MONGO] live_signal saved id=%s dir=%s entry=%.2f", inserted_id, direction, entry_price)

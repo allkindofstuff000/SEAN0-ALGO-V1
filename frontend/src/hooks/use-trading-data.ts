@@ -79,7 +79,7 @@ export function useBotControl() {
       strategy,
     }: {
       action: "START" | "STOP";
-      strategy: "rsi-ema";
+      strategy: "rsi-ema" | "vwap-st";
     }) => (action === "START" ? Api.startBot(strategy) : Api.stopBot(strategy)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["bot-status"] });

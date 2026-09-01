@@ -46,6 +46,33 @@ TAKE_PROFIT_ATR_MULTIPLIER = 1.5           # default TP (chop regime)
 SLIPPAGE_POINTS = 0.05
 COMMISSION_RATE = 0.000001
 
+# ── Realistic execution model (bid/ask + intrabar resolution) ─────────────
+# When True, backtests price fills the way a real broker fills you:
+#   • BUY  enters at the ASK, its SL/TP are hit when the BID crosses them
+#   • SELL enters at the BID, its SL/TP are hit when the ASK crosses them
+# This embeds the true OANDA spread instead of the flat 5-cent slippage hack,
+# so reported P&L matches what a live account would actually earn (usually a
+# few % lower — that gap was optimism, not real edge). Signals still fire on
+# MID prices, so the *signal set is unchanged*; only the fills differ.
+USE_REALISTIC_FILLS = True
+
+# When a single M5 bar's range straddles BOTH stop and target, OHLC alone
+# can't say which was hit first. With this on, we drop to M1 candles for that
+# one bar and replay the 5 sub-bars to find the real order. Sub-minute ties
+# still fall back to "stop first" (honest — tick data would be needed to go
+# finer). Fixes the handful of mislabeled straddle trades manual checks catch.
+USE_M1_INTRABAR = True
+
+# OANDA hard-caps a candle request at 5000 bars, so chunk by granularity.
+_CHUNK_DAYS_BY_GRANULARITY = {"M1": 3, "M5": 14, "M15": 30, "H1": 60}
+
+# Detection-lag stress knob (points of ADVERSE entry slippage). The live bots
+# poll every 60s, so a fill can land up to a minute after the signal bar closes
+# — price drifts in that gap. Set >0 to make the backtest fill worse by this
+# many points (BUY higher / SELL lower), so you can see how much of the edge
+# survives real-world polling lag + spread jitter. 0 = off (exact next-bar fill).
+DETECTION_LAG_POINTS = 0.0
+
 # ── Volatility Switch (built but DISABLED by default) ────────────────────
 # Idea: when ADX(14) on the M15 trend candle is >= threshold, widen TP to
 # TAKE_PROFIT_ATR_MULTIPLIER_HIGH_VOL to capture trending moves; else keep 1:1.
@@ -122,10 +149,14 @@ def resolve_oanda_base_url() -> str:
     return OANDA_BASE_URLS.get(environment, OANDA_BASE_URLS["practice"])
 
 
-def build_request_windows(start_utc: pd.Timestamp, end_utc: pd.Timestamp) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+def build_request_windows(
+    start_utc: pd.Timestamp,
+    end_utc: pd.Timestamp,
+    chunk_days: int = MAX_CHUNK_DAYS,
+) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
     windows: list[tuple[pd.Timestamp, pd.Timestamp]] = []
     cursor = start_utc
-    step = pd.Timedelta(days=MAX_CHUNK_DAYS)
+    step = pd.Timedelta(days=max(1, chunk_days))
     while cursor < end_utc:
         window_end = min(cursor + step, end_utc)
         windows.append((cursor, window_end))
@@ -133,21 +164,33 @@ def build_request_windows(start_utc: pd.Timestamp, end_utc: pd.Timestamp) -> lis
     return windows
 
 
-def fetch_historical_5m_candles(start_utc: pd.Timestamp, end_utc: pd.Timestamp) -> pd.DataFrame:
+def fetch_candles_mba(
+    start_utc: pd.Timestamp,
+    end_utc: pd.Timestamp,
+    granularity: str = ENTRY_GRANULARITY,
+) -> pd.DataFrame:
+    """Fetch OANDA candles with MID, BID and ASK buckets in one pass.
+
+    Returns a frame with the usual mid columns (open/high/low/close) plus
+    bid_o/h/l/c and ask_o/h/l/c so the realistic fill model can price
+    entries at the ask/bid and resolve SL/TP against the correct side.
+    Indicators keep running on the mid columns, unchanged.
+    """
     api_key = os.getenv("OANDA_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("OANDA_API_KEY is required to run the forex backtest.")
 
     base_url = resolve_oanda_base_url()
-    price_component = os.getenv("OANDA_PRICE_COMPONENT", "M").strip().upper() or "M"
+    chunk_days = _CHUNK_DAYS_BY_GRANULARITY.get(granularity, MAX_CHUNK_DAYS)
 
     frames: list[pd.DataFrame] = []
-    for window_start, window_end in build_request_windows(start_utc, end_utc):
+    for window_start, window_end in build_request_windows(start_utc, end_utc, chunk_days):
         try:
             frame = fetch_oanda_window(
                 base_url=base_url,
                 api_key=api_key,
-                price_component=price_component,
+                price_component="MBA",
+                granularity=granularity,
                 start_utc=window_start,
                 end_utc=window_end,
             )
@@ -157,19 +200,56 @@ def fetch_historical_5m_candles(start_utc: pd.Timestamp, end_utc: pd.Timestamp) 
             # dates, or empty weekend windows) — log and continue so the rest
             # of the backtest still runs with whatever data was fetched.
             print(
-                f"[SKIP] window {window_start.date()} -> {window_end.date()} "
+                f"[SKIP] {granularity} window {window_start.date()} -> {window_end.date()} "
                 f"skipped: {fetch_err}"
             )
             continue
 
     if not frames:
-        raise RuntimeError("No OANDA windows were fetched for the selected date range.")
+        raise RuntimeError(f"No OANDA {granularity} windows were fetched for the selected date range.")
 
     combined = pd.concat(frames, ignore_index=True)
     combined = combined.sort_values("timestamp").drop_duplicates(subset=["timestamp"]).reset_index(drop=True)
     if combined.empty:
-        raise RuntimeError("No complete OANDA candles were returned for the requested window.")
+        raise RuntimeError(f"No complete OANDA {granularity} candles were returned for the requested window.")
     return combined
+
+
+def fetch_historical_5m_candles(start_utc: pd.Timestamp, end_utc: pd.Timestamp) -> pd.DataFrame:
+    """Backwards-compatible M5 fetch — now returns mid + bid/ask columns.
+
+    When OANDA_PRICE_COMPONENT forces a single stream (legacy behaviour), we
+    fall back to the mid-only fetch so nothing breaks; otherwise we pull MBA.
+    """
+    forced = os.getenv("OANDA_PRICE_COMPONENT", "").strip().upper()
+    if forced and forced != "MBA":
+        # Legacy single-stream path (kept for explicit overrides / debugging).
+        api_key = os.getenv("OANDA_API_KEY", "").strip()
+        if not api_key:
+            raise RuntimeError("OANDA_API_KEY is required to run the forex backtest.")
+        base_url = resolve_oanda_base_url()
+        frames: list[pd.DataFrame] = []
+        for window_start, window_end in build_request_windows(start_utc, end_utc):
+            try:
+                frames.append(
+                    fetch_oanda_window(
+                        base_url=base_url,
+                        api_key=api_key,
+                        price_component=forced,
+                        granularity=ENTRY_GRANULARITY,
+                        start_utc=window_start,
+                        end_utc=window_end,
+                    )
+                )
+            except RuntimeError as fetch_err:
+                print(f"[SKIP] window {window_start.date()} -> {window_end.date()} skipped: {fetch_err}")
+                continue
+        if not frames:
+            raise RuntimeError("No OANDA windows were fetched for the selected date range.")
+        combined = pd.concat(frames, ignore_index=True)
+        return combined.sort_values("timestamp").drop_duplicates(subset=["timestamp"]).reset_index(drop=True)
+
+    return fetch_candles_mba(start_utc, end_utc, granularity=ENTRY_GRANULARITY)
 
 
 def fetch_oanda_window(
@@ -179,10 +259,11 @@ def fetch_oanda_window(
     price_component: str,
     start_utc: pd.Timestamp,
     end_utc: pd.Timestamp,
+    granularity: str = ENTRY_GRANULARITY,
 ) -> pd.DataFrame:
     url = f"{base_url}/v3/instruments/{OANDA_INSTRUMENT}/candles"
     params = {
-        "granularity": ENTRY_GRANULARITY,
+        "granularity": granularity,
         "price": price_component,
         "from": start_utc.isoformat(),
         "to": end_utc.isoformat(),
@@ -229,25 +310,52 @@ def fetch_oanda_window(
 
 
 def candles_to_frame(candles: list[dict[str, Any]]) -> pd.DataFrame:
+    """Parse OANDA candles into a frame. Handles single-stream (mid/bid/ask)
+    and MBA multi-stream payloads alike; missing streams mirror the mid so
+    downstream code always finds bid_*/ask_* columns."""
     rows: list[dict[str, Any]] = []
     for candle in candles:
         if not candle.get("complete", False):
             continue
-        price_bucket = candle.get("mid") or candle.get("bid") or candle.get("ask")
-        if not isinstance(price_bucket, dict):
+        mid = candle.get("mid")
+        bid = candle.get("bid")
+        ask = candle.get("ask")
+        # Single-stream payload: whichever bucket exists becomes the mid.
+        base = mid if isinstance(mid, dict) else (bid if isinstance(bid, dict) else ask)
+        if not isinstance(base, dict):
             continue
+        if not isinstance(mid, dict):
+            mid = base
+        if not isinstance(bid, dict):
+            bid = mid
+        if not isinstance(ask, dict):
+            ask = mid
         rows.append(
             {
                 "timestamp": pd.to_datetime(candle["time"], utc=True),
-                "open": float(price_bucket["o"]),
-                "high": float(price_bucket["h"]),
-                "low": float(price_bucket["l"]),
-                "close": float(price_bucket["c"]),
+                "open": float(mid["o"]),
+                "high": float(mid["h"]),
+                "low": float(mid["l"]),
+                "close": float(mid["c"]),
+                "bid_o": float(bid["o"]),
+                "bid_h": float(bid["h"]),
+                "bid_l": float(bid["l"]),
+                "bid_c": float(bid["c"]),
+                "ask_o": float(ask["o"]),
+                "ask_h": float(ask["h"]),
+                "ask_l": float(ask["l"]),
+                "ask_c": float(ask["c"]),
                 "volume": float(candle.get("volume", 0.0)),
             }
         )
 
-    frame = pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
+    columns = [
+        "timestamp", "open", "high", "low", "close",
+        "bid_o", "bid_h", "bid_l", "bid_c",
+        "ask_o", "ask_h", "ask_l", "ask_c",
+        "volume",
+    ]
+    frame = pd.DataFrame(rows, columns=columns)
     if frame.empty:
         return frame
     return frame.sort_values("timestamp").drop_duplicates(subset=["timestamp"]).reset_index(drop=True)
@@ -308,6 +416,145 @@ def effective_exit_price(exit_price: float, direction: str) -> float:
     if direction == "BUY":
         return exit_price - SLIPPAGE_POINTS
     return exit_price + SLIPPAGE_POINTS
+
+
+# ── Realistic fill model (bid/ask + M1 intrabar resolution) ───────────────
+
+def has_bidask(df: pd.DataFrame) -> bool:
+    """True if the frame carries bid/ask columns (i.e. was fetched via MBA)."""
+    return "ask_o" in df.columns and "bid_o" in df.columns
+
+
+def realistic_entry_price(entry_candle: pd.Series, direction: str) -> float:
+    """Fill a market entry at the correct side of the spread.
+
+    BUY lifts the ASK, SELL hits the BID — matching how a broker fills you.
+    """
+    if direction == "BUY":
+        return float(entry_candle["ask_o"])
+    return float(entry_candle["bid_o"])
+
+
+def _bar_hits(bar: pd.Series, direction: str, stop_loss: float, take_profit: float) -> tuple[bool, bool]:
+    """Did this bar's exit-side stream touch SL / TP?
+
+    Longs are closed on the BID, shorts on the ASK.
+    """
+    if direction == "BUY":
+        return (float(bar["bid_l"]) <= stop_loss, float(bar["bid_h"]) >= take_profit)
+    return (float(bar["ask_h"]) >= stop_loss, float(bar["ask_l"]) <= take_profit)
+
+
+class M1Cache:
+    """Lazily fetches and caches M1 bid/ask candles, one UTC day at a time.
+
+    Straddle bars (where an M5 bar hits both SL and TP) are rare, so fetching
+    M1 for a whole backtest window upfront is wasteful. This fetches only the
+    day a straddle actually lands on, the first time it's needed."""
+
+    def __init__(self) -> None:
+        self._by_day: dict[pd.Timestamp, "pd.DataFrame | None"] = {}
+
+    def day_frame(self, ts: pd.Timestamp) -> "pd.DataFrame | None":
+        day = pd.Timestamp(ts).normalize()
+        if day not in self._by_day:
+            try:
+                df = fetch_candles_mba(day, day + pd.Timedelta(days=1), granularity="M1")
+            except Exception as exc:  # noqa: BLE001 — M1 is best-effort
+                print(f"[M1] day {day.date()} fetch failed ({exc}); straddle falls back to stop-first")
+                df = None
+            if df is not None and not df.empty and has_bidask(df):
+                self._by_day[day] = df.set_index("timestamp", drop=False).sort_index()
+            else:
+                self._by_day[day] = None
+        return self._by_day[day]
+
+
+def _m1_day_frame(m1: object, ts: pd.Timestamp) -> "pd.DataFrame | None":
+    """Return an M1 frame (indexed by timestamp) covering `ts`. Accepts either
+    an M1Cache (lazy) or a pre-indexed DataFrame (used by unit tests)."""
+    if m1 is None:
+        return None
+    if hasattr(m1, "day_frame"):
+        return m1.day_frame(ts)  # type: ignore[attr-defined]
+    return m1  # already an indexed frame
+
+
+def _resolve_straddle_m1(
+    m5_timestamp: pd.Timestamp,
+    direction: str,
+    stop_loss: float,
+    take_profit: float,
+    m1_lookup: object,
+) -> str | None:
+    """When an M5 bar hits both SL and TP, replay its 5 M1 sub-bars to find
+    which came first. Returns 'SL', 'TP', or None (no M1 data available).
+    A sub-minute straddle still resolves to 'SL' (honest — finer than M1
+    needs tick data we don't have)."""
+    frame = _m1_day_frame(m1_lookup, m5_timestamp)
+    if frame is None or frame.empty:
+        return None
+    t0 = pd.Timestamp(m5_timestamp)
+    for k in range(5):
+        t = t0 + pd.Timedelta(minutes=k)
+        if t not in frame.index:
+            continue
+        bar = frame.loc[t]
+        if isinstance(bar, pd.DataFrame):
+            bar = bar.iloc[0]
+        hit_sl, hit_tp = _bar_hits(bar, direction, stop_loss, take_profit)
+        if hit_sl:
+            return "SL"          # stop-first (covers the SL+TP-same-M1 tie too)
+        if hit_tp:
+            return "TP"
+    return None
+
+
+def resolve_realistic_exit(
+    *,
+    entry_df: pd.DataFrame,
+    entry_index: int,
+    last_index: int,
+    direction: str,
+    stop_loss: float,
+    take_profit: float,
+    m1_lookup: "pd.DataFrame | None" = None,
+) -> tuple[int, float, str, str] | None:
+    """Walk forward over bid/ask bars and return the first SL/TP hit as
+    (bar_index, fill_level, result, exit_reason), or None if neither was hit
+    within [entry_index, last_index] (caller then closes at max-hold)."""
+    for fi in range(entry_index, last_index + 1):
+        bar = entry_df.iloc[fi]
+        hit_sl, hit_tp = _bar_hits(bar, direction, stop_loss, take_profit)
+        if hit_sl and hit_tp:
+            decided = _resolve_straddle_m1(
+                pd.Timestamp(bar["timestamp"]), direction, stop_loss, take_profit, m1_lookup
+            )
+            if decided == "TP":
+                return fi, take_profit, "WIN", "take_profit_hit_m1"
+            if decided == "SL":
+                return fi, stop_loss, "LOSS", "stop_loss_hit_m1"
+            return fi, stop_loss, "LOSS", "sl_and_tp_same_bar_sl_first"
+        if hit_sl:
+            return fi, stop_loss, "LOSS", "stop_loss_hit"
+        if hit_tp:
+            return fi, take_profit, "WIN", "take_profit_hit"
+    return None
+
+
+def fetch_m1_lookup(start_utc: pd.Timestamp, end_utc: pd.Timestamp) -> "pd.DataFrame | None":
+    """DEPRECATED eager M1 fetch — superseded by the lazy M1Cache. Kept for any
+    external caller. Fetches all M1 bid/ask for the window, indexed by time."""
+    if not USE_M1_INTRABAR:
+        return None
+    try:
+        m1 = fetch_candles_mba(start_utc, end_utc, granularity="M1")
+    except Exception as exc:  # noqa: BLE001 — M1 is best-effort, never fatal
+        print(f"[M1] intrabar fetch failed ({exc}); falling back to stop-first on straddles")
+        return None
+    if m1 is None or m1.empty or not has_bidask(m1):
+        return None
+    return m1.set_index("timestamp", drop=False).sort_index()
 
 
 def weak_candle_filter(candle: pd.Series) -> bool:
@@ -548,6 +795,7 @@ def simulate_forex_trade(
     balance_before: float,
     risk_amount: float,
     max_hold_bars: int,
+    m1_lookup: "pd.DataFrame | None" = None,
 ) -> tuple[dict[str, Any] | None, int]:
     entry_index = signal_index + 1
     if entry_index >= len(entry_df):
@@ -558,7 +806,19 @@ def simulate_forex_trade(
 
     signal_candle = entry_df.iloc[signal_index]
     entry_candle = entry_df.iloc[entry_index]
-    entry_price = effective_entry_price(float(entry_candle["open"]), direction)
+
+    # Realistic fills price the entry at the correct side of the spread and
+    # resolve SL/TP against the opposite side (see USE_REALISTIC_FILLS).
+    realistic = USE_REALISTIC_FILLS and has_bidask(entry_df)
+    if realistic:
+        entry_price = realistic_entry_price(entry_candle, direction)
+    else:
+        entry_price = effective_entry_price(float(entry_candle["open"]), direction)
+
+    # Detection-lag stress: worsen the fill by DETECTION_LAG_POINTS (adverse).
+    if DETECTION_LAG_POINTS:
+        entry_price = (entry_price + DETECTION_LAG_POINTS) if direction == "BUY" else (entry_price - DETECTION_LAG_POINTS)
+
     position_size = risk_amount / risk_distance
     # Volatility switch: use wider TP in trending regime (ADX >= threshold on M15).
     tp_mult = TAKE_PROFIT_ATR_MULTIPLIER
@@ -579,63 +839,110 @@ def simulate_forex_trade(
         take_profit = entry_price - take_profit_distance
 
     last_index = min(len(entry_df) - 1, entry_index + max_hold_bars - 1)
-    for future_index in range(entry_index, last_index + 1):
-        future_candle = entry_df.iloc[future_index]
-        candle_high = float(future_candle["high"])
-        candle_low = float(future_candle["low"])
-        exit_timestamp = pd.Timestamp(future_candle["timestamp"]) + pd.Timedelta(minutes=5)
-        bars_held = future_index - entry_index + 1
 
-        if direction == "BUY":
-            hit_sl = candle_low <= stop_loss
-            hit_tp = candle_high >= take_profit
-        else:
-            hit_sl = candle_high >= stop_loss
-            hit_tp = candle_low <= take_profit
-
-        if hit_sl and hit_tp:
-            raw_exit_price = stop_loss
-            result = "LOSS"
-            exit_reason = "sl_and_tp_same_candle_sl_first"
-        elif hit_sl:
-            raw_exit_price = stop_loss
-            result = "LOSS"
-            exit_reason = "stop_loss_hit"
-        elif hit_tp:
-            raw_exit_price = take_profit
-            result = "WIN"
-            exit_reason = "take_profit_hit"
-        else:
-            continue
-
-        exit_price = effective_exit_price(raw_exit_price, direction)
-        return (
-            build_trade_record(
-                signal_timestamp=pd.Timestamp(signal_candle["timestamp"]),
-                entry_timestamp=pd.Timestamp(entry_candle["timestamp"]),
-                exit_timestamp=exit_timestamp,
-                direction=direction,
-                entry_price=entry_price,
-                exit_price=exit_price,
-                stop_loss=stop_loss,
-                take_profit=take_profit,
-                result=result,
-                position_size=position_size,
-                balance_before=balance_before,
-                risk_amount=risk_amount,
-                bars_held=bars_held,
-                ema50=float(trend_candle["ema50"]),
-                ema200=float(trend_candle["ema200"]),
-                rsi=float(signal_candle["rsi14"]),
-                atr=float(signal_candle["atr14"]),
-                reason=signal_reason,
-                exit_reason=exit_reason,
-            ),
-            future_index,
+    if realistic:
+        # Bid/ask-aware walk-forward with M1 straddle resolution.
+        hit = resolve_realistic_exit(
+            entry_df=entry_df,
+            entry_index=entry_index,
+            last_index=last_index,
+            direction=direction,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            m1_lookup=m1_lookup,
         )
+        if hit is not None:
+            future_index, exit_price, result, exit_reason = hit
+            future_candle = entry_df.iloc[future_index]
+            exit_timestamp = pd.Timestamp(future_candle["timestamp"]) + pd.Timedelta(minutes=5)
+            bars_held = future_index - entry_index + 1
+            return (
+                build_trade_record(
+                    signal_timestamp=pd.Timestamp(signal_candle["timestamp"]),
+                    entry_timestamp=pd.Timestamp(entry_candle["timestamp"]),
+                    exit_timestamp=exit_timestamp,
+                    direction=direction,
+                    entry_price=entry_price,
+                    exit_price=exit_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    result=result,
+                    position_size=position_size,
+                    balance_before=balance_before,
+                    risk_amount=risk_amount,
+                    bars_held=bars_held,
+                    ema50=float(trend_candle["ema50"]),
+                    ema200=float(trend_candle["ema200"]),
+                    rsi=float(signal_candle["rsi14"]),
+                    atr=float(signal_candle["atr14"]),
+                    reason=signal_reason,
+                    exit_reason=exit_reason,
+                ),
+                future_index,
+            )
+    else:
+        for future_index in range(entry_index, last_index + 1):
+            future_candle = entry_df.iloc[future_index]
+            candle_high = float(future_candle["high"])
+            candle_low = float(future_candle["low"])
+            exit_timestamp = pd.Timestamp(future_candle["timestamp"]) + pd.Timedelta(minutes=5)
+            bars_held = future_index - entry_index + 1
+
+            if direction == "BUY":
+                hit_sl = candle_low <= stop_loss
+                hit_tp = candle_high >= take_profit
+            else:
+                hit_sl = candle_high >= stop_loss
+                hit_tp = candle_low <= take_profit
+
+            if hit_sl and hit_tp:
+                raw_exit_price = stop_loss
+                result = "LOSS"
+                exit_reason = "sl_and_tp_same_candle_sl_first"
+            elif hit_sl:
+                raw_exit_price = stop_loss
+                result = "LOSS"
+                exit_reason = "stop_loss_hit"
+            elif hit_tp:
+                raw_exit_price = take_profit
+                result = "WIN"
+                exit_reason = "take_profit_hit"
+            else:
+                continue
+
+            exit_price = effective_exit_price(raw_exit_price, direction)
+            return (
+                build_trade_record(
+                    signal_timestamp=pd.Timestamp(signal_candle["timestamp"]),
+                    entry_timestamp=pd.Timestamp(entry_candle["timestamp"]),
+                    exit_timestamp=exit_timestamp,
+                    direction=direction,
+                    entry_price=entry_price,
+                    exit_price=exit_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    result=result,
+                    position_size=position_size,
+                    balance_before=balance_before,
+                    risk_amount=risk_amount,
+                    bars_held=bars_held,
+                    ema50=float(trend_candle["ema50"]),
+                    ema200=float(trend_candle["ema200"]),
+                    rsi=float(signal_candle["rsi14"]),
+                    atr=float(signal_candle["atr14"]),
+                    reason=signal_reason,
+                    exit_reason=exit_reason,
+                ),
+                future_index,
+            )
 
     final_candle = entry_df.iloc[last_index]
-    final_exit_price = effective_exit_price(float(final_candle["close"]), direction)
+    # Time-stop closes at market: BUY exits on the bid, SELL on the ask.
+    if realistic:
+        final_raw = float(final_candle["bid_c"]) if direction == "BUY" else float(final_candle["ask_c"])
+        final_exit_price = final_raw
+    else:
+        final_exit_price = effective_exit_price(float(final_candle["close"]), direction)
     final_exit_timestamp = pd.Timestamp(final_candle["timestamp"]) + pd.Timedelta(minutes=5)
     if direction == "BUY":
         result = "WIN" if final_exit_price > entry_price else "LOSS"
@@ -782,6 +1089,55 @@ def save_backtest_outputs(
     }
 
 
+def assess_data_integrity(
+    df: pd.DataFrame,
+    session_start_hour: int = 12,
+    session_end_hour: int = 21,
+) -> dict[str, Any]:
+    """Estimate M5 data completeness inside the trading-session window.
+
+    Only session hours matter (the strategy trades 12-21 UTC), and only days
+    the market was open (>0 bars) are counted — so weekends and the nightly
+    settlement break are ignored, not flagged as 'missing'. Each open day
+    expects (session_end - session_start) * 12 five-minute bars.
+
+    Returns completeness %, expected/actual/missing bar counts, and the worst
+    gap days — so a run built on a data hole can't be silently trusted.
+    """
+    empty = {
+        "completeness_pct": 100.0, "expected_bars": 0, "actual_bars": 0,
+        "missing_bars": 0, "gap_days": [],
+    }
+    if df is None or df.empty or "timestamp" not in df.columns:
+        return empty
+    ts = pd.to_datetime(df["timestamp"], utc=True)
+    hours = ts.dt.hour
+    sess = ts[(hours >= session_start_hour) & (hours < session_end_hour)]
+    if sess.empty:
+        return empty
+
+    per_day_expected = (session_end_hour - session_start_hour) * 12
+    counts = sess.dt.floor("1D").value_counts()
+    total_actual = int(counts.sum())
+    total_missing = 0
+    gap_days: list[dict[str, Any]] = []
+    for day, cnt in counts.items():
+        miss = per_day_expected - int(cnt)
+        if miss > 0:
+            total_missing += miss
+            gap_days.append({"date": str(pd.Timestamp(day).date()), "actual": int(cnt), "missing": int(miss)})
+    expected = total_actual + total_missing
+    completeness = (total_actual / expected * 100.0) if expected else 100.0
+    gap_days.sort(key=lambda d: d["missing"], reverse=True)
+    return {
+        "completeness_pct": round(completeness, 2),
+        "expected_bars": expected,
+        "actual_bars": total_actual,
+        "missing_bars": total_missing,
+        "gap_days": gap_days[:10],
+    }
+
+
 def run_backtest(
     *,
     start_utc: pd.Timestamp,
@@ -799,6 +1155,12 @@ def run_backtest(
     trend_df = indicator_engine.add_indicators(candles_15m)
     trend_df = add_adx14(trend_df)  # for volatility switch — dynamic TP based on ADX
     trend_lookup = trend_df.set_index("timestamp", drop=False).sort_index()
+
+    # M1 bid/ask cache for intrabar SL/TP resolution — lazy, only fetches the
+    # day a straddle bar actually lands on (usually 0-3 tiny fetches per run).
+    m1_lookup = None
+    if USE_REALISTIC_FILLS and USE_M1_INTRABAR and has_bidask(entry_df):
+        m1_lookup = M1Cache()
 
     trades: list[dict[str, Any]] = []
     balance = starting_balance
@@ -834,6 +1196,7 @@ def run_backtest(
                 balance_before=float(balance),
                 risk_amount=float(risk_amount),
                 max_hold_bars=max(1, int(max_hold_bars)),
+                m1_lookup=m1_lookup,
             )
 
             if trade is None:
@@ -874,6 +1237,17 @@ def run_backtest(
         ],
     )
     metrics = compute_metrics(trades_df)
+
+    # Data-integrity: how complete was the M5 feed over the traded window?
+    try:
+        in_window = candles_5m[(candles_5m["timestamp"] >= start_utc) & (candles_5m["timestamp"] < end_utc)]
+        integ = assess_data_integrity(in_window)
+        metrics["data_completeness_pct"] = integ["completeness_pct"]
+        metrics["data_missing_bars"] = integ["missing_bars"]
+        metrics["data_gap_days"] = integ["gap_days"]
+    except Exception as exc:  # noqa: BLE001 — integrity is advisory, never fatal
+        print(f"[INTEGRITY] check skipped: {exc}")
+
     return trades_df, metrics
 
 

@@ -57,6 +57,7 @@ export type MarketStatus = {
 
 export type BotStatus = {
   rsiEma: { running: boolean; pid: number | null; startedAt: string | null };
+  vwapSt: { running: boolean; pid: number | null; startedAt: string | null };
   rsiEth: Record<string, any>;
   anyRunning: boolean;
   market: MarketStatus;
@@ -70,6 +71,7 @@ export type RsiBacktestParams = {
   tp_candles: number; // ×0.3 → ATR mult (10 → 3.0×ATR)
   starting_balance: number;
   risk_per_trade_pct: number; // 1–10
+  detection_lag_points?: number; // adverse entry slippage to model polling lag
 };
 
 export type RsiMetrics = {
@@ -81,6 +83,9 @@ export type RsiMetrics = {
   average_r: number;
   max_drawdown_r: number;
   ending_balance: number;
+  data_completeness_pct?: number;
+  data_missing_bars?: number;
+  data_gap_days?: { date: string; actual: number; missing: number }[];
 };
 
 export type RsiTrade = {
@@ -124,6 +129,7 @@ export type VwapStBacktestParams = {
   sl_atr: number;
   tp_atr: number;
   max_hold_bars: number;
+  detection_lag_points?: number; // adverse entry slippage to model polling lag
 };
 
 // VWAP+ST backtest returns the same shape as the RSI EMA one (metrics + trades + equity_curve)
@@ -167,6 +173,16 @@ export type LiveSignal = {
   strategyName?: string;
   telegram_sent?: boolean;
   outcome?: string | null;
+  exit_price?: number | null;
+  outcome_note?: string | null;
+  // Extra context for the click-to-expand detail view
+  score_threshold?: number;
+  regime_confidence?: number;
+  trend_alignment?: boolean;
+  price_trigger?: boolean;
+  rsi_filter?: boolean;
+  atr_expansion?: boolean;
+  marked_at?: string | null;
 };
 
 // ── Endpoints ────────────────────────────────────────────────────────────────
@@ -184,9 +200,9 @@ export const Api = {
   runRsiBacktest: (p: RsiBacktestParams) => apiPost<RsiBacktestResult>("/backtest", p),
   runVwapStBacktest: (p: VwapStBacktestParams) => apiPost<VwapStBacktestResult>("/api/vwap-st/backtest", p),
   liveSignals: (limit = 100) => apiGet<{ signals: LiveSignal[]; count: number }>(`/signals?limit=${limit}`),
-  startBot: (strategy: "rsi-ema") =>
+  startBot: (strategy: "rsi-ema" | "vwap-st") =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/start`),
-  stopBot: (strategy: "rsi-ema") =>
+  stopBot: (strategy: "rsi-ema" | "vwap-st") =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/stop`),
 };
 
