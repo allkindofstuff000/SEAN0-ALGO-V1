@@ -428,6 +428,35 @@ async def run_loop() -> None:
 
             if decision.signal_generated and decision.signals:
                 primary_signal = decision.signal or decision.signals[0]
+                # ── Entry alignment with the backtest ─────────────────────────
+                # Re-anchor the entry to the live market price the instant the
+                # signal confirms (== the fill you can actually get), instead of
+                # the signal-bar close (a price you can't fill at). This matches
+                # the backtest's next-bar-open convention. Each signal's SL/TP
+                # DISTANCES (and thus its RR) are preserved exactly. Falls back to
+                # the original close if no live snapshot is available.
+                if live_snapshot is not None:
+                    try:
+                        _live_entry = float(live_snapshot["close"])
+                        _seen_ids: set[int] = set()
+                        for _sig in list(decision.signals) + [primary_signal]:
+                            if id(_sig) in _seen_ids:
+                                continue
+                            _seen_ids.add(id(_sig))
+                            _oe = float(_sig.entry_price)
+                            _buy = str(_sig.direction).upper() == "BUY"
+                            if _sig.stop_loss is not None:
+                                _sld = abs(float(_sig.stop_loss) - _oe)
+                                _sig.stop_loss = _live_entry - _sld if _buy else _live_entry + _sld
+                            if _sig.take_profit is not None:
+                                _tpd = abs(float(_sig.take_profit) - _oe)
+                                _sig.take_profit = _live_entry + _tpd if _buy else _live_entry - _tpd
+                            _sig.entry_price = _live_entry
+                        LOGGER.info(
+                            "[ENTRY] aligned to live fill %.2f (was signal-close)", _live_entry
+                        )
+                    except Exception as _entry_exc:
+                        LOGGER.warning("[ENTRY] live-price override skipped: %s", _entry_exc)
                 allowed, risk_reason = risk_manager.can_emit_signal(primary_signal)
                 if allowed:
                     LOGGER.info("[RISK] symbol=%s signal allowed", SYMBOL)
