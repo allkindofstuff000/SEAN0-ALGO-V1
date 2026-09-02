@@ -42,8 +42,11 @@ except Exception:
 
 ROOT = Path(__file__).resolve().parent
 POLL_SECS = 120          # re-check open signals every 2 min
-CANDLE_COUNT = 300       # ~25h of M5 — plenty to resolve recent signals
 MAX_SIGNAL_AGE_H = 48    # don't chase signals older than 2 days
+CANDLE_COUNT = 600       # ~50h+ of M5 — MUST exceed MAX_SIGNAL_AGE_H so the fetch
+                         # window always reaches back past the signal candle
+                         # (otherwise an early SL/TP touch falls off the front and
+                         # the outcome is mis-marked). Weekends only widen coverage.
 
 # ── Health watchdog ─────────────────────────────────────────────────────────
 STALE_FEED_MIN = 20         # alert if no fresh OANDA bar in this many minutes
@@ -131,6 +134,18 @@ def _resolve_one(sig: dict, df: pd.DataFrame) -> tuple[str, float, str] | None:
     ct = pd.Timestamp(ct_raw)
     if ct.tzinfo is None:
         ct = ct.tz_localize("UTC")
+
+    # Coverage guard: the fetched window must reach back to (or before) the
+    # signal candle. If the earliest fetched bar is AFTER the signal candle, an
+    # early SL/TP touch could have happened off the front of the window — so
+    # resolving now risks a wrong verdict (e.g. the stop was hit first but price
+    # later tagged the target). Stay OPEN and retry next cycle instead of guessing.
+    if not df.empty:
+        earliest = pd.Timestamp(df["timestamp"].min())
+        if earliest.tzinfo is None:
+            earliest = earliest.tz_localize("UTC")
+        if earliest > ct:
+            return None
 
     # Bars strictly AFTER the signal candle (entry is the next bar onward).
     fut = df[df["timestamp"] > ct]
