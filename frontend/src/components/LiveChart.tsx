@@ -94,13 +94,15 @@ export function LiveChart({ tf, showEMA = true, className, candlesFn, streamFn }
       crosshair: { mode: 1 },
       autoSize: true,
     });
+    // Black & white candles: solid-white up, white-outlined (hollow) down —
+    // legible on the dark chart background. EMA lines below stay colored.
     const candleSeries = chart.addCandlestickSeries({
-      upColor: "#26a69a",
-      downColor: "#ef5350",
-      borderUpColor: "#26a69a",
-      borderDownColor: "#ef5350",
-      wickUpColor: "#26a69a",
-      wickDownColor: "#ef5350",
+      upColor: "#ffffff",
+      downColor: "#000000",
+      borderUpColor: "#ffffff",
+      borderDownColor: "#ffffff",
+      wickUpColor: "#ffffff",
+      wickDownColor: "#ffffff",
     });
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
