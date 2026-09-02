@@ -1,5 +1,5 @@
 import type { LiveSignal } from "@/lib/api";
-import { fmtLocal, TZ_LABEL } from "@/lib/tz";
+import { fmtLocal, toUtcDate, TZ_LABEL } from "@/lib/tz";
 
 // Small helpers ---------------------------------------------------------------
 function Check({ ok, label }: { ok?: boolean | null; label: string }) {
@@ -45,12 +45,15 @@ export function SignalDetail({ s }: { s: LiveSignal }) {
     r = pips / slDist;
   }
 
-  // hold: candle time -> resolved time
+  // hold: candle time -> resolved time. Parse both through toUtcDate so a
+  // tz-less candle_time_utc ("2026-09-01 16:25:00") and an ISO marked_at
+  // ("...+00:00") are compared on the same UTC basis (raw new Date() would read
+  // the tz-less one as browser-local and inflate the duration by the tz offset).
   let hold = "—";
-  const start = s.candle_time_utc || s.sent_at;
-  const end = s.marked_at;
-  if (start && end) {
-    const ms = new Date(String(end).replace(" ", "T")).getTime() - new Date(String(start).replace(" ", "T")).getTime();
+  const startD = toUtcDate(s.candle_time_utc || s.sent_at);
+  const endD = toUtcDate(s.marked_at);
+  if (startD && endD) {
+    const ms = endD.getTime() - startD.getTime();
     if (Number.isFinite(ms) && ms >= 0) {
       const m = Math.round(ms / 60000);
       hold = m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;

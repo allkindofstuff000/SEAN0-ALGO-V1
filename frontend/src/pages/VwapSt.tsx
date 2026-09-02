@@ -14,7 +14,7 @@ import {
   useBotControl,
 } from "@/hooks/use-trading-data";
 import { Fragment, useState } from "react";
-import { Play, Square, BarChart2, History, TrendingUp, Clock, Send } from "lucide-react";
+import { Play, Square, BarChart2, TrendingUp, Clock, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { BacktestResults } from "@/components/BacktestResults";
 import { WalkForwardResults } from "@/components/WalkForwardResults";
@@ -26,7 +26,6 @@ import { Api, type VwapStBacktestResult } from "@/lib/api";
 
 const TABS = [
   { id: "backtest", label: "Backtest", icon: Play },
-  { id: "history", label: "History", icon: History },
   { id: "signals", label: "Signal History", icon: Send },
 ];
 
@@ -426,12 +425,8 @@ export default function VwapSt() {
                 </p>
               </div>
             ) : null}
-          </div>
-        )}
 
-        {/* HISTORY TAB */}
-        {activeTab === "history" && (
-          <div className="h-full overflow-auto pb-4">
+            {/* Backtest history — nested inside the Backtest tab */}
             <div className="rounded-lg border border-border bg-card overflow-hidden">
               <div className="px-4 py-3 border-b border-border bg-secondary/20 flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5 text-muted-foreground" />
@@ -442,7 +437,7 @@ export default function VwapSt() {
                   click a run to reopen its full report
                 </p>
               </div>
-              <div className="overflow-auto max-h-[560px]">
+              <div className="overflow-auto max-h-[360px]">
                 <Table>
                   <TableHeader className="sticky top-0 bg-card z-10">
                     <TableRow className="hover:bg-transparent border-border">
@@ -476,7 +471,7 @@ export default function VwapSt() {
                           colSpan={8}
                           className="text-center py-8 text-xs text-muted-foreground"
                         >
-                          No VWAP+ST backtests yet. Run one from the Backtest tab — results are saved automatically.
+                          No VWAP+ST backtests yet. Run one above — results are saved automatically.
                         </TableCell>
                       </TableRow>
                     ) : (
