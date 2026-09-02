@@ -179,6 +179,7 @@ _bot_process: subprocess.Popen | None = None
 _bot_lock = threading.Lock()
 _bot_start_time: float | None = None
 BOT_SERVICE_NAME = os.getenv("BOT_SERVICE_NAME", "").strip()
+VWAP_ST_SERVICE_NAME = os.getenv("VWAP_ST_SERVICE_NAME", "vwap-st").strip()
 SYSTEMCTL_PATH = shutil.which("systemctl")  # None on Windows / non-systemd hosts
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -203,9 +204,10 @@ class BacktestRequest(BaseModel):
     starting_balance: float = 5000.0
     # 1-10 (%) → fraction sent to engine: 0.01–0.10
     risk_per_trade_pct: float = 5.0
-    # Detection lag (seconds): model the live 60s poll by filling at the REAL M1
-    # price this many seconds after the signal bar closes. 0 = off (exact
-    # next-bar open). 60 = realistic worst-case of one full poll interval.
+    # Detection-lag stress: points of adverse entry slippage (0 = off)
+    detection_lag_points: float = 0.0
+    # Detection lag (seconds): honest M1-drift fill this many seconds after the
+    # signal bar closes (models the 60s live poll). 0 = off (exact next-bar open).
     detection_lag_seconds: float = 0.0
 
 
@@ -219,6 +221,8 @@ class VwapStBacktestRequest(BaseModel):
     sl_atr: float = 1.5
     tp_atr: float = 3.0
     max_hold_bars: int = 12
+    # Detection-lag stress: points of adverse entry slippage (0 = off)
+    detection_lag_points: float = 0.0
     # Detection lag (seconds): honest M1-drift fill this many seconds after the
     # signal bar closes (models the 60s live poll). 0 = off (exact next-bar open).
     detection_lag_seconds: float = 0.0
@@ -270,6 +274,38 @@ def _run_systemctl(action: str, extra_args: list[str] | None = None) -> subproce
         command = base_cmd
 
     return subprocess.run(command, capture_output=True, text=True, check=False)
+
+
+def _run_systemctl_named(service: str, action: str) -> subprocess.CompletedProcess[str]:
+    """systemctl <action> <service> — parallel to _run_systemctl but per-service."""
+    if not SYSTEMCTL_PATH or not service:
+        raise RuntimeError("systemctl not available or service name blank")
+    base_cmd = [SYSTEMCTL_PATH, action, service]
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        command = base_cmd
+    elif shutil.which("sudo"):
+        command = ["sudo", *base_cmd]
+    else:
+        command = base_cmd
+    return subprocess.run(command, capture_output=True, text=True, check=False)
+
+
+def _service_status_named(service: str) -> dict[str, Any]:
+    """Query systemd show output for <service>. Parallel to _service_status."""
+    show = _run_systemctl_named(service, "show")
+    if show.returncode != 0:
+        detail = (show.stderr or show.stdout).strip()
+        raise RuntimeError(detail or f"Unable to read {service} status.")
+    values: dict[str, str] = {}
+    for line in show.stdout.splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            values[k] = v.strip()
+    active_state = values.get("ActiveState", "inactive")
+    pid_raw = values.get("MainPID", "0")
+    pid = int(pid_raw) if pid_raw.isdigit() and int(pid_raw) > 0 else None
+    running = active_state == "active" and pid is not None
+    return {"running": running, "pid": pid, "active_state": active_state}
 
 
 def _service_status() -> dict[str, Any]:
@@ -427,11 +463,13 @@ def run_backtest_endpoint(req: BacktestRequest) -> dict[str, Any]:
         if end_utc <= start_utc:
             return {"error": "End date must be after start date.", "metrics": {}, "trades": [], "equity_curve": []}
 
-        # ── Temporarily patch module-level SL / TP constants ─────────────────
+        # ── Temporarily patch module-level SL / TP / detection-lag constants ──
         orig_sl = engine.STOP_LOSS_ATR_MULTIPLIER
         orig_tp = engine.TAKE_PROFIT_ATR_MULTIPLIER
+        orig_lag = getattr(engine, "DETECTION_LAG_POINTS", 0.0)
         engine.STOP_LOSS_ATR_MULTIPLIER = sl_mult
         engine.TAKE_PROFIT_ATR_MULTIPLIER = tp_mult
+        engine.DETECTION_LAG_POINTS = max(0.0, float(getattr(req, "detection_lag_points", 0.0) or 0.0))
 
         risk_fraction = max(0.01, min(0.10, req.risk_per_trade_pct / 100.0))
         lag_seconds = max(0.0, min(300.0, float(req.detection_lag_seconds or 0.0)))
@@ -450,6 +488,7 @@ def run_backtest_endpoint(req: BacktestRequest) -> dict[str, Any]:
             # Always restore originals even if backtest throws
             engine.STOP_LOSS_ATR_MULTIPLIER = orig_sl
             engine.TAKE_PROFIT_ATR_MULTIPLIER = orig_tp
+            engine.DETECTION_LAG_POINTS = orig_lag
 
         # ── Build equity curve from balance column ────────────────────────────
         equity_curve: list[dict[str, Any]] = []
@@ -1045,18 +1084,25 @@ def vwap_st_backtest(req: VwapStBacktestRequest) -> dict[str, Any]:
         if lag_seconds:
             LOGGER.info("VWAP+ST backtest detection-lag ON: %.0fs (honest M1 fill)", lag_seconds)
 
-        trades_df, metrics, equity_curve = _vwap_st_run_backtest(
-            start_utc         = start_utc,
-            end_utc           = end_utc,
-            starting_balance  = req.starting_balance,
-            risk_per_trade    = risk_frac,
-            st_period         = req.st_period,
-            st_mult           = req.st_mult,
-            sl_atr_multiplier = req.sl_atr,
-            tp_atr_multiplier = req.tp_atr,
-            max_hold_bars     = req.max_hold_bars,
-            detection_lag_seconds = lag_seconds,
-        )
+        # Detection-lag stress (shared engine global, restored after the run)
+        from backtests import backtest_forex_engine as _bt_engine  # noqa: PLC0415
+        _orig_lag = getattr(_bt_engine, "DETECTION_LAG_POINTS", 0.0)
+        _bt_engine.DETECTION_LAG_POINTS = max(0.0, float(getattr(req, "detection_lag_points", 0.0) or 0.0))
+        try:
+            trades_df, metrics, equity_curve = _vwap_st_run_backtest(
+                start_utc         = start_utc,
+                end_utc           = end_utc,
+                starting_balance  = req.starting_balance,
+                risk_per_trade    = risk_frac,
+                st_period         = req.st_period,
+                st_mult           = req.st_mult,
+                sl_atr_multiplier = req.sl_atr,
+                tp_atr_multiplier = req.tp_atr,
+                max_hold_bars     = req.max_hold_bars,
+                detection_lag_seconds = lag_seconds,
+            )
+        finally:
+            _bt_engine.DETECTION_LAG_POINTS = _orig_lag
 
         trades_out: list[dict[str, Any]] = []
         if not trades_df.empty:
@@ -1136,12 +1182,25 @@ def api_bot_status() -> dict[str, Any]:
     rsi_eth_running = _rsi_eth is not None and getattr(_rsi_eth, "_initialized", False) and not getattr(_rsi_eth, "_paused", False)
     rsi_eth_status = _rsi_eth.get_status() if _rsi_eth is not None else {}
 
+    # VWAP + Supertrend live signal bot status
+    vwap_running = False
+    vwap_pid = None
+    if SYSTEMCTL_PATH and VWAP_ST_SERVICE_NAME:
+        try:
+            svc = _service_status_named(VWAP_ST_SERVICE_NAME)
+            vwap_running = bool(svc.get("running"))
+            vwap_pid = svc.get("pid")
+        except Exception as exc:
+            LOGGER.warning("[BOT] vwap-st status lookup failed: %s", exc)
+
     # Load uptime started_at from MongoDB
     rsi_started = load_strategy_started_at("rsi-ema") if rsi_running else None
     eth_started = load_strategy_started_at("rsi-eth") if rsi_eth_running else None
+    vwap_started = load_strategy_started_at("vwap-st") if vwap_running else None
 
     return {
         "rsiEma": {"running": rsi_running, "pid": rsi_pid, "startedAt": rsi_started},
+        "vwapSt": {"running": vwap_running, "pid": vwap_pid, "startedAt": vwap_started},
         "rsiEth": {
             "running": rsi_eth_running,
             "paused": getattr(_rsi_eth, "_paused", False) if _rsi_eth else False,
@@ -1152,7 +1211,7 @@ def api_bot_status() -> dict[str, Any]:
             "strategy_behavior": rsi_eth_status.get("strategy_behavior"),
             "market_open": rsi_eth_status.get("market_open", True),
         },
-        "anyRunning": rsi_running or rsi_eth_running,
+        "anyRunning": rsi_running or rsi_eth_running or vwap_running,
         "market": market,
     }
 
@@ -1177,6 +1236,34 @@ def api_rsi_stop() -> dict[str, Any]:
     result = bot_stop()
     save_strategy_state("rsi-ema", "stopped")
     return result
+
+
+@app.post("/api/bot/vwap-st/start", tags=["bot"])
+def api_vwap_st_start() -> dict[str, Any]:
+    """Start the VWAP + Supertrend live signal bot (systemctl start vwap-st.service)."""
+    if not SYSTEMCTL_PATH:
+        raise HTTPException(status_code=500, detail="systemctl not available on this host")
+    result = _run_systemctl_named(VWAP_ST_SERVICE_NAME, "start")
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip() or "systemctl start failed"
+        raise HTTPException(status_code=500, detail=detail)
+    save_strategy_state("vwap-st", "running")
+    LOGGER.info("[BOT] vwap-st started")
+    return {"status": "started", "message": "VWAP + Supertrend live bot started"}
+
+
+@app.post("/api/bot/vwap-st/stop", tags=["bot"])
+def api_vwap_st_stop() -> dict[str, Any]:
+    """Stop the VWAP + Supertrend live signal bot (systemctl stop vwap-st.service)."""
+    if not SYSTEMCTL_PATH:
+        raise HTTPException(status_code=500, detail="systemctl not available on this host")
+    result = _run_systemctl_named(VWAP_ST_SERVICE_NAME, "stop")
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip() or "systemctl stop failed"
+        raise HTTPException(status_code=500, detail=detail)
+    save_strategy_state("vwap-st", "stopped")
+    LOGGER.info("[BOT] vwap-st stopped")
+    return {"status": "stopped", "message": "VWAP + Supertrend live bot stopped"}
 
 
 @app.get("/api/bot/log-stream", tags=["bot"])
