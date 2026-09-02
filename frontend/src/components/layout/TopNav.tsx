@@ -8,6 +8,7 @@ export function TopNav() {
   const navItems = [
     { href: "/rsi-ema", label: "RSI EMA" },
     { href: "/vwap-st", label: "VWAP+ST" },
+    { href: "/btc-rsi-ema", label: "BTC RSI EMA" },
   ];
 
   return (

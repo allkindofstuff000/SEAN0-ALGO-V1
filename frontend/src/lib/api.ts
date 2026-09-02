@@ -205,6 +205,14 @@ export const Api = {
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/start`),
   stopBot: (strategy: "rsi-ema" | "vwap-st") =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/stop`),
+
+  // ── BTC RSI EMA (Binance data mirror) ──────────────────────────────────────
+  btcCandles: (tf: string, count = 240) =>
+    apiGet<{ candles: Candle[]; granularity: string; source: string }>(
+      `/api/btc/candles/${tf}?count=${count}`,
+    ),
+  btcLivePrice: () => apiGet<LivePrice>("/api/btc/price"),
+  runBtcBacktest: (p: RsiBacktestParams) => apiPost<RsiBacktestResult>("/api/btc/backtest", p),
 };
 
 // ── SSE helper for live candle stream ────────────────────────────────────────
@@ -221,6 +229,24 @@ export function openCandleStream(
   onError?: (e: Event) => void,
 ): EventSource {
   const es = new EventSource(apiUrl(`/api/stream/${tf}`));
+  es.onmessage = (m) => {
+    try {
+      onEvent(JSON.parse(m.data));
+    } catch {
+      /* ignore malformed */
+    }
+  };
+  if (onError) es.onerror = onError;
+  return es;
+}
+
+// BTC live candle stream (Binance data mirror, polling SSE — /api/btc/stream)
+export function openBtcCandleStream(
+  tf: string,
+  onEvent: (e: StreamEvent) => void,
+  onError?: (e: Event) => void,
+): EventSource {
+  const es = new EventSource(apiUrl(`/api/btc/stream/${tf}`));
   es.onmessage = (m) => {
     try {
       onEvent(JSON.parse(m.data));

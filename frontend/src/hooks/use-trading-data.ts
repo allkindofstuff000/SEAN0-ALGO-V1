@@ -18,6 +18,23 @@ export function useLivePrice() {
   });
 }
 
+// ── BTC (Binance data mirror) ────────────────────────────────────────────────
+export function useBtcCandles(tf: string, count = 240) {
+  return useQuery({
+    queryKey: ["btc-candles", tf, count],
+    queryFn: () => Api.btcCandles(tf, count),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useBtcLivePrice() {
+  return useQuery({
+    queryKey: ["btc-live-price"],
+    queryFn: Api.btcLivePrice,
+    refetchInterval: 3_000,
+  });
+}
+
 export function useMarketStatus() {
   return useQuery({
     queryKey: ["market-status"],
@@ -67,6 +84,15 @@ export function useRunVwapStBacktest() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (params: VwapStBacktestParams) => Api.runVwapStBacktest(params),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["backtest-history"] }),
+  });
+}
+
+// BTC RSI EMA backtest (POST /api/btc/backtest) — same param shape as RSI EMA
+export function useRunBtcBacktest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (params: RsiBacktestParams) => Api.runBtcBacktest(params),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["backtest-history"] }),
   });
 }

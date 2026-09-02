@@ -6,13 +6,16 @@ import {
   type ISeriesApi,
   type UTCTimestamp,
 } from "lightweight-charts";
-import { Api, openCandleStream, type Candle } from "@/lib/api";
+import { Api, openCandleStream, type Candle, type StreamEvent } from "@/lib/api";
 import { ema } from "@/lib/indicators";
 
 type Props = {
   tf: string; // M1 | M5 | M15 | H1
   showEMA?: boolean;
   className?: string;
+  // Data source (defaults to XAU / OANDA). Pass BTC variants for the BTC page.
+  candlesFn?: (tf: string, count: number) => Promise<{ candles: Candle[] }>;
+  streamFn?: (tf: string, onEvent: (e: StreamEvent) => void, onError?: (e: Event) => void) => EventSource;
 };
 
 const isValidCandle = (c: any): c is Candle =>
@@ -61,7 +64,9 @@ const emaLine = (candles: Candle[], period: number, intervalSec: number) => {
   });
 };
 
-export function LiveChart({ tf, showEMA = true, className }: Props) {
+export function LiveChart({ tf, showEMA = true, className, candlesFn, streamFn }: Props) {
+  const loadCandles = candlesFn ?? ((t: string, c: number) => Api.candles(t, c));
+  const openStream = streamFn ?? openCandleStream;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -128,7 +133,7 @@ export function LiveChart({ tf, showEMA = true, className }: Props) {
       ema21Ref.current?.setData(emaLine(candlesRef.current, 21, intervalSec));
     };
 
-    Api.candles(tf, 12000)
+    loadCandles(tf, 12000)
       .then((res) => {
         if (cancelled || !candleSeriesRef.current) return;
         const candles = (res.candles || []).filter(isValidCandle);
@@ -139,7 +144,7 @@ export function LiveChart({ tf, showEMA = true, className }: Props) {
         setStatus("live");
 
         // live updates
-        es = openCandleStream(
+        es = openStream(
           tf,
           (e) => {
             if (!candleSeriesRef.current) return;

@@ -87,6 +87,17 @@ except Exception as _vwap_st_exc:
     _VWAP_ST_AVAILABLE = False
     logging.getLogger("dashboard").warning("[VWAP-ST] import failed: %s", _vwap_st_exc)
 
+# ── BTC RSI EMA strategy (Binance data mirror; reuses the XAU RSI EMA engine) ──
+try:
+    from strategies.rsi_btc.backtester import run_backtest as _btc_run_backtest
+    from core.btc_fetcher import BtcFetcher as _BtcFetcher
+    _btc_fetcher = _BtcFetcher()
+    _BTC_AVAILABLE = True
+except Exception as _btc_exc:
+    _BTC_AVAILABLE = False
+    _btc_fetcher = None
+    logging.getLogger("dashboard").warning("[BTC] import failed: %s", _btc_exc)
+
 # ── Binance ETH engine (isolated — does NOT touch OANDA code) ─────────────────
 try:
     from core.binance_engine import BinanceCandleEngine
@@ -1152,6 +1163,158 @@ def vwap_st_backtest(req: VwapStBacktestRequest) -> dict[str, Any]:
 
     except Exception as exc:
         LOGGER.error("VWAP+ST backtest error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        _backtest_lock.release()
+
+
+# ── BTC RSI EMA (Binance data mirror) ─────────────────────────────────────────
+def _btc_candles_payload(timeframe: str, count: int) -> dict[str, Any]:
+    count = min(max(int(count), 10), 1500)
+    df = _btc_fetcher.fetch_klines(timeframe, count + 2, closed_only=False)
+    candles = [
+        {
+            "time": int(pd.Timestamp(r["timestamp"]).timestamp()),
+            "open": float(r["open"]),
+            "high": float(r["high"]),
+            "low": float(r["low"]),
+            "close": float(r["close"]),
+            "volume": float(r["volume"]),
+            "complete": True,
+        }
+        for _, r in df.iterrows()
+    ]
+    return {"candles": candles[-count:], "granularity": timeframe.upper(), "source": "binance-mirror"}
+
+
+@app.get("/api/btc/price", tags=["btc"])
+def api_btc_price() -> dict[str, Any]:
+    if not _BTC_AVAILABLE or _btc_fetcher is None:
+        raise HTTPException(status_code=503, detail="BTC data source unavailable.")
+    try:
+        snap = _btc_fetcher.fetch_live_price()
+        return {
+            "price": float(snap["price"]),
+            "time": int(pd.Timestamp(snap["time"]).timestamp()),
+            "initialized": True,
+            "symbol": "BTCUSD",
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"BTC price fetch failed: {exc}") from exc
+
+
+@app.get("/api/btc/candles/{timeframe}", tags=["btc"])
+def api_btc_candles(timeframe: str, count: int = 300) -> dict[str, Any]:
+    if not _BTC_AVAILABLE or _btc_fetcher is None:
+        raise HTTPException(status_code=503, detail="BTC data source unavailable.")
+    try:
+        return _btc_candles_payload(timeframe, count)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"BTC candles fetch failed: {exc}") from exc
+
+
+@app.get("/api/btc/stream/{timeframe}", tags=["btc"])
+async def api_btc_stream(timeframe: str) -> StreamingResponse:
+    async def event_gen():
+        while True:
+            try:
+                payload = await asyncio.to_thread(_btc_candles_payload, timeframe, 3)
+                for c in payload["candles"][-2:]:
+                    yield f"data: {_json.dumps({'type': 'candle', 'candle': c})}\n\n"
+            except Exception as exc:  # noqa: BLE001
+                yield f"data: {_json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
+            await asyncio.sleep(3)
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
+@app.post("/api/btc/backtest", tags=["btc"])
+def api_btc_backtest(req: BacktestRequest) -> dict[str, Any]:
+    """RSI EMA strategy over BTCUSDT M5 (24/7 — the gold session filter is bypassed)."""
+    if not _BTC_AVAILABLE:
+        raise HTTPException(status_code=503, detail="BTC strategy module not available.")
+    if not _backtest_lock.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="A backtest is already running. Please wait.")
+    try:
+        from backtests import backtest_forex_engine as engine  # noqa: PLC0415
+
+        sl_mult = req.sl_candles * 0.3
+        tp_mult = req.tp_candles * 0.3
+
+        now_utc = pd.Timestamp.now(tz="UTC")
+        today = now_utc.normalize()
+        start_utc = engine.parse_date_utc(req.start_date) if req.start_date else (today - pd.Timedelta(days=30))
+        end_utc = engine.parse_date_utc(req.end_date, inclusive_end=True) if req.end_date else today
+        end_utc = min(end_utc, now_utc.floor("5min"))  # BTC trades 'today' too (24/7)
+        if end_utc <= start_utc:
+            return {"error": "End date must be after start date.", "metrics": {}, "trades": [], "equity_curve": []}
+
+        orig_sl = engine.STOP_LOSS_ATR_MULTIPLIER
+        orig_tp = engine.TAKE_PROFIT_ATR_MULTIPLIER
+        orig_lag = getattr(engine, "DETECTION_LAG_POINTS", 0.0)
+        engine.STOP_LOSS_ATR_MULTIPLIER = sl_mult
+        engine.TAKE_PROFIT_ATR_MULTIPLIER = tp_mult
+        engine.DETECTION_LAG_POINTS = max(0.0, float(getattr(req, "detection_lag_points", 0.0) or 0.0))
+
+        risk_fraction = max(0.01, min(0.10, req.risk_per_trade_pct / 100.0))
+        lag_seconds = max(0.0, min(300.0, float(req.detection_lag_seconds or 0.0)))
+        try:
+            trades_df, metrics, equity_curve = _btc_run_backtest(
+                start_utc=start_utc,
+                end_utc=end_utc,
+                starting_balance=req.starting_balance,
+                risk_per_trade=risk_fraction,
+                detection_lag_seconds=lag_seconds,
+            )
+        finally:
+            engine.STOP_LOSS_ATR_MULTIPLIER = orig_sl
+            engine.TAKE_PROFIT_ATR_MULTIPLIER = orig_tp
+            engine.DETECTION_LAG_POINTS = orig_lag
+
+        trades_out: list[dict[str, Any]] = []
+        if not trades_df.empty:
+            for row in trades_df.fillna("").to_dict(orient="records"):
+                for k in ("timestamp", "entry_timestamp", "exit_timestamp"):
+                    if k in row and not isinstance(row[k], str):
+                        row[k] = str(row[k])[:19]
+                trades_out.append({k: _safe_num(v) if not isinstance(v, str) else v for k, v in row.items()})
+        metrics_out = {k: _safe_num(v) for k, v in metrics.items()}
+
+        LOGGER.info(
+            "BTC backtest complete  trades=%s  win_rate=%.1f%%  balance=$%.2f",
+            metrics_out.get("total_trades", 0),
+            metrics_out.get("win_rate", 0.0) or 0.0,
+            metrics_out.get("ending_balance", 0.0) or 0.0,
+        )
+
+        mongo_id = save_backtest_report(
+            metrics=metrics_out,
+            trades=trades_out,
+            equity_curve=equity_curve,
+            params={
+                "strategy": "rsi-btc",
+                "start_date": req.start_date,
+                "end_date": req.end_date,
+                "sl_candles": req.sl_candles,
+                "tp_candles": req.tp_candles,
+                "starting_balance": req.starting_balance,
+                "risk_per_trade_pct": req.risk_per_trade_pct,
+                "sl_atr_multiplier": sl_mult,
+                "tp_atr_multiplier": tp_mult,
+                "detection_lag_seconds": lag_seconds,
+            },
+        )
+
+        return {"metrics": metrics_out, "trades": trades_out, "equity_curve": equity_curve, "mongo_id": mongo_id}
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        LOGGER.error("BTC backtest error: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     finally:
         _backtest_lock.release()
