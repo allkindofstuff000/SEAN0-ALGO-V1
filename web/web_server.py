@@ -171,8 +171,11 @@ def is_market_open(now_utc: _dt.datetime | None = None) -> dict[str, Any]:
 
 
 # Prevent two backtest runs overlapping
-_backtest_lock      = threading.Lock()
-_vwap_backtest_lock = threading.Lock()
+# Single shared lock for ALL XAU backtests (RSI EMA + VWAP+ST). Both endpoints
+# temporarily patch the shared engine global DETECTION_LAG_POINTS, so they must
+# never run concurrently — otherwise they race on it and can even leak a non-zero
+# value into every later backtest. Serialising on one lock removes that entirely.
+_backtest_lock = threading.Lock()
 
 # ── Bot process management ────────────────────────────────────────────────────
 _bot_process: subprocess.Popen | None = None
@@ -1058,8 +1061,8 @@ def vwap_st_backtest(req: VwapStBacktestRequest) -> dict[str, Any]:
     """Run the VWAP + Supertrend strategy over historical M5 XAUUSD candles."""
     if not _VWAP_ST_AVAILABLE:
         raise HTTPException(status_code=503, detail="VWAP+ST strategy module not available.")
-    if not _vwap_backtest_lock.acquire(blocking=False):
-        raise HTTPException(status_code=429, detail="VWAP+ST backtest already running. Please wait.")
+    if not _backtest_lock.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="A backtest is already running. Please wait.")
     try:
         now_utc       = pd.Timestamp.now(tz="UTC")
         today         = now_utc.normalize()
@@ -1151,7 +1154,7 @@ def vwap_st_backtest(req: VwapStBacktestRequest) -> dict[str, Any]:
         LOGGER.error("VWAP+ST backtest error: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     finally:
-        _vwap_backtest_lock.release()
+        _backtest_lock.release()
 
 
 # ── Static files (React SPA) ──────────────────────────────────────────────────
