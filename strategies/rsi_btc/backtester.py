@@ -27,6 +27,12 @@ from backtests import backtest_forex_engine as engine
 from core.btc_fetcher import BtcFetcher
 from core.indicator_engine import IndicatorEngine
 
+# BTC-specific warmup. The XAU engine uses 30 days, but that makes every BTC
+# backtest fetch (and slice) ~9k extra M5 bars — slow, and long windows blew
+# past the nginx proxy timeout ("backtest not loading"). 15 days of M5 is still
+# ~1,440 M15 bars = ~7× the EMA200 period, so the 200-EMA is fully converged.
+WARMUP_DAYS = 15
+
 
 def run_backtest(
     *,
@@ -39,7 +45,7 @@ def run_backtest(
 ) -> tuple[pd.DataFrame, dict[str, Any], list[dict[str, Any]]]:
     """Run the RSI EMA strategy over BTCUSDT M5 candles. Returns (trades_df, metrics, equity_curve)."""
     max_hold = engine.DEFAULT_MAX_HOLD if max_hold_bars is None else int(max_hold_bars)
-    warmup_start = pd.Timestamp(start_utc) - pd.Timedelta(days=engine.DEFAULT_WARMUP_DAYS)
+    warmup_start = pd.Timestamp(start_utc) - pd.Timedelta(days=WARMUP_DAYS)
 
     fetcher = BtcFetcher()
     candles_5m = fetcher.fetch_range(warmup_start, pd.Timestamp(end_utc), "5m")

@@ -117,30 +117,43 @@ class BtcFetcher:
         }
 
     def fetch_range(self, start_utc: pd.Timestamp, end_utc: pd.Timestamp, interval: str = "5m") -> pd.DataFrame:
-        """Paginated historical candles over [start_utc, end_utc] for backtests."""
+        """Historical candles over [start_utc, end_utc] for backtests.
+
+        Pages are 1000 bars wide and their start times are computable up front
+        (the grid is regular), so we fetch them CONCURRENTLY instead of walking a
+        cursor serially. On the public mirror each request is ~1-3s, so a 50-day
+        pull drops from ~50s (16 serial requests) to a few seconds.
+        """
+        from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+
         iv = self._interval(interval)
         step = _STEP_MS[_norm_tf(interval)]
         start_ms = int(pd.Timestamp(start_utc).timestamp() * 1000)
         end_ms = int(pd.Timestamp(end_utc).timestamp() * 1000)
+        page_span = 1000 * step  # ms covered by one 1000-bar page
+
+        starts: list[int] = []
+        cur = start_ms
+        while cur < end_ms and len(starts) < 800:
+            starts.append(cur)
+            cur += page_span
+
+        def _page(ps: int) -> list[list[Any]]:
+            pe = min(ps + page_span, end_ms)
+            try:
+                return self._get(
+                    "/api/v3/klines",
+                    {"symbol": SYMBOL, "interval": iv, "startTime": ps, "endTime": pe, "limit": 1000},
+                )
+            except Exception as exc:  # noqa: BLE001 — one bad page shouldn't kill the run
+                LOGGER.warning("btc page fetch failed (start=%s): %s", ps, exc)
+                return []
 
         all_raw: list[list[Any]] = []
-        cursor = start_ms
-        guard = 0
-        while cursor < end_ms and guard < 600:
-            guard += 1
-            raw = self._get(
-                "/api/v3/klines",
-                {"symbol": SYMBOL, "interval": iv, "startTime": cursor, "endTime": end_ms, "limit": 1000},
-            )
-            if not raw:
-                break
-            all_raw.extend(raw)
-            last_open = int(raw[-1][0])
-            nxt = last_open + step
-            if nxt <= cursor or len(raw) < 1000:
-                break
-            cursor = nxt
-            time.sleep(0.12)  # be gentle on the public mirror
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for raw in ex.map(_page, starts):
+                if raw:
+                    all_raw.extend(raw)
 
         if not all_raw:
             raise RuntimeError("no_btc_candles_in_range")

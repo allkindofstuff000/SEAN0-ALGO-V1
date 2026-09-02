@@ -721,8 +721,13 @@ def evaluate_signal(
         f"({float(candle['high']) - float(candle['low']):.2f}/{atr_value * 0.5:.2f})"
     )
 
+    # run_trade_filters only inspects the last 20 bars + the current candle, so
+    # pass a bounded tail instead of the whole history. Slicing entry_df[:i] on
+    # every bar was O(n) per bar → O(n²) over the run (made large/long backtests
+    # crawl and time out); this makes it O(1) per bar. Behaviour is identical.
+    _flt_lb = max(0, signal_index - 24)
     filter_result = run_trade_filters(
-        entry_df.iloc[: signal_index + 1],
+        entry_df.iloc[_flt_lb: signal_index + 1],
         trend_ema50=ema50,
         trend_ema200=ema200,
         trend_atr=trend_atr,
