@@ -66,11 +66,23 @@ USE_M1_INTRABAR = True
 # OANDA hard-caps a candle request at 5000 bars, so chunk by granularity.
 _CHUNK_DAYS_BY_GRANULARITY = {"M1": 3, "M5": 14, "M15": 30, "H1": 60}
 
-# Detection-lag stress knob (points of ADVERSE entry slippage). The live bots
-# poll every 60s, so a fill can land up to a minute after the signal bar closes
-# — price drifts in that gap. Set >0 to make the backtest fill worse by this
-# many points (BUY higher / SELL lower), so you can see how much of the edge
-# survives real-world polling lag + spread jitter. 0 = off (exact next-bar fill).
+# ── Detection lag ─────────────────────────────────────────────────────────
+# HONEST model (time-based, uses REAL M1 drift). The live bots poll every ~60s,
+# so they detect a just-closed signal bar — and fill — up to one poll interval
+# later, at whatever price the market has ACTUALLY drifted to by then. That
+# drift can help OR hurt; this is not a worst-case hack. When >0, the entry
+# fills at the correct side of the spread of the M1 bar covering
+# (entry-bar-open + this many seconds), instead of the exact next-bar open.
+# Requires M1 bid/ask data; falls back to the exact fill when unavailable.
+# NOTE: M1 granularity floors sub-minute lags to the minute (sub-minute drift
+# isn't observable at M1) — set 60 to see the realistic worst-case of one full
+# poll interval of drift. 0 = off (exact next-bar open fill).
+DETECTION_LAG_SECONDS = 0.0
+
+# STRESS knob (points of ALWAYS-ADVERSE entry slippage) — a separate, blunter
+# tool for spread-jitter / worst-case stress tests. Set >0 to worsen every fill
+# by this many points (BUY higher / SELL lower). Stacks on top of the honest
+# time-based lag above. 0 = off.
 DETECTION_LAG_POINTS = 0.0
 
 # ── Volatility Switch (built but DISABLED by default) ────────────────────
@@ -480,6 +492,39 @@ def _m1_day_frame(m1: object, ts: pd.Timestamp) -> "pd.DataFrame | None":
     return m1  # already an indexed frame
 
 
+def lagged_entry_price(
+    entry_candle: pd.Series,
+    direction: str,
+    m1_lookup: object,
+    lag_seconds: float,
+    fallback_price: float,
+) -> float:
+    """Honest detection-lag fill. The live bot polls every ~60s, so it fills up
+    to one poll interval after the signal bar closes — at whatever price the
+    market has ACTUALLY drifted to by then (favourable or adverse; this reads
+    the real M1 price, not a worst-case slippage).
+
+    Returns the fill at the correct side of the spread (BUY = ask, SELL = bid)
+    of the M1 bar covering (entry-bar open + lag_seconds). Falls back to
+    `fallback_price` (the exact next-bar open) when lag <= 0, or when M1 bid/ask
+    data for that minute isn't available. M1 granularity floors sub-minute lags
+    to the minute (lag < 60 -> no observable drift; [60,120) -> one minute; ...).
+    """
+    if not lag_seconds or lag_seconds <= 0:
+        return fallback_price
+    entry_time = pd.Timestamp(entry_candle["timestamp"])
+    target_minute = (entry_time + pd.Timedelta(seconds=float(lag_seconds))).floor("1min")
+    frame = _m1_day_frame(m1_lookup, target_minute)
+    if frame is None or getattr(frame, "empty", True) or not has_bidask(frame):
+        return fallback_price
+    if target_minute not in frame.index:
+        return fallback_price  # market gap at that minute — keep the exact fill
+    bar = frame.loc[target_minute]
+    if isinstance(bar, pd.DataFrame):
+        bar = bar.iloc[0]
+    return float(bar["ask_o"]) if direction == "BUY" else float(bar["bid_o"])
+
+
 def _resolve_straddle_m1(
     m5_timestamp: pd.Timestamp,
     direction: str,
@@ -796,6 +841,7 @@ def simulate_forex_trade(
     risk_amount: float,
     max_hold_bars: int,
     m1_lookup: "pd.DataFrame | None" = None,
+    detection_lag_seconds: float = DETECTION_LAG_SECONDS,
 ) -> tuple[dict[str, Any] | None, int]:
     entry_index = signal_index + 1
     if entry_index >= len(entry_df):
@@ -815,7 +861,17 @@ def simulate_forex_trade(
     else:
         entry_price = effective_entry_price(float(entry_candle["open"]), direction)
 
-    # Detection-lag stress: worsen the fill by DETECTION_LAG_POINTS (adverse).
+    # Honest detection-lag: re-fill at the REAL M1 price one poll interval after
+    # the signal bar closes. The live bot can't fill at the untraded next-bar
+    # open — it polls every ~60s and fills at the drifted market price (which may
+    # help or hurt). Needs M1 data; otherwise keeps the exact next-bar fill.
+    if detection_lag_seconds and detection_lag_seconds > 0:
+        entry_price = lagged_entry_price(
+            entry_candle, direction, m1_lookup, detection_lag_seconds, entry_price
+        )
+
+    # Detection-lag STRESS (separate blunt knob): additionally worsen every fill
+    # by a flat DETECTION_LAG_POINTS to stress spread jitter / worst case.
     if DETECTION_LAG_POINTS:
         entry_price = (entry_price + DETECTION_LAG_POINTS) if direction == "BUY" else (entry_price - DETECTION_LAG_POINTS)
 
@@ -1145,6 +1201,7 @@ def run_backtest(
     max_hold_bars: int = DEFAULT_MAX_HOLD,
     starting_balance: float = DEFAULT_STARTING_BALANCE,
     risk_per_trade: float = DEFAULT_RISK_PER_TRADE,
+    detection_lag_seconds: float = DETECTION_LAG_SECONDS,
 ) -> tuple[pd.DataFrame, dict[str, float]]:
     warmup_start = start_utc - pd.Timedelta(days=DEFAULT_WARMUP_DAYS)
     candles_5m = fetch_historical_5m_candles(warmup_start, end_utc)
@@ -1156,10 +1213,13 @@ def run_backtest(
     trend_df = add_adx14(trend_df)  # for volatility switch — dynamic TP based on ADX
     trend_lookup = trend_df.set_index("timestamp", drop=False).sort_index()
 
-    # M1 bid/ask cache for intrabar SL/TP resolution — lazy, only fetches the
-    # day a straddle bar actually lands on (usually 0-3 tiny fetches per run).
+    # M1 bid/ask cache for intrabar SL/TP resolution AND honest detection-lag
+    # fills — lazy: only fetches a day when a straddle bar or a lagged entry on
+    # that day actually needs it (detection lag makes this ~1 fetch per traded
+    # day; straddle-only stays 0-3 tiny fetches per run).
     m1_lookup = None
-    if USE_REALISTIC_FILLS and USE_M1_INTRABAR and has_bidask(entry_df):
+    _need_m1 = (USE_REALISTIC_FILLS and USE_M1_INTRABAR) or bool(detection_lag_seconds and detection_lag_seconds > 0)
+    if _need_m1 and has_bidask(entry_df):
         m1_lookup = M1Cache()
 
     trades: list[dict[str, Any]] = []
@@ -1197,6 +1257,7 @@ def run_backtest(
                 risk_amount=float(risk_amount),
                 max_hold_bars=max(1, int(max_hold_bars)),
                 m1_lookup=m1_lookup,
+                detection_lag_seconds=detection_lag_seconds,
             )
 
             if trade is None:
@@ -1237,6 +1298,7 @@ def run_backtest(
         ],
     )
     metrics = compute_metrics(trades_df)
+    metrics["detection_lag_seconds"] = float(detection_lag_seconds or 0.0)
 
     # Data-integrity: how complete was the M5 feed over the traded window?
     try:

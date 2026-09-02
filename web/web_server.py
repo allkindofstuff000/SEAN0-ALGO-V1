@@ -203,6 +203,10 @@ class BacktestRequest(BaseModel):
     starting_balance: float = 5000.0
     # 1-10 (%) → fraction sent to engine: 0.01–0.10
     risk_per_trade_pct: float = 5.0
+    # Detection lag (seconds): model the live 60s poll by filling at the REAL M1
+    # price this many seconds after the signal bar closes. 0 = off (exact
+    # next-bar open). 60 = realistic worst-case of one full poll interval.
+    detection_lag_seconds: float = 0.0
 
 
 class VwapStBacktestRequest(BaseModel):
@@ -215,6 +219,9 @@ class VwapStBacktestRequest(BaseModel):
     sl_atr: float = 1.5
     tp_atr: float = 3.0
     max_hold_bars: int = 12
+    # Detection lag (seconds): honest M1-drift fill this many seconds after the
+    # signal bar closes (models the 60s live poll). 0 = off (exact next-bar open).
+    detection_lag_seconds: float = 0.0
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -427,6 +434,9 @@ def run_backtest_endpoint(req: BacktestRequest) -> dict[str, Any]:
         engine.TAKE_PROFIT_ATR_MULTIPLIER = tp_mult
 
         risk_fraction = max(0.01, min(0.10, req.risk_per_trade_pct / 100.0))
+        lag_seconds = max(0.0, min(300.0, float(req.detection_lag_seconds or 0.0)))
+        if lag_seconds:
+            LOGGER.info("Backtest detection-lag ON: %.0fs (honest M1 fill)", lag_seconds)
 
         try:
             trades_df, metrics = engine.run_backtest(
@@ -434,6 +444,7 @@ def run_backtest_endpoint(req: BacktestRequest) -> dict[str, Any]:
                 end_utc=end_utc,
                 starting_balance=req.starting_balance,
                 risk_per_trade=risk_fraction,
+                detection_lag_seconds=lag_seconds,
             )
         finally:
             # Always restore originals even if backtest throws
@@ -484,6 +495,7 @@ def run_backtest_endpoint(req: BacktestRequest) -> dict[str, Any]:
                 "risk_per_trade_pct": req.risk_per_trade_pct,
                 "sl_atr_multiplier": sl_mult,
                 "tp_atr_multiplier": tp_mult,
+                "detection_lag_seconds": lag_seconds,
             },
         )
 
@@ -1029,6 +1041,9 @@ def vwap_st_backtest(req: VwapStBacktestRequest) -> dict[str, Any]:
             return {"error": "End date must be after start date.", "metrics": {}, "trades": [], "equity_curve": []}
 
         risk_frac = max(0.005, min(0.05, req.risk_per_trade_pct / 100.0))
+        lag_seconds = max(0.0, min(300.0, float(req.detection_lag_seconds or 0.0)))
+        if lag_seconds:
+            LOGGER.info("VWAP+ST backtest detection-lag ON: %.0fs (honest M1 fill)", lag_seconds)
 
         trades_df, metrics, equity_curve = _vwap_st_run_backtest(
             start_utc         = start_utc,
@@ -1040,6 +1055,7 @@ def vwap_st_backtest(req: VwapStBacktestRequest) -> dict[str, Any]:
             sl_atr_multiplier = req.sl_atr,
             tp_atr_multiplier = req.tp_atr,
             max_hold_bars     = req.max_hold_bars,
+            detection_lag_seconds = lag_seconds,
         )
 
         trades_out: list[dict[str, Any]] = []
@@ -1074,6 +1090,7 @@ def vwap_st_backtest(req: VwapStBacktestRequest) -> dict[str, Any]:
                 "sl_atr":             req.sl_atr,
                 "tp_atr":             req.tp_atr,
                 "max_hold_bars":      req.max_hold_bars,
+                "detection_lag_seconds": lag_seconds,
             },
         )
 

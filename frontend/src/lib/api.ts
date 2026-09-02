@@ -71,7 +71,7 @@ export type RsiBacktestParams = {
   tp_candles: number; // ×0.3 → ATR mult (10 → 3.0×ATR)
   starting_balance: number;
   risk_per_trade_pct: number; // 1–10
-  detection_lag_points?: number; // adverse entry slippage to model polling lag
+  detection_lag_seconds?: number; // honest M1-drift fill N sec after the signal bar (models the 60s poll)
 };
 
 export type RsiMetrics = {
@@ -83,6 +83,7 @@ export type RsiMetrics = {
   average_r: number;
   max_drawdown_r: number;
   ending_balance: number;
+  detection_lag_seconds?: number;
   data_completeness_pct?: number;
   data_missing_bars?: number;
   data_gap_days?: { date: string; actual: number; missing: number }[];
@@ -129,7 +130,7 @@ export type VwapStBacktestParams = {
   sl_atr: number;
   tp_atr: number;
   max_hold_bars: number;
-  detection_lag_points?: number; // adverse entry slippage to model polling lag
+  detection_lag_seconds?: number; // honest M1-drift fill N sec after the signal bar (models the 60s poll)
 };
 
 // VWAP+ST backtest returns the same shape as the RSI EMA one (metrics + trades + equity_curve)

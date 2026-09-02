@@ -89,6 +89,7 @@ def _simulate_trade(
     balance: float,
     risk_pct: float,
     m1_lookup: "pd.DataFrame | None" = None,
+    detection_lag_seconds: float = 0.0,
 ) -> dict[str, Any] | None:
     entry_index = signal_index + 1
     if entry_index >= len(df):
@@ -115,7 +116,13 @@ def _simulate_trade(
         open_price = float(df["open"].iat[entry_index])
         entry = open_price + slippage if direction == "BUY" else open_price - slippage
 
-    # Detection-lag stress: worsen the fill by engine.DETECTION_LAG_POINTS (adverse).
+    # Honest detection-lag: re-fill at the REAL M1 price one poll interval after
+    # the signal bar closes (mirrors the RSI EMA engine). Needs M1 data; else
+    # keeps the exact next-bar fill.
+    if detection_lag_seconds and detection_lag_seconds > 0:
+        entry = engine.lagged_entry_price(entry_row, direction, m1_lookup, detection_lag_seconds, entry)
+
+    # Detection-lag STRESS (separate blunt knob): flat adverse slippage on top.
     _lag = getattr(engine, "DETECTION_LAG_POINTS", 0.0)
     if _lag:
         entry = (entry + _lag) if direction == "BUY" else (entry - _lag)
@@ -261,6 +268,7 @@ def run_backtest(
     max_hold_bars: int = cfg.DEFAULT_MAX_HOLD_BARS,
     session_start_hour: int = cfg.SESSION_START_HOUR,
     session_end_hour: int = cfg.SESSION_END_HOUR,
+    detection_lag_seconds: float = 0.0,
 ) -> tuple[pd.DataFrame, dict[str, Any], list[dict[str, Any]]]:
     """Run the strategy over M5 XAUUSD candles. Returns (trades_df, metrics, equity_curve)."""
     warmup_start = start_utc - pd.Timedelta(days=cfg.DEFAULT_WARMUP_DAYS)
@@ -274,7 +282,8 @@ def run_backtest(
     # M1 bid/ask cache for intrabar SL/TP resolution — lazy, fetches only the
     # day a straddle bar lands on (usually 0-3 tiny fetches per run).
     m1_lookup = None
-    if engine.USE_REALISTIC_FILLS and engine.USE_M1_INTRABAR and engine.has_bidask(df):
+    _need_m1 = (engine.USE_REALISTIC_FILLS and engine.USE_M1_INTRABAR) or bool(detection_lag_seconds and detection_lag_seconds > 0)
+    if _need_m1 and engine.has_bidask(df):
         m1_lookup = engine.M1Cache()
 
     trades: list[dict[str, Any]] = []
@@ -317,6 +326,7 @@ def run_backtest(
             balance=balance,
             risk_pct=risk_per_trade,
             m1_lookup=m1_lookup,
+            detection_lag_seconds=detection_lag_seconds,
         )
         if trade is None:
             i += 1
@@ -334,6 +344,7 @@ def run_backtest(
         t.pop("exit_index", None)
 
     metrics = _compute_metrics(trades, starting_balance)
+    metrics["detection_lag_seconds"] = float(detection_lag_seconds or 0.0)
 
     # Data-integrity: how complete was the M5 feed over the traded window?
     try:

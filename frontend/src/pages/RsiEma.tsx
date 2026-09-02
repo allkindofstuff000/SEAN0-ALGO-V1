@@ -56,7 +56,7 @@ export default function RsiEma() {
   const [sl, setSl] = useState([1.5]);
   const [tp, setTp] = useState([1.5]);
   const [risk, setRisk] = useState([2]);
-  const [lag, setLag] = useState([0]); // detection-lag stress (points)
+  const [lag, setLag] = useState([0]); // detection lag (seconds): 0 / 60 / 120 — honest M1-drift fill
   const [startDate, setStartDate] = useState(isoDaysAgo(90));
   const [endDate, setEndDate] = useState(isoDaysAgo(1));
   const [balance, setBalance] = useState(10000);
@@ -141,7 +141,7 @@ export default function RsiEma() {
     tp_candles: Math.max(1, Math.round(tp[0] / 0.3)),
     starting_balance: balance,
     risk_per_trade_pct: risk[0],
-    detection_lag_points: lag[0] || 0,
+    detection_lag_seconds: lag[0] || 0,
   });
 
   const handleRunTest = () => {
@@ -310,8 +310,8 @@ export default function RsiEma() {
                   <Slider value={risk} onValueChange={setRisk} min={1} max={10} step={0.5} />
                 </div>
                 <div className="space-y-2">
-                  <div className="flex justify-between"><label className="text-[10px] font-bold text-muted-foreground uppercase" title="Adverse entry slippage to model the up-to-60s polling delay">Lag pts</label><span className="text-xs font-mono text-yellow-500 font-bold">{lag[0].toFixed(2)}</span></div>
-                  <Slider value={lag} onValueChange={setLag} min={0} max={1} step={0.05} />
+                  <div className="flex justify-between"><label className="text-[10px] font-bold text-muted-foreground uppercase" title="Honest detection-lag: fills at the REAL M1 price this many seconds after the signal bar closes (models the ~60s live poll — can help or hurt). 0 = exact next-bar open. Sub-60s rounds down (M1 granularity).">Poll lag</label><span className="text-xs font-mono text-yellow-500 font-bold">{lag[0] === 0 ? "off" : `${lag[0]}s`}</span></div>
+                  <Slider value={lag} onValueChange={setLag} min={0} max={120} step={60} />
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row gap-2 mt-4">
