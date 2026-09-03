@@ -63,7 +63,10 @@ export function SignalDetail({ s }: { s: LiveSignal }) {
   const strat = s.strategyName || s.strategy || s.signal_kind || "—";
 
   return (
-    <div className="bg-secondary/20 border-t border-border/40 px-4 py-3 grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div
+      className="bg-secondary/20 border-t border-border/40 px-4 py-3"
+      style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}
+    >
       {/* Why it fired */}
       <div className="space-y-2">
         <p className="text-[10px] uppercase font-bold tracking-wider text-primary">Why it fired</p>

@@ -28,6 +28,13 @@ from dotenv import load_dotenv
 from core.data_fetcher import DataFetcher
 
 try:
+    from core.btc_fetcher import BtcFetcher
+    _BTC_OK = True
+except Exception:  # pragma: no cover
+    _BTC_OK = False
+    BtcFetcher = None  # type: ignore
+
+try:
     from core.mongo_store import load_live_signals, update_signal_outcome
     _MONGO_OK = True
 except Exception as _exc:  # pragma: no cover
@@ -169,6 +176,25 @@ def _resolve_one(sig: dict, df: pd.DataFrame) -> tuple[str, float, str] | None:
     return None  # still open
 
 
+def _resolve_batch(open_sigs: list[dict], df: "pd.DataFrame", label: str) -> int:
+    """Resolve a batch of open signals against a candle frame (symbol-agnostic)."""
+    resolved = 0
+    for s in open_sigs:
+        verdict = _resolve_one(s, df)
+        if verdict is None:
+            continue
+        outcome, exit_price, note = verdict
+        if update_signal_outcome(str(s["_id"]), outcome, exit_price, note):
+            resolved += 1
+            LOG.info(
+                "resolved %s %s @ %.2f -> %s (%s)",
+                s.get("direction"), s.get("symbol"), float(s.get("entry_price", 0)),
+                outcome, note,
+            )
+    LOG.info("[%s] resolved %d/%d open signals", label, resolved, len(open_sigs))
+    return resolved
+
+
 def resolve_once(fetcher: DataFetcher) -> int:
     if not _MONGO_OK:
         LOG.warning("mongo unavailable; nothing to do")
@@ -177,14 +203,11 @@ def resolve_once(fetcher: DataFetcher) -> int:
     signals = load_live_signals(limit=200)
     now = pd.Timestamp.now(tz="UTC")
 
-    def _is_open_xau(s: dict) -> bool:
+    def _open_within_age(s: dict) -> bool:
         if s.get("outcome"):
             return False
         if s.get("stop_loss") is None or s.get("take_profit") is None:
             return False
-        sym = str(s.get("symbol", "")).upper()
-        if "ETH" in sym or "BTC" in sym or "CRYPTO" in sym:
-            return False  # crypto uses a different feed; skip here
         ct_raw = s.get("candle_time_utc") or s.get("sent_at")
         if not ct_raw:
             return False
@@ -193,34 +216,39 @@ def resolve_once(fetcher: DataFetcher) -> int:
             ct = ct.tz_localize("UTC")
         return (now - ct) <= pd.Timedelta(hours=MAX_SIGNAL_AGE_H)
 
-    open_sigs = [s for s in signals if _is_open_xau(s)]
-    if not open_sigs:
+    def _sym(s: dict) -> str:
+        return str(s.get("symbol", "")).upper()
+
+    open_xau = [s for s in signals if _open_within_age(s)
+                and not any(x in _sym(s) for x in ("BTC", "ETH", "CRYPTO"))]
+    open_btc = [s for s in signals if _open_within_age(s) and "BTC" in _sym(s)]
+
+    if not open_xau and not open_btc:
         LOG.info("no open signals to resolve")
         return 0
 
-    try:
-        df = fetcher.fetch_oanda("5m", CANDLE_COUNT)
-    except Exception as exc:  # noqa: BLE001
-        LOG.warning("candle fetch failed: %s", exc)
-        return 0
-    df = df.sort_values("timestamp").reset_index(drop=True)
+    total = 0
 
-    resolved = 0
-    for s in open_sigs:
-        verdict = _resolve_one(s, df)
-        if verdict is None:
-            continue
-        outcome, exit_price, note = verdict
-        ok = update_signal_outcome(str(s["_id"]), outcome, exit_price, note)
-        if ok:
-            resolved += 1
-            LOG.info(
-                "resolved %s %s @ %.2f -> %s (%s)",
-                s.get("direction"), s.get("symbol"), float(s.get("entry_price", 0)),
-                outcome, note,
-            )
-    LOG.info("resolved %d/%d open signals", resolved, len(open_sigs))
-    return resolved
+    # XAU / gold — OANDA M5
+    if open_xau:
+        try:
+            xdf = fetcher.fetch_oanda("5m", CANDLE_COUNT).sort_values("timestamp").reset_index(drop=True)
+            total += _resolve_batch(open_xau, xdf, "XAU")
+        except Exception as exc:  # noqa: BLE001
+            LOG.warning("XAU candle fetch failed: %s", exc)
+
+    # BTC — Binance mirror M5 (24/7); needs its own price feed
+    if open_btc:
+        if not _BTC_OK:
+            LOG.warning("BTC fetcher unavailable; %d BTC signals left open", len(open_btc))
+        else:
+            try:
+                bdf = BtcFetcher().fetch_klines("5m", 600, closed_only=True).sort_values("timestamp").reset_index(drop=True)
+                total += _resolve_batch(open_btc, bdf, "BTC")
+            except Exception as exc:  # noqa: BLE001
+                LOG.warning("BTC candle fetch failed: %s", exc)
+
+    return total
 
 
 async def run() -> None:
