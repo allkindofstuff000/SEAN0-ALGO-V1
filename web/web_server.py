@@ -940,10 +940,13 @@ async def stream_candle_updates(timeframe: str) -> StreamingResponse:
         try:
             # Send init with stored historical candles immediately
             if _stream_engine._history_loaded:
+                # Cap the init to the last ~800 bars per TF — the full store is
+                # ~2000 bars (7d M5) = a heavy first payload; 800 is plenty and
+                # matches the chart's initial fetch.
                 if tf == "ALL":
-                    init_payload = {t: _stream_engine.store.get_all(t) for t in _TF_MAP}
+                    init_payload = {t: _stream_engine.store.get_all(t)[-800:] for t in _TF_MAP}
                 else:
-                    init_payload = {tf: _stream_engine.store.get_all(tf)}
+                    init_payload = {tf: _stream_engine.store.get_all(tf)[-800:]}
                 yield f"data: {_json.dumps({'type': 'init', 'candles': init_payload})}\n\n"
 
             # Also send current stream status

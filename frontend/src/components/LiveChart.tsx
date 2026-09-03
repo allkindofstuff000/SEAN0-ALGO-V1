@@ -135,7 +135,9 @@ export function LiveChart({ tf, showEMA = true, className, candlesFn, streamFn }
       ema21Ref.current?.setData(emaLine(candlesRef.current, 21, intervalSec));
     };
 
-    loadCandles(tf, 12000)
+    // ~2.8 days of M5 — plenty for a live chart, and a fraction of the payload
+    // (12000 candles was ~187KB and made the first paint crawl).
+    loadCandles(tf, 800)
       .then((res) => {
         if (cancelled || !candleSeriesRef.current) return;
         const candles = (res.candles || []).filter(isValidCandle);
