@@ -4,9 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useCandles, useLivePrice, useRunRsiBacktest, useLiveSignals, useBacktestHistory, useMarketStatus, useBotStatus, useBotControl } from "@/hooks/use-trading-data";
+import { useCandles, useLivePrice, useRunRsiBacktest, useLiveSignals, useBacktestHistory, useMarketStatus, useBotStatus } from "@/hooks/use-trading-data";
 import { Fragment, useMemo, useState } from "react";
-import { Play, Square, BarChart2, History, TrendingUp, Send, Clock } from "lucide-react";
+import { Play, BarChart2, History, TrendingUp, Send, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { LiveChart } from "@/components/LiveChart";
 import { BacktestResults } from "@/components/BacktestResults";
@@ -75,19 +75,9 @@ export default function RsiEma() {
   const runBacktest = useRunRsiBacktest();
   const [loadingReport, setLoadingReport] = useState<string | null>(null);
 
-  // RSI EMA live bot (systemd sean-algo.service) status + start/stop
+  // RSI EMA live bot status (start/stop lives on the Live Bot overview page)
   const { data: botStatus } = useBotStatus();
-  const botControl = useBotControl();
   const rsiRunning = !!botStatus?.rsiEma?.running;
-  const toggleRsiBot = () => {
-    botControl.mutate(
-      { strategy: "rsi-ema", action: rsiRunning ? "STOP" : "START" },
-      {
-        onSuccess: (r: any) => toast({ title: `RSI EMA ${rsiRunning ? "Stopped" : "Started"}`, description: r?.message || "" }),
-        onError: (e: any) => toast({ title: "Bot control failed", description: String(e?.message || e), variant: "destructive" }),
-      },
-    );
-  };
 
   const openReport = async (id: string) => {
     setLoadingReport(id);
@@ -226,15 +216,10 @@ export default function RsiEma() {
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">Multi-timeframe RSI + EMA crossover · {activeTF}</p>
         </div>
-        <div className="flex items-center gap-6">
-          <Button onClick={toggleRsiBot} disabled={botControl.isPending} variant={rsiRunning ? "destructive" : "default"} className="font-bold uppercase tracking-wider h-9">
-            {rsiRunning ? <><Square className="w-3.5 h-3.5 mr-1.5 fill-current" />Stop</> : <><Play className="w-3.5 h-3.5 mr-1.5 fill-current" />Start</>}
-          </Button>
-          <div className="text-right">
-            <div className="font-mono text-2xl font-bold tracking-tight">{price ? price.toFixed(2) : "—"}</div>
-            <div className={`font-mono text-sm font-bold ${changeAbs >= 0 ? "text-accent" : "text-destructive"}`}>
-              {changeAbs >= 0 ? "+" : ""}{changeAbs.toFixed(2)} ({changePct.toFixed(2)}%)
-            </div>
+        <div className="text-right">
+          <div className="font-mono text-2xl font-bold tracking-tight">{price ? price.toFixed(2) : "—"}</div>
+          <div className={`font-mono text-sm font-bold ${changeAbs >= 0 ? "text-accent" : "text-destructive"}`}>
+            {changeAbs >= 0 ? "+" : ""}{changeAbs.toFixed(2)} ({changePct.toFixed(2)}%)
           </div>
         </div>
       </div>

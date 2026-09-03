@@ -11,10 +11,9 @@ import {
   useLiveSignals,
   useMarketStatus,
   useBotStatus,
-  useBotControl,
 } from "@/hooks/use-trading-data";
 import { Fragment, useState } from "react";
-import { Play, Square, BarChart2, TrendingUp, Clock, Send } from "lucide-react";
+import { Play, BarChart2, TrendingUp, Clock, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { BacktestResults } from "@/components/BacktestResults";
 import { WalkForwardResults } from "@/components/WalkForwardResults";
@@ -80,17 +79,7 @@ export default function VwapSt() {
   const { data: market } = useMarketStatus();
   const { data: botStatus } = useBotStatus();
   const runBacktest = useRunVwapStBacktest();
-  const botControl = useBotControl();
   const vwapRunning = !!botStatus?.vwapSt?.running;
-  const toggleVwapBot = () => {
-    botControl.mutate(
-      { strategy: "vwap-st", action: vwapRunning ? "STOP" : "START" },
-      {
-        onSuccess: (r: any) => toast({ title: `VWAP+ST ${vwapRunning ? "Stopped" : "Started"}`, description: r?.message || "" }),
-        onError: (e: any) => toast({ title: "Bot control failed", description: String(e?.message || e), variant: "destructive" }),
-      },
-    );
-  };
 
   const vwapReports = (history?.reports || []).filter(
     (r) => r.params?.strategy === "vwap-st" && r.metrics?.total_trades != null,
@@ -247,16 +236,11 @@ export default function VwapSt() {
             Supertrend flip + daily-VWAP confirm · M5 · session 12–21 UTC
           </p>
         </div>
-        <div className="flex items-center gap-6">
-          <Button onClick={toggleVwapBot} disabled={botControl.isPending} variant={vwapRunning ? "destructive" : "default"} className="font-bold uppercase tracking-wider h-9">
-            {vwapRunning ? <><Square className="w-3.5 h-3.5 mr-1.5 fill-current" />Stop</> : <><Play className="w-3.5 h-3.5 mr-1.5 fill-current" />Start</>}
-          </Button>
-          <div className="text-right">
-            <div className="font-mono text-2xl font-bold tracking-tight">
-              {price ? price.toFixed(2) : "—"}
-            </div>
-            <div className="text-xs text-muted-foreground font-mono">live price</div>
+        <div className="text-right">
+          <div className="font-mono text-2xl font-bold tracking-tight">
+            {price ? price.toFixed(2) : "—"}
           </div>
+          <div className="text-xs text-muted-foreground font-mono">live price</div>
         </div>
       </div>
 
