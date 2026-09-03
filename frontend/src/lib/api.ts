@@ -58,6 +58,7 @@ export type MarketStatus = {
 export type BotStatus = {
   rsiEma: { running: boolean; pid: number | null; startedAt: string | null };
   vwapSt: { running: boolean; pid: number | null; startedAt: string | null };
+  btcRsiEma: { running: boolean; pid: number | null; startedAt: string | null };
   rsiEth: Record<string, any>;
   anyRunning: boolean;
   market: MarketStatus;
@@ -201,9 +202,9 @@ export const Api = {
   runRsiBacktest: (p: RsiBacktestParams) => apiPost<RsiBacktestResult>("/backtest", p),
   runVwapStBacktest: (p: VwapStBacktestParams) => apiPost<VwapStBacktestResult>("/api/vwap-st/backtest", p),
   liveSignals: (limit = 100) => apiGet<{ signals: LiveSignal[]; count: number }>(`/signals?limit=${limit}`),
-  startBot: (strategy: "rsi-ema" | "vwap-st") =>
+  startBot: (strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema") =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/start`),
-  stopBot: (strategy: "rsi-ema" | "vwap-st") =>
+  stopBot: (strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema") =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/stop`),
 
   // ── BTC RSI EMA (Binance data mirror) ──────────────────────────────────────

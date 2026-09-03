@@ -194,6 +194,7 @@ _bot_lock = threading.Lock()
 _bot_start_time: float | None = None
 BOT_SERVICE_NAME = os.getenv("BOT_SERVICE_NAME", "").strip()
 VWAP_ST_SERVICE_NAME = os.getenv("VWAP_ST_SERVICE_NAME", "vwap-st").strip()
+BTC_RSI_EMA_SERVICE_NAME = os.getenv("BTC_RSI_EMA_SERVICE_NAME", "btc-rsi-ema").strip()
 SYSTEMCTL_PATH = shutil.which("systemctl")  # None on Windows / non-systemd hosts
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -1320,6 +1321,34 @@ def api_btc_backtest(req: BacktestRequest) -> dict[str, Any]:
         _backtest_lock.release()
 
 
+@app.post("/api/bot/btc-rsi-ema/start", tags=["bot"])
+def api_btc_bot_start() -> dict[str, Any]:
+    """Start the BTC RSI EMA live signal bot (systemctl start btc-rsi-ema.service)."""
+    if not SYSTEMCTL_PATH:
+        raise HTTPException(status_code=500, detail="systemctl not available on this host")
+    result = _run_systemctl_named(BTC_RSI_EMA_SERVICE_NAME, "start")
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip() or "systemctl start failed"
+        raise HTTPException(status_code=500, detail=detail)
+    save_strategy_state("btc-rsi-ema", "running")
+    LOGGER.info("[BOT] btc-rsi-ema started")
+    return {"status": "started", "message": "BTC RSI EMA live bot started"}
+
+
+@app.post("/api/bot/btc-rsi-ema/stop", tags=["bot"])
+def api_btc_bot_stop() -> dict[str, Any]:
+    """Stop the BTC RSI EMA live signal bot (systemctl stop btc-rsi-ema.service)."""
+    if not SYSTEMCTL_PATH:
+        raise HTTPException(status_code=500, detail="systemctl not available on this host")
+    result = _run_systemctl_named(BTC_RSI_EMA_SERVICE_NAME, "stop")
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip() or "systemctl stop failed"
+        raise HTTPException(status_code=500, detail=detail)
+    save_strategy_state("btc-rsi-ema", "stopped")
+    LOGGER.info("[BOT] btc-rsi-ema stopped")
+    return {"status": "stopped", "message": "BTC RSI EMA live bot stopped"}
+
+
 # ── Static files (React SPA) ──────────────────────────────────────────────────
 # Serve index.html with no-cache headers so browser always gets the latest build
 from fastapi.responses import FileResponse
@@ -1359,14 +1388,27 @@ def api_bot_status() -> dict[str, Any]:
         except Exception as exc:
             LOGGER.warning("[BOT] vwap-st status lookup failed: %s", exc)
 
+    # BTC RSI EMA live signal bot status
+    btc_running = False
+    btc_pid = None
+    if SYSTEMCTL_PATH and BTC_RSI_EMA_SERVICE_NAME:
+        try:
+            svc = _service_status_named(BTC_RSI_EMA_SERVICE_NAME)
+            btc_running = bool(svc.get("running"))
+            btc_pid = svc.get("pid")
+        except Exception as exc:
+            LOGGER.warning("[BOT] btc-rsi-ema status lookup failed: %s", exc)
+
     # Load uptime started_at from MongoDB
     rsi_started = load_strategy_started_at("rsi-ema") if rsi_running else None
     eth_started = load_strategy_started_at("rsi-eth") if rsi_eth_running else None
     vwap_started = load_strategy_started_at("vwap-st") if vwap_running else None
+    btc_started = load_strategy_started_at("btc-rsi-ema") if btc_running else None
 
     return {
         "rsiEma": {"running": rsi_running, "pid": rsi_pid, "startedAt": rsi_started},
         "vwapSt": {"running": vwap_running, "pid": vwap_pid, "startedAt": vwap_started},
+        "btcRsiEma": {"running": btc_running, "pid": btc_pid, "startedAt": btc_started},
         "rsiEth": {
             "running": rsi_eth_running,
             "paused": getattr(_rsi_eth, "_paused", False) if _rsi_eth else False,
@@ -1377,7 +1419,7 @@ def api_bot_status() -> dict[str, Any]:
             "strategy_behavior": rsi_eth_status.get("strategy_behavior"),
             "market_open": rsi_eth_status.get("market_open", True),
         },
-        "anyRunning": rsi_running or rsi_eth_running or vwap_running,
+        "anyRunning": rsi_running or rsi_eth_running or vwap_running or btc_running,
         "market": market,
     }
 

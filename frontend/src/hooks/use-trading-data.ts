@@ -105,7 +105,7 @@ export function useBotControl() {
       strategy,
     }: {
       action: "START" | "STOP";
-      strategy: "rsi-ema" | "vwap-st";
+      strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema";
     }) => (action === "START" ? Api.startBot(strategy) : Api.stopBot(strategy)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["bot-status"] });
