@@ -27,6 +27,14 @@ BTC_BASE = "https://data-api.binance.vision"
 SYMBOL = "BTCUSDT"
 DISPLAY_SYMBOL = "BTCUSD"
 
+# Coinbase spot — fast (~0.1s) and real-time, and it matches TradingView's default
+# BTC feed. Used for LIVE DISPLAY only (chart + header price + SSE stream). The
+# Binance mirror above is CDN-cached (the in-progress candle lags), so it stays
+# for backtests + the live bot (deeper history) but not the live chart.
+COINBASE_BASE = "https://api.exchange.coinbase.com"
+COINBASE_PRODUCT = "BTC-USD"
+_CB_GRAN = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600}
+
 # dashboard timeframe -> Binance interval
 _INTERVALS = {"1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m", "1h": "1h", "4h": "4h"}
 # interval -> milliseconds per bar (for range pagination)
@@ -115,6 +123,85 @@ class BtcFetcher:
             "symbol": DISPLAY_SYMBOL,
             "initialized": True,
         }
+
+    # ── Coinbase live display (fast + real-time; matches TradingView) ─────────
+    def _coinbase_get(self, path: str) -> Any:
+        url = f"{COINBASE_BASE}{path}"
+        req = urllib.request.Request(url, headers={"User-Agent": "SEAN0-ALGO-V1/1.0", "Accept": "application/json"}, method="GET")
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def fetch_spot_price(self) -> dict[str, Any]:
+        """Fast, real-time BTC spot from Coinbase (matches TradingView). Falls back
+        to the slower Binance mirror ticker if Coinbase is unreachable."""
+        try:
+            data = self._coinbase_get(f"/products/{COINBASE_PRODUCT}/ticker")
+            return {
+                "price": float(data["price"]),
+                "time": pd.Timestamp.now(tz="UTC").isoformat(),
+                "symbol": DISPLAY_SYMBOL,
+                "initialized": True,
+                "source": "coinbase",
+            }
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("coinbase ticker failed (%s); using binance mirror", exc)
+            return self.fetch_live_price()
+
+    def fetch_display_candles(self, interval: str = "5m", limit: int = 300) -> pd.DataFrame:
+        """Recent candles from Coinbase (fast) for the live chart. Coinbase caps
+        each /candles request at ~300 bars, so page back in parallel to cover
+        `limit`. Falls back to the Binance mirror on failure / unsupported tf."""
+        from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+
+        key = _norm_tf(interval)
+        gran = _CB_GRAN.get(key)
+        if gran is None:
+            return self.fetch_klines(interval, limit, closed_only=False)
+
+        pages = max(1, min(6, (int(limit) + 299) // 300))
+        now = int(pd.Timestamp.now(tz="UTC").timestamp())
+        span = 300 * gran  # seconds covered by one 300-bar page
+        windows: list[tuple[int, int]] = []
+        end = now
+        for _ in range(pages):
+            windows.append((end - span, end))
+            end -= span
+
+        def _page(win: tuple[int, int]) -> list[list[Any]]:
+            s, e = win
+            s_iso = pd.to_datetime(s, unit="s", utc=True).isoformat()
+            e_iso = pd.to_datetime(e, unit="s", utc=True).isoformat()
+            try:
+                return self._coinbase_get(f"/products/{COINBASE_PRODUCT}/candles?granularity={gran}&start={s_iso}&end={e_iso}")
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.warning("coinbase page failed (%s)", exc)
+                return []
+
+        raw_all: list[list[Any]] = []
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            for r in ex.map(_page, windows):
+                if r:
+                    raw_all.extend(r)
+
+        if not raw_all:
+            LOGGER.warning("coinbase candles empty; using binance mirror")
+            return self.fetch_klines(interval, limit, closed_only=False)
+        # Coinbase rows: [time, low, high, open, close, volume], newest-first.
+        rows = [
+            {
+                "timestamp": pd.to_datetime(int(c[0]), unit="s", utc=True),
+                "open": float(c[3]),
+                "high": float(c[2]),
+                "low": float(c[1]),
+                "close": float(c[4]),
+                "volume": float(c[5]),
+            }
+            for c in raw_all
+            if isinstance(c, list) and len(c) >= 6
+        ]
+        df = pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df = df.sort_values("timestamp").drop_duplicates(subset=["timestamp"]).reset_index(drop=True)
+        return df.tail(int(limit)).reset_index(drop=True)
 
     def fetch_range(self, start_utc: pd.Timestamp, end_utc: pd.Timestamp, interval: str = "5m") -> pd.DataFrame:
         """Historical candles over [start_utc, end_utc] for backtests.

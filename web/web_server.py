@@ -1170,9 +1170,12 @@ def vwap_st_backtest(req: VwapStBacktestRequest) -> dict[str, Any]:
 
 
 # ── BTC RSI EMA (Binance data mirror) ─────────────────────────────────────────
-def _btc_candles_payload(timeframe: str, count: int) -> dict[str, Any]:
+def _btc_candles_payload(timeframe: str, count: int, *, live_last: bool = True) -> dict[str, Any]:
     count = min(max(int(count), 10), 1500)
-    df = _btc_fetcher.fetch_klines(timeframe, count + 2, closed_only=False)
+    # Live chart display uses Coinbase candles (fast). The newest /candles bar
+    # still lags a little, so overlay the real-time /ticker onto the in-progress
+    # (last) candle's close/high/low — that's what makes the chart tick live.
+    df = _btc_fetcher.fetch_display_candles(timeframe, count + 2)
     candles = [
         {
             "time": int(pd.Timestamp(r["timestamp"]).timestamp()),
@@ -1185,7 +1188,17 @@ def _btc_candles_payload(timeframe: str, count: int) -> dict[str, Any]:
         }
         for _, r in df.iterrows()
     ]
-    return {"candles": candles[-count:], "granularity": timeframe.upper(), "source": "binance-mirror"}
+    if live_last and candles:
+        try:
+            spot = float(_btc_fetcher.fetch_spot_price().get("price") or 0)
+            if spot > 0:
+                last = candles[-1]
+                last["close"] = spot
+                last["high"] = max(last["high"], spot)
+                last["low"] = min(last["low"], spot)
+        except Exception:  # noqa: BLE001
+            pass
+    return {"candles": candles[-count:], "granularity": timeframe.upper(), "source": "coinbase"}
 
 
 @app.get("/api/btc/price", tags=["btc"])
@@ -1193,7 +1206,7 @@ def api_btc_price() -> dict[str, Any]:
     if not _BTC_AVAILABLE or _btc_fetcher is None:
         raise HTTPException(status_code=503, detail="BTC data source unavailable.")
     try:
-        snap = _btc_fetcher.fetch_live_price()
+        snap = _btc_fetcher.fetch_spot_price()  # Coinbase (fast, matches TradingView)
         return {
             "price": float(snap["price"]),
             "time": int(pd.Timestamp(snap["time"]).timestamp()),
@@ -1224,7 +1237,7 @@ async def api_btc_stream(timeframe: str) -> StreamingResponse:
                     yield f"data: {_json.dumps({'type': 'candle', 'candle': c})}\n\n"
             except Exception as exc:  # noqa: BLE001
                 yield f"data: {_json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
-            await asyncio.sleep(3)
+            await asyncio.sleep(2)
 
     return StreamingResponse(
         event_gen(),

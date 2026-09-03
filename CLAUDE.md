@@ -31,7 +31,12 @@ internally; the dashboard **displays** times in **UTC+6 (Asia/Dhaka)**.
   (parallel paginated fetch); backtester `strategies/rsi_btc/backtester.py` reuses
   the XAU engine's signal/simulate/metrics on BTC klines (no bid/ask → mid fills).
   Endpoints `/api/btc/{price,candles/{tf},stream/{tf},backtest}`; backtests tagged
-  `strategy:"rsi-btc"`. Frontend page `/btc-rsi-ema` (`BtcRsiEma.tsx`) clones the RSI
+  `strategy:"rsi-btc"`. **Live DISPLAY** (chart + header price + SSE stream) uses
+  **Coinbase** spot instead (`fetch_spot_price` / `fetch_display_candles`, paginated)
+  — fast (~0.1s), real-time, and matches TradingView; the Binance mirror is
+  CDN-cached (in-progress candle lags), so the stream overlays the live Coinbase
+  `/ticker` onto the forming candle's close. Binance mirror stays for backtests +
+  the bot (deeper history). Frontend page `/btc-rsi-ema` (`BtcRsiEma.tsx`) clones the RSI
   EMA page. **Live bot `btc_rsi_ema_live.py` (`btc-rsi-ema.service`)** polls BTC M5
   every 60s, evaluates the last closed bar with `engine.evaluate_signal` (session
   bypassed, RR 1:1 SL/TP 1.5×ATR), re-anchors entry to live price, and fires to
