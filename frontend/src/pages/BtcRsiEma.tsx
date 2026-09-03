@@ -4,9 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useBtcCandles, useBtcLivePrice, useRunBtcBacktest, useLiveSignals, useBacktestHistory, useBotStatus, useBotControl } from "@/hooks/use-trading-data";
+import { useBtcCandles, useBtcLivePrice, useRunBtcBacktest, useLiveSignals, useBacktestHistory, useBotStatus } from "@/hooks/use-trading-data";
 import { Fragment, useMemo, useState } from "react";
-import { Play, Square, BarChart2, History, TrendingUp, Send, Clock, Bitcoin } from "lucide-react";
+import { Play, BarChart2, History, TrendingUp, Send, Clock, Bitcoin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { LiveChart } from "@/components/LiveChart";
 import { BacktestResults } from "@/components/BacktestResults";
@@ -73,19 +73,9 @@ export default function BtcRsiEma() {
   const { data: history } = useBacktestHistory();
   const runBacktest = useRunBtcBacktest();
 
-  // BTC RSI EMA live bot (systemd btc-rsi-ema.service) status + start/stop
+  // BTC RSI EMA live bot status (start/stop lives on the Live Bot overview page)
   const { data: botStatus } = useBotStatus();
-  const botControl = useBotControl();
   const btcRunning = !!botStatus?.btcRsiEma?.running;
-  const toggleBtcBot = () => {
-    botControl.mutate(
-      { strategy: "btc-rsi-ema", action: btcRunning ? "STOP" : "START" },
-      {
-        onSuccess: (r: any) => toast({ title: `BTC RSI EMA ${btcRunning ? "Stopped" : "Started"}`, description: r?.message || "" }),
-        onError: (e: any) => toast({ title: "Bot control failed", description: String(e?.message || e), variant: "destructive" }),
-      },
-    );
-  };
 
   const openReport = async (id: string) => {
     setLoadingReport(id);
@@ -218,15 +208,10 @@ export default function BtcRsiEma() {
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">Multi-timeframe RSI + EMA crossover · {activeTF} · Binance</p>
         </div>
-        <div className="flex items-center gap-6">
-          <Button onClick={toggleBtcBot} disabled={botControl.isPending} variant={btcRunning ? "destructive" : "default"} className="font-bold uppercase tracking-wider h-9">
-            {btcRunning ? <><Square className="w-3.5 h-3.5 mr-1.5 fill-current" />Stop</> : <><Play className="w-3.5 h-3.5 mr-1.5 fill-current" />Start</>}
-          </Button>
-          <div className="text-right">
-            <div className="font-mono text-2xl font-bold tracking-tight">{price ? price.toFixed(2) : "—"}</div>
-            <div className={`font-mono text-sm font-bold ${changeAbs >= 0 ? "text-accent" : "text-destructive"}`}>
-              {changeAbs >= 0 ? "+" : ""}{changeAbs.toFixed(2)} ({changePct.toFixed(2)}%)
-            </div>
+        <div className="text-right">
+          <div className="font-mono text-2xl font-bold tracking-tight">{price ? price.toFixed(2) : "—"}</div>
+          <div className={`font-mono text-sm font-bold ${changeAbs >= 0 ? "text-accent" : "text-destructive"}`}>
+            {changeAbs >= 0 ? "+" : ""}{changeAbs.toFixed(2)} ({changePct.toFixed(2)}%)
           </div>
         </div>
       </div>

@@ -85,7 +85,7 @@ export default function LiveBot() {
   const price = live?.price || ind?.price || 0;
   const sessionText = market?.closed ? (market?.reason || "Market Closed") : "Market Open";
 
-  const handleToggle = (strategy: "rsi-ema" | "vwap-st", label: string, action: "START" | "STOP") => {
+  const handleToggle = (strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema", label: string, action: "START" | "STOP") => {
     botControl.mutate({ strategy, action }, {
       onSuccess: (r) => toast({ title: `${label} ${action === "START" ? "Started" : "Stopped"}`, description: (r as any).message || "", variant: action === "START" ? "default" : "destructive" }),
       onError: (e: any) => toast({ title: "Action failed", description: String(e.message || e), variant: "destructive" }),
@@ -118,7 +118,7 @@ export default function LiveBot() {
         </div>
         <div className="ml-auto flex items-center gap-1.5 text-muted-foreground">
           <span>LIVE STRATEGIES:</span>
-          <span className="text-accent font-bold">{[bot?.rsiEma?.running, bot?.vwapSt?.running].filter(Boolean).length} / 2</span>
+          <span className="text-accent font-bold">{[bot?.rsiEma?.running, bot?.vwapSt?.running, bot?.btcRsiEma?.running].filter(Boolean).length} / 3</span>
         </div>
       </div>
 
@@ -143,6 +143,16 @@ export default function LiveBot() {
             pending={botControl.isPending}
             onToggle={(a) => handleToggle("vwap-st", "VWAP+ST", a)}
             sessionText={sessionText}
+          />
+
+          <StrategyCard
+            title="BTC RSI EMA"
+            subtitle="BTCUSD · 5M / 15M · Binance · 24/7"
+            running={!!bot?.btcRsiEma?.running}
+            uptime={uptimeFrom(bot?.btcRsiEma?.startedAt)}
+            pending={botControl.isPending}
+            onToggle={(a) => handleToggle("btc-rsi-ema", "BTC RSI EMA", a)}
+            sessionText="24/7 · Crypto"
           />
         </div>
 
