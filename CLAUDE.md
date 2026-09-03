@@ -25,14 +25,17 @@ internally; the dashboard **displays** times in **UTC+6 (Asia/Dhaka)**.
   session VWAP. SL 1.5×ATR / TP 3.0×ATR (RR 1:2), ~50.5% win, PF 1.80. Trades only
   **12:00–21:00 UTC** (18:00–03:00 Dhaka). Selective → fewer signals than RSI EMA.
   Live process `vwap_st_live.py` (`vwap-st.service`).
-- **BTC RSI EMA** (backtest-only, no live bot yet): the *same* RSI EMA strategy on
-  **BTCUSD**, 24/7 (gold session filter bypassed). Data from the Binance public
-  mirror `data-api.binance.vision` (`api.binance.com` is HTTP-451 geo-blocked on the
-  VPS) via `core/btc_fetcher.py`; backtester `strategies/rsi_btc/backtester.py`
-  reuses the XAU engine's signal/simulate/metrics on BTC klines (no bid/ask → mid
-  fills). Endpoints `/api/btc/{price,candles/{tf},stream/{tf},backtest}`; backtests
-  tagged `strategy:"rsi-btc"`. Frontend page `/btc-rsi-ema` (`BtcRsiEma.tsx`) clones
-  the RSI EMA page. **Live BTC signal bot is the next step (not built yet).**
+- **BTC RSI EMA**: the *same* RSI EMA strategy on **BTCUSD**, 24/7 (gold session
+  filter bypassed). Data from the Binance public mirror `data-api.binance.vision`
+  (`api.binance.com` is HTTP-451 geo-blocked on the VPS) via `core/btc_fetcher.py`
+  (parallel paginated fetch); backtester `strategies/rsi_btc/backtester.py` reuses
+  the XAU engine's signal/simulate/metrics on BTC klines (no bid/ask → mid fills).
+  Endpoints `/api/btc/{price,candles/{tf},stream/{tf},backtest}`; backtests tagged
+  `strategy:"rsi-btc"`. Frontend page `/btc-rsi-ema` (`BtcRsiEma.tsx`) clones the RSI
+  EMA page. **Live bot `btc_rsi_ema_live.py` (`btc-rsi-ema.service`)** polls BTC M5
+  every 60s, evaluates the last closed bar with `engine.evaluate_signal` (session
+  bypassed, RR 1:1 SL/TP 1.5×ATR), re-anchors entry to live price, and fires to
+  Telegram + Mongo. Log `/var/log/btc-rsi-ema.log`.
 
 ## Production VPS
 - Host `45.132.242.134` (Hostinger, Ubuntu 24.04, hostname `srv1935826`, root).
