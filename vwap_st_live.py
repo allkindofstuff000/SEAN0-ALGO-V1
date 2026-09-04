@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 
 from core.data_fetcher import DataFetcher
 from core.indicator_engine import IndicatorEngine
+from core.signal_guard import check_signal
 from strategies.vwap_supertrend import config as cfg
 from strategies.vwap_supertrend.backtester import add_supertrend, add_session_vwap
 
@@ -178,6 +179,15 @@ async def _cycle(
     else:
         sl = entry + sl_dist
         tp = entry - tp_dist
+
+    # ── Sanity guard: never fire a malformed signal ─────────────────────────
+    ok, why = check_signal(
+        direction=direction, entry=entry, stop_loss=sl, take_profit=tp, atr=atr_val,
+        ref_price=close, recent_high=float(row["high"]), recent_low=float(row["low"]),
+    )
+    if not ok:
+        LOG.warning("signal REJECTED by sanity guard: %s (%s @ %s)", why, direction, ts_str)
+        return ts_str
 
     LOG.info(
         "SIGNAL %s @ %s signalClose=%.2f entry=%.2f sl=%.2f tp=%.2f atr=%.4f",

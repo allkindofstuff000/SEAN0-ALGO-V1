@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from core.data_fetcher import DataFetcher
 from core.indicator_engine import IndicatorEngine
 from core.risk_manager import RiskManager
+from core.signal_guard import check_signal
 from core.signal_logic import SignalDecision, SignalLogic, TradeSignal
 from core.telegram_bot import TelegramNotifier
 
@@ -458,6 +459,20 @@ async def run_loop() -> None:
                     except Exception as _entry_exc:
                         LOGGER.warning("[ENTRY] live-price override skipped: %s", _entry_exc)
                 allowed, risk_reason = risk_manager.can_emit_signal(primary_signal)
+                # ── Sanity guard: never fire a malformed signal ─────────────
+                if allowed:
+                    _g_ok, _g_why = check_signal(
+                        direction=primary_signal.direction,
+                        entry=primary_signal.entry_price,
+                        stop_loss=primary_signal.stop_loss,
+                        take_profit=primary_signal.take_profit,
+                        atr=primary_signal.atr,
+                        ref_price=(float(live_snapshot["close"]) if live_snapshot is not None else None),
+                    )
+                    if not _g_ok:
+                        allowed = False
+                        risk_reason = f"sanity_guard:{_g_why}"
+                        LOGGER.warning("[GUARD] signal REJECTED by sanity guard: %s (%s)", _g_why, primary_signal.direction)
                 if allowed:
                     LOGGER.info("[RISK] symbol=%s signal allowed", SYMBOL)
                     sent_any = False

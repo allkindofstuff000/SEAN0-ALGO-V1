@@ -29,6 +29,7 @@ from dotenv import load_dotenv
 from backtests import backtest_forex_engine as engine
 from core.btc_fetcher import BtcFetcher
 from core.indicator_engine import IndicatorEngine
+from core.signal_guard import check_signal
 
 try:
     from core.telegram_bot import TelegramNotifier
@@ -177,6 +178,16 @@ async def _cycle(fetcher: BtcFetcher, ind_engine: IndicatorEngine, tg, last_sign
     else:
         sl = entry + risk_dist
         tp = entry - tp_dist
+
+    # ── Sanity guard: never fire a malformed signal ─────────────────────────
+    ok, why = check_signal(
+        direction=direction, entry=entry, stop_loss=sl, take_profit=tp, atr=atr_val,
+        ref_price=float(entry_df.iloc[i]["close"]),
+        recent_high=float(entry_df.iloc[i]["high"]), recent_low=float(entry_df.iloc[i]["low"]),
+    )
+    if not ok:
+        LOG.warning("signal REJECTED by sanity guard: %s (%s @ %s)", why, direction, ts_str)
+        return ts_str
 
     LOG.info("SIGNAL %s @ %s entry=%.2f sl=%.2f tp=%.2f atr=%.2f", direction, ts_str, entry, sl, tp, atr_val)
 
