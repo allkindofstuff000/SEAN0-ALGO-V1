@@ -64,6 +64,16 @@ MAX_SIGNALS_PER_DAY = int(os.getenv("BTC_MAX_SIGNALS_PER_DAY", "8"))
 COOLDOWN_BARS = int(os.getenv("BTC_COOLDOWN_BARS", "3"))
 _RISK: dict = {"day": None, "count": 0, "last_fired_ts": None}
 
+# ── Session filter (validated edge) ──────────────────────────────────────────
+# BTC's edge is concentrated in the NY-overlap / NY window: Dhaka evening 18-24
+# = 12-18 UTC. Validated on 3 NON-overlapping 45-day windows — trading only this
+# window holds PF 1.40-1.58 in all three, and beats "trade 24/7" in every one,
+# while off-hours are regime-dependent (Morning was great ~4 months ago, negative
+# recently). Only fire signals in [START, END) UTC. Set BTC_SESSION_UTC="0,24"
+# to disable (trade 24/7).
+_sess = os.getenv("BTC_SESSION_UTC", "12,18").split(",")
+SESSION_UTC_START, SESSION_UTC_END = int(_sess[0]), int(_sess[1])
+
 LOG = logging.getLogger("btc-rsi-ema.live")
 
 
@@ -148,6 +158,12 @@ async def _cycle(fetcher: BtcFetcher, ind_engine: IndicatorEngine, tg, last_sign
     atr_val = float(sig["atr_value"])
     risk_dist = float(sig["risk_distance"])                 # atr × SL_ATR
     tp_dist = atr_val * float(engine.TAKE_PROFIT_ATR_MULTIPLIER)
+
+    # ── Session filter: only fire in BTC's robustly-profitable UTC window ─────
+    if not (SESSION_UTC_START <= ts.hour < SESSION_UTC_END):
+        LOG.info("session filter: %s @ %s skipped (%02dh UTC outside %02d-%02d)",
+                 direction, ts_str, ts.hour, SESSION_UTC_START, SESSION_UTC_END)
+        return ts_str
 
     # ── Risk guards ─────────────────────────────────────────────────────────
     utc_day = ts.date()
