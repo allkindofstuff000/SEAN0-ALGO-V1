@@ -51,7 +51,7 @@ except Exception:  # pragma: no cover
 ROOT = Path(__file__).resolve().parent
 STATE_PATH = ROOT / "state_btc_rsi_ema.txt"
 POLL_SECS = 60
-HISTORY_DAYS = 20   # M5 history per cycle — enough for M15 AND H1 EMA200 to converge
+HISTORY_DAYS = 12   # M5 history per cycle — enough for the M15 EMA200 to converge
 
 # RSI EMA strategy config: RR 1:1 (SL 1.5×ATR / TP 1.5×ATR). Set on the engine
 # module in THIS process only — the bot is its own process, so this never
@@ -106,36 +106,6 @@ def _fetch_btc_history(fetcher: BtcFetcher) -> pd.DataFrame:
     return df
 
 
-def _resample_1h(df: pd.DataFrame) -> pd.DataFrame:
-    """Resample M5 bars to H1 (left-labelled, same convention as the M15 trend frame)."""
-    idx = df.set_index("timestamp")
-    r = idx.resample("1h", label="left", closed="left").agg(
-        {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
-    return r.dropna(subset=["open", "high", "low", "close"]).reset_index()
-
-
-def _h1_trend_agrees(h1_df: pd.DataFrame, ts, direction: str) -> bool:
-    """True if the last CLOSED H1 candle's EMA50/EMA200 agrees with the signal
-    direction. Backtested 2026-09-06 to lift BTC expectancy over 75 days:
-    PF 1.10->1.16, win 53.1%->54.4%, avg R +0.061->+0.086. Missing/NaN H1 -> allow
-    (never reject on a data gap)."""
-    tcol = h1_df["timestamp"]
-    entry_close = pd.Timestamp(ts)
-    if getattr(tcol.dtype, "tz", None) is not None:
-        entry_close = entry_close.tz_localize("UTC") if entry_close.tzinfo is None else entry_close.tz_convert("UTC")
-    elif entry_close.tzinfo is not None:
-        entry_close = entry_close.tz_localize(None)
-    entry_close = entry_close + pd.Timedelta(minutes=5)
-    elig = h1_df[tcol <= entry_close - pd.Timedelta(hours=1)]   # last H1 that has CLOSED (no lookahead)
-    if elig.empty:
-        return True
-    row = elig.iloc[-1]
-    e50, e200 = row.get("ema50"), row.get("ema200")
-    if pd.isna(e50) or pd.isna(e200):
-        return True
-    return (float(e50) > float(e200)) if direction == "BUY" else (float(e50) < float(e200))
-
-
 async def _cycle(fetcher: BtcFetcher, ind_engine: IndicatorEngine, tg, last_signal_ts: str | None, risk_pct: int) -> str | None:
     df = await asyncio.to_thread(_fetch_btc_history, fetcher)
     if df is None or len(df) < 250:
@@ -178,17 +148,6 @@ async def _cycle(fetcher: BtcFetcher, ind_engine: IndicatorEngine, tg, last_sign
     atr_val = float(sig["atr_value"])
     risk_dist = float(sig["risk_distance"])                 # atr × SL_ATR
     tp_dist = atr_val * float(engine.TAKE_PROFIT_ATR_MULTIPLIER)
-
-    # ── H1 higher-timeframe trend filter ─────────────────────────────────────
-    # Only fire when the 1-hour trend (EMA50/EMA200) agrees with the M15 signal.
-    # Backtest-validated BTC edge (see _h1_trend_agrees); cuts counter-HTF entries.
-    try:
-        h1_df = ind_engine.add_indicators(_resample_1h(df))
-        if not _h1_trend_agrees(h1_df, ts, direction):
-            LOG.info("H1 filter: %s @ %s rejected (1h trend disagrees)", direction, ts_str)
-            return ts_str
-    except Exception as e:
-        LOG.warning("H1 filter check failed (%s); allowing signal", e)
 
     # ── Risk guards ─────────────────────────────────────────────────────────
     utc_day = ts.date()
