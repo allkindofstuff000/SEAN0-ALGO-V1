@@ -50,7 +50,7 @@ except Exception:  # pragma: no cover
 
 ROOT = Path(__file__).resolve().parent
 STATE_PATH = ROOT / "state_btc_rsi_ema.txt"
-POLL_SECS = 60
+POLL_SECS = 30   # detect a just-closed M5 bar within ~30s (was 60s)
 HISTORY_DAYS = 12   # M5 history per cycle — enough for the M15 EMA200 to converge
 
 # RSI EMA strategy config: RR 1:1 (SL 1.5×ATR / TP 1.5×ATR). Set on the engine
@@ -93,12 +93,16 @@ def _save_last_signal_ts(ts: str) -> None:
         LOG.warning("state save failed: %s", e)
 
 
-def _format_message(direction: str, entry: float, sl: float, tp: float, atr: float, candle_ts: str, risk_pct: int) -> str:
+def _format_message(direction: str, entry: float, sl: float, tp: float, atr: float, ts, risk_pct: int) -> str:
     arrow = "🟢 BUY" if direction == "BUY" else "🔴 SELL"
+    # `ts` is the signal candle's OPEN (UTC). The M5 candle CLOSES 5 min later —
+    # that is the moment the signal confirms and you act. Show that close time in
+    # Dhaka (UTC+6), not the raw UTC open, so the timing reads right on your clock.
+    bd = (pd.Timestamp(ts) + pd.Timedelta(minutes=5, hours=6)).strftime("%Y-%m-%d %H:%M")
     return (
         f"📊 *RSI EMA — BTC/USD* — {arrow}\n"
         f"Symbol: BTCUSD  ·  M5  ·  Binance\n"
-        f"Candle (UTC): `{candle_ts}`\n"
+        f"🕒 Signal (BD): `{bd}`  ·  enter now\n"
         f"Entry: `{entry:.2f}`\n"
         f"SL:    `{sl:.2f}`\n"
         f"TP:    `{tp:.2f}`\n"
@@ -210,7 +214,7 @@ async def _cycle(fetcher: BtcFetcher, ind_engine: IndicatorEngine, tg, last_sign
     telegram_sent = False
     if tg is not None:
         try:
-            msg = _format_message(direction, entry, sl, tp, atr_val, ts_str, risk_pct)
+            msg = _format_message(direction, entry, sl, tp, atr_val, ts, risk_pct)
             ok = await tg.send_message(msg)   # send_message is a coroutine — await it
             telegram_sent = bool(ok)
             LOG.info("telegram: %s", "sent" if telegram_sent else "not_sent")
