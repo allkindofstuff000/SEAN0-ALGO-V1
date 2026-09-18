@@ -28,6 +28,13 @@ from dotenv import load_dotenv
 from core.data_fetcher import DataFetcher
 
 try:
+    from core.indicator_engine import IndicatorEngine
+    _IND_OK = True
+except Exception:  # pragma: no cover
+    _IND_OK = False
+    IndicatorEngine = None  # type: ignore
+
+try:
     from core.btc_fetcher import BtcFetcher
     _BTC_OK = True
 except Exception:  # pragma: no cover
@@ -93,6 +100,47 @@ def _send_tg_sync(tg, text: str) -> None:
         pass
 
 
+def _daily_heartbeat_msg(fetcher: DataFetcher, now: "pd.Timestamp") -> str:
+    """Daily market-state summary so a quiet day never looks like a dead bot:
+    resolver alive + gold volatility regime (why signals are/aren't firing) +
+    today's signal count + time since the last signal."""
+    lines = [
+        f"✅ *SEAN ALGO — daily check*  ({now:%Y-%m-%d %H:%M} UTC)",
+        "Resolver alive · all 3 bots evaluating.",
+    ]
+    # Gold volatility regime — the usual reason signals go quiet.
+    try:
+        gdf = fetcher.fetch_oanda("5m", 60)
+        if _IND_OK and gdf is not None and len(gdf) > 20:
+            gdf = IndicatorEngine().add_indicators(gdf)
+            last = gdf.iloc[-1]
+            atr = float(last["atr14"])
+            avg = float(last.get("atr20_avg") or atr)
+            level = "🔴 high-vol" if atr >= 15 else ("⚪ normal" if atr >= 8 else "🟡 low / quiet")
+            trend = "↑ rising" if atr >= avg * 1.1 else ("↓ falling" if atr <= avg * 0.9 else "→ flat")
+            lines.append(f"Gold ATR: {atr:.1f} — {level} ({trend} vs {avg:.1f} avg)")
+    except Exception:  # noqa: BLE001 — advisory line only
+        lines.append("Gold ATR: n/a (feed closed / unavailable)")
+    # Signal activity (today + gap since last).
+    try:
+        sigs = load_live_signals(limit=200) if _MONGO_OK else []
+        dated = [s for s in sigs if (s.get("sent_at") or s.get("candle_time_utc"))]
+        today_n = sum(1 for s in dated if str(s.get("sent_at") or s.get("candle_time_utc"))[:10] == f"{now.date()}")
+        if dated:
+            def _t(s):
+                t = pd.Timestamp(s.get("sent_at") or s.get("candle_time_utc"))
+                return t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")
+            ah = (now - max(_t(s) for s in dated)) / pd.Timedelta(hours=1)
+            ago = f"{int(ah) // 24}d {int(ah) % 24}h" if ah >= 24 else f"{ah:.1f}h"
+            lines.append(f"Signals today: {today_n}  ·  last signal {ago} ago")
+        else:
+            lines.append(f"Signals today: {today_n}")
+    except Exception:  # noqa: BLE001
+        pass
+    lines.append("_A quiet day = no valid setup, not a fault._")
+    return "\n".join(lines)
+
+
 def health_check(fetcher: DataFetcher, tg) -> None:
     """Daily heartbeat + stale-feed watchdog, both via Telegram."""
     now = pd.Timestamp.now(tz="UTC")
@@ -100,7 +148,7 @@ def health_check(fetcher: DataFetcher, tg) -> None:
     # Once-a-day heartbeat so silence never means "is it even running?"
     if _HEALTH["heartbeat_day"] != now.date():
         _HEALTH["heartbeat_day"] = now.date()
-        _send_tg_sync(tg, f"✅ SEAN ALGO health OK — resolver alive ({now:%Y-%m-%d %H:%M} UTC)")
+        _send_tg_sync(tg, _daily_heartbeat_msg(fetcher, now))
 
     if not _forex_open(now):
         return
