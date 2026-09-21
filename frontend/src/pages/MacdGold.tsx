@@ -8,22 +8,18 @@ import { useCandles, useLivePrice, useRunMacdGoldBacktest, useLiveSignals, useBa
 import { Fragment, useMemo, useState } from "react";
 import { Play, BarChart2, History, Send, Clock, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { LiveChart } from "@/components/LiveChart";
 import { BacktestResults } from "@/components/BacktestResults";
 import { WalkForwardResults } from "@/components/WalkForwardResults";
 import { SignalDetail } from "@/components/SignalDetail";
 import { computeIndicators } from "@/lib/indicators";
-import { Api, openCandleStream, type RsiBacktestResult } from "@/lib/api";
+import { Api, type RsiBacktestResult } from "@/lib/api";
 import { fmtLocal, TZ_LABEL } from "@/lib/tz";
 import { splitWindow } from "@/lib/walkforward";
 
 const TABS = [
-  { id: "chart", label: "Chart", icon: BarChart2 },
   { id: "backtest", label: "Backtest", icon: Play },
   { id: "signals", label: "Signal History", icon: History },
 ];
-
-const TF_MAP: Record<string, string> = { "5M": "M5", "15M": "M15", "1H": "H1" };
 
 const isoDaysAgo = (n: number) => {
   const d = new Date();
@@ -49,9 +45,7 @@ function signalPnl(s: {
 
 export default function MacdGold() {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState("chart");
-  const [activeTF, setActiveTF] = useState("1H");
-  const [showEma, setShowEma] = useState(true);
+  const [activeTab, setActiveTab] = useState("backtest");
   const [risk, setRisk] = useState([3]);
   const [startDate, setStartDate] = useState(isoDaysAgo(60));
   const [endDate, setEndDate] = useState(isoDaysAgo(0));
@@ -63,8 +57,7 @@ export default function MacdGold() {
   const [expandedSig, setExpandedSig] = useState<string | null>(null);
   const [loadingReport, setLoadingReport] = useState<string | null>(null);
 
-  const tf = TF_MAP[activeTF];
-  const { data: candleData } = useCandles(tf, 240);
+  const { data: candleData } = useCandles("H1", 240);
   const { data: livePrice } = useLivePrice();
   const { data: signalsData } = useLiveSignals(100);
   const { data: history } = useBacktestHistory();
@@ -228,31 +221,6 @@ export default function MacdGold() {
       </div>
 
       <div className="flex-1 mx-4 mt-2 mb-4 min-h-0 overflow-hidden">
-        {/* CHART TAB */}
-        {activeTab === "chart" && (
-          <div className="h-full min-h-[400px] flex flex-col rounded-lg border border-border bg-[#131722] overflow-hidden">
-            <div className="flex items-center gap-3 px-3 py-2 border-b border-[#2A2E39] bg-[#1E222D] shrink-0">
-              <span className="font-bold text-white text-sm">XAUUSD</span>
-              <span className={`text-xs font-mono ${changePct >= 0 ? "text-accent" : "text-destructive"}`}>{changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%</span>
-              <div className="h-3 w-px bg-[#2A2E39]" />
-              <div className="flex items-center gap-1">
-                {["5M", "15M", "1H"].map((t) => (
-                  <button key={t} onClick={() => setActiveTF(t)} className={`px-2 py-0.5 text-xs font-bold rounded transition-all ${activeTF === t ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white hover:bg-[#2A2E39]"}`}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-              <div className="h-3 w-px bg-[#2A2E39]" />
-              <button onClick={() => setShowEma((v) => !v)} className={`px-2 py-0.5 text-xs font-bold rounded transition-all ${showEma ? "text-yellow-400" : "text-gray-500 hover:text-gray-300"}`}>
-                EMA 9 / 21
-              </button>
-            </div>
-            <div className="flex-1 min-h-0">
-              <LiveChart tf={tf} showEMA={showEma} candlesFn={(t, c) => Api.candles(t, c)} streamFn={openCandleStream} />
-            </div>
-          </div>
-        )}
-
         {/* BACKTEST TAB */}
         {activeTab === "backtest" && (
           <div className="h-full overflow-auto pb-4 space-y-4">
