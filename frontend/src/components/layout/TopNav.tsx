@@ -9,6 +9,7 @@ export function TopNav() {
     { href: "/rsi-ema", label: "RSI EMA" },
     { href: "/vwap-st", label: "VWAP+ST" },
     { href: "/btc-rsi-ema", label: "BTC RSI EMA" },
+    { href: "/macd-gold", label: "GOLD MACD" },
   ];
 
   return (

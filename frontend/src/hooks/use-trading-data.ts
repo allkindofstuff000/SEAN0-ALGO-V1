@@ -97,6 +97,15 @@ export function useRunBtcBacktest() {
   });
 }
 
+// Gold MACD day-trade backtest (POST /api/macd-gold/backtest) — RSI param shape
+export function useRunMacdGoldBacktest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (params: RsiBacktestParams) => Api.runMacdGoldBacktest(params),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["backtest-history"] }),
+  });
+}
+
 export function useBotControl() {
   const qc = useQueryClient();
   return useMutation({
@@ -105,7 +114,7 @@ export function useBotControl() {
       strategy,
     }: {
       action: "START" | "STOP";
-      strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema";
+      strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema" | "macd-gold";
     }) => (action === "START" ? Api.startBot(strategy) : Api.stopBot(strategy)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["bot-status"] });

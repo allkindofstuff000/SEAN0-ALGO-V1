@@ -87,6 +87,14 @@ except Exception as _vwap_st_exc:
     _VWAP_ST_AVAILABLE = False
     logging.getLogger("dashboard").warning("[VWAP-ST] import failed: %s", _vwap_st_exc)
 
+# ── Gold MACD day-trade strategy (XAUUSD H1) ──
+try:
+    from strategies.macd_gold.backtester import run_backtest as _macd_gold_run_backtest
+    _MACD_GOLD_AVAILABLE = True
+except Exception as _macd_gold_exc:
+    _MACD_GOLD_AVAILABLE = False
+    logging.getLogger("dashboard").warning("[MACD-GOLD] import failed: %s", _macd_gold_exc)
+
 # ── BTC RSI EMA strategy (Binance data mirror; reuses the XAU RSI EMA engine) ──
 try:
     from strategies.rsi_btc.backtester import run_backtest as _btc_run_backtest
@@ -195,6 +203,7 @@ _bot_start_time: float | None = None
 BOT_SERVICE_NAME = os.getenv("BOT_SERVICE_NAME", "").strip()
 VWAP_ST_SERVICE_NAME = os.getenv("VWAP_ST_SERVICE_NAME", "vwap-st").strip()
 BTC_RSI_EMA_SERVICE_NAME = os.getenv("BTC_RSI_EMA_SERVICE_NAME", "btc-rsi-ema").strip()
+MACD_GOLD_SERVICE_NAME = os.getenv("MACD_GOLD_SERVICE_NAME", "macd-gold").strip()
 SYSTEMCTL_PATH = shutil.which("systemctl")  # None on Windows / non-systemd hosts
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -1337,6 +1346,68 @@ def api_btc_backtest(req: BacktestRequest) -> dict[str, Any]:
         _backtest_lock.release()
 
 
+@app.post("/api/macd-gold/backtest", tags=["macd-gold"])
+def api_macd_gold_backtest(req: BacktestRequest) -> dict[str, Any]:
+    """Gold MACD day-trade strategy over XAUUSD H1 (MACD cross in EMA200 trend, RR 1:2)."""
+    if not _MACD_GOLD_AVAILABLE:
+        raise HTTPException(status_code=503, detail="MACD gold strategy module not available.")
+    if not _backtest_lock.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="A backtest is already running. Please wait.")
+    try:
+        from backtests import backtest_forex_engine as engine  # noqa: PLC0415
+
+        now_utc = pd.Timestamp.now(tz="UTC")
+        today = now_utc.normalize()
+        start_utc = engine.parse_date_utc(req.start_date) if req.start_date else (today - pd.Timedelta(days=60))
+        end_utc = engine.parse_date_utc(req.end_date, inclusive_end=True) if req.end_date else today
+        if end_utc <= start_utc:
+            return {"error": "End date must be after start date.", "metrics": {}, "trades": [], "equity_curve": []}
+
+        risk_fraction = max(0.01, min(0.10, req.risk_per_trade_pct / 100.0))
+        trades_df, metrics, equity_curve = _macd_gold_run_backtest(
+            start_utc=start_utc,
+            end_utc=end_utc,
+            starting_balance=req.starting_balance,
+            risk_per_trade=risk_fraction,
+        )
+
+        trades_out: list[dict[str, Any]] = []
+        if not trades_df.empty:
+            for row in trades_df.fillna("").to_dict(orient="records"):
+                trades_out.append({k: _safe_num(v) if not isinstance(v, str) else v for k, v in row.items()})
+        metrics_out = {k: _safe_num(v) for k, v in metrics.items()}
+
+        LOGGER.info(
+            "MACD gold backtest complete  trades=%s  win_rate=%.1f%%  balance=$%.2f",
+            metrics_out.get("total_trades", 0),
+            metrics_out.get("win_rate", 0.0) or 0.0,
+            metrics_out.get("ending_balance", 0.0) or 0.0,
+        )
+
+        mongo_id = save_backtest_report(
+            metrics=metrics_out,
+            trades=trades_out,
+            equity_curve=equity_curve,
+            params={
+                "strategy": "macd-gold",
+                "start_date": req.start_date,
+                "end_date": req.end_date,
+                "starting_balance": req.starting_balance,
+                "risk_per_trade_pct": req.risk_per_trade_pct,
+            },
+        )
+
+        return {"metrics": metrics_out, "trades": trades_out, "equity_curve": equity_curve, "mongo_id": mongo_id}
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        LOGGER.error("MACD gold backtest error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        _backtest_lock.release()
+
+
 @app.post("/api/bot/btc-rsi-ema/start", tags=["bot"])
 def api_btc_bot_start() -> dict[str, Any]:
     """Start the BTC RSI EMA live signal bot (systemctl start btc-rsi-ema.service)."""
@@ -1363,6 +1434,34 @@ def api_btc_bot_stop() -> dict[str, Any]:
     save_strategy_state("btc-rsi-ema", "stopped")
     LOGGER.info("[BOT] btc-rsi-ema stopped")
     return {"status": "stopped", "message": "BTC RSI EMA live bot stopped"}
+
+
+@app.post("/api/bot/macd-gold/start", tags=["bot"])
+def api_macd_gold_bot_start() -> dict[str, Any]:
+    """Start the Gold MACD day-trade bot (systemctl start macd-gold.service)."""
+    if not SYSTEMCTL_PATH:
+        raise HTTPException(status_code=500, detail="systemctl not available on this host")
+    result = _run_systemctl_named(MACD_GOLD_SERVICE_NAME, "start")
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip() or "systemctl start failed"
+        raise HTTPException(status_code=500, detail=detail)
+    save_strategy_state("macd-gold", "running")
+    LOGGER.info("[BOT] macd-gold started")
+    return {"status": "started", "message": "Gold MACD day-trade bot started"}
+
+
+@app.post("/api/bot/macd-gold/stop", tags=["bot"])
+def api_macd_gold_bot_stop() -> dict[str, Any]:
+    """Stop the Gold MACD day-trade bot (systemctl stop macd-gold.service)."""
+    if not SYSTEMCTL_PATH:
+        raise HTTPException(status_code=500, detail="systemctl not available on this host")
+    result = _run_systemctl_named(MACD_GOLD_SERVICE_NAME, "stop")
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip() or "systemctl stop failed"
+        raise HTTPException(status_code=500, detail=detail)
+    save_strategy_state("macd-gold", "stopped")
+    LOGGER.info("[BOT] macd-gold stopped")
+    return {"status": "stopped", "message": "Gold MACD day-trade bot stopped"}
 
 
 # ── Static files (React SPA) ──────────────────────────────────────────────────
@@ -1415,16 +1514,29 @@ def api_bot_status() -> dict[str, Any]:
         except Exception as exc:
             LOGGER.warning("[BOT] btc-rsi-ema status lookup failed: %s", exc)
 
+    # Gold MACD day-trade bot status
+    macd_running = False
+    macd_pid = None
+    if SYSTEMCTL_PATH and MACD_GOLD_SERVICE_NAME:
+        try:
+            svc = _service_status_named(MACD_GOLD_SERVICE_NAME)
+            macd_running = bool(svc.get("running"))
+            macd_pid = svc.get("pid")
+        except Exception as exc:
+            LOGGER.warning("[BOT] macd-gold status lookup failed: %s", exc)
+
     # Load uptime started_at from MongoDB
     rsi_started = load_strategy_started_at("rsi-ema") if rsi_running else None
     eth_started = load_strategy_started_at("rsi-eth") if rsi_eth_running else None
     vwap_started = load_strategy_started_at("vwap-st") if vwap_running else None
     btc_started = load_strategy_started_at("btc-rsi-ema") if btc_running else None
+    macd_started = load_strategy_started_at("macd-gold") if macd_running else None
 
     return {
         "rsiEma": {"running": rsi_running, "pid": rsi_pid, "startedAt": rsi_started},
         "vwapSt": {"running": vwap_running, "pid": vwap_pid, "startedAt": vwap_started},
         "btcRsiEma": {"running": btc_running, "pid": btc_pid, "startedAt": btc_started},
+        "macdGold": {"running": macd_running, "pid": macd_pid, "startedAt": macd_started},
         "rsiEth": {
             "running": rsi_eth_running,
             "paused": getattr(_rsi_eth, "_paused", False) if _rsi_eth else False,

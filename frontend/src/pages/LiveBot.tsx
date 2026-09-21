@@ -85,7 +85,7 @@ export default function LiveBot() {
   const price = live?.price || ind?.price || 0;
   const sessionText = market?.closed ? (market?.reason || "Market Closed") : "Market Open";
 
-  const handleToggle = (strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema", label: string, action: "START" | "STOP") => {
+  const handleToggle = (strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema" | "macd-gold", label: string, action: "START" | "STOP") => {
     botControl.mutate({ strategy, action }, {
       onSuccess: (r) => toast({ title: `${label} ${action === "START" ? "Started" : "Stopped"}`, description: (r as any).message || "", variant: action === "START" ? "default" : "destructive" }),
       onError: (e: any) => toast({ title: "Action failed", description: String(e.message || e), variant: "destructive" }),
@@ -118,13 +118,13 @@ export default function LiveBot() {
         </div>
         <div className="ml-auto flex items-center gap-1.5 text-muted-foreground">
           <span>LIVE STRATEGIES:</span>
-          <span className="text-accent font-bold">{[bot?.rsiEma?.running, bot?.vwapSt?.running, bot?.btcRsiEma?.running].filter(Boolean).length} / 3</span>
+          <span className="text-accent font-bold">{[bot?.rsiEma?.running, bot?.vwapSt?.running, bot?.btcRsiEma?.running, bot?.macdGold?.running].filter(Boolean).length} / 4</span>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {/* Strategy Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StrategyCard
             title="RSI EMA STRATEGY"
             subtitle="XAUUSD · 5M / 15M · Multi-timeframe"
@@ -153,6 +153,16 @@ export default function LiveBot() {
             pending={botControl.isPending}
             onToggle={(a) => handleToggle("btc-rsi-ema", "BTC RSI EMA", a)}
             sessionText="24/7 · Crypto"
+          />
+
+          <StrategyCard
+            title="GOLD MACD"
+            subtitle="XAUUSD · H1 · Day-trade · 1:2 RR"
+            running={!!bot?.macdGold?.running}
+            uptime={uptimeFrom(bot?.macdGold?.startedAt)}
+            pending={botControl.isPending}
+            onToggle={(a) => handleToggle("macd-gold", "Gold MACD", a)}
+            sessionText={sessionText}
           />
         </div>
 

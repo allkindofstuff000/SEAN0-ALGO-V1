@@ -59,6 +59,7 @@ export type BotStatus = {
   rsiEma: { running: boolean; pid: number | null; startedAt: string | null };
   vwapSt: { running: boolean; pid: number | null; startedAt: string | null };
   btcRsiEma: { running: boolean; pid: number | null; startedAt: string | null };
+  macdGold: { running: boolean; pid: number | null; startedAt: string | null };
   rsiEth: Record<string, any>;
   anyRunning: boolean;
   market: MarketStatus;
@@ -202,9 +203,9 @@ export const Api = {
   runRsiBacktest: (p: RsiBacktestParams) => apiPost<RsiBacktestResult>("/backtest", p),
   runVwapStBacktest: (p: VwapStBacktestParams) => apiPost<VwapStBacktestResult>("/api/vwap-st/backtest", p),
   liveSignals: (limit = 100) => apiGet<{ signals: LiveSignal[]; count: number }>(`/signals?limit=${limit}`),
-  startBot: (strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema") =>
+  startBot: (strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema" | "macd-gold") =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/start`),
-  stopBot: (strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema") =>
+  stopBot: (strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema" | "macd-gold") =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/stop`),
 
   // ── BTC RSI EMA (Binance data mirror) ──────────────────────────────────────
@@ -214,6 +215,10 @@ export const Api = {
     ),
   btcLivePrice: () => apiGet<LivePrice>("/api/btc/price"),
   runBtcBacktest: (p: RsiBacktestParams) => apiPost<RsiBacktestResult>("/api/btc/backtest", p),
+
+  // ── Gold MACD day-trade (OANDA H1) ─────────────────────────────────────────
+  runMacdGoldBacktest: (p: RsiBacktestParams) =>
+    apiPost<RsiBacktestResult>("/api/macd-gold/backtest", p),
 };
 
 // ── SSE helper for live candle stream ────────────────────────────────────────
