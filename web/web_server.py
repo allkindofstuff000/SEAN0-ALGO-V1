@@ -9,6 +9,8 @@ Then open:  http://localhost:8000
 from __future__ import annotations
 
 import asyncio
+import gzip as _gzip
+import io as _io
 import json as _json
 import logging
 import os
@@ -31,6 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.datastructures import MutableHeaders
 
 # MongoDB persistence (non-fatal if unavailable)
 try:
@@ -206,6 +209,92 @@ BTC_RSI_EMA_SERVICE_NAME = os.getenv("BTC_RSI_EMA_SERVICE_NAME", "btc-rsi-ema").
 MACD_GOLD_SERVICE_NAME = os.getenv("MACD_GOLD_SERVICE_NAME", "macd-gold").strip()
 SYSTEMCTL_PATH = shutil.which("systemctl")  # None on Windows / non-systemd hosts
 
+# ── Robustness / performance knobs ─────────────────────────────────────────────
+# Cap every systemctl/ps subprocess so a stuck unit can't wedge a worker thread.
+SYSTEMCTL_TIMEOUT = float(os.getenv("SYSTEMCTL_TIMEOUT", "5"))
+# Micro-cache /api/bot/status: the dashboard polls it every 5s per open tab and it
+# otherwise forks ~5 systemctl processes + 5 Mongo reads each time. A short TTL
+# collapses multi-tab / rapid polling to one real sweep; start/stop bust it instantly.
+_BOT_STATUS_TTL = float(os.getenv("BOT_STATUS_TTL", "2.5"))
+_bot_status_cache: dict[str, Any] = {"ts": 0.0, "data": None}
+_bot_status_lock = threading.Lock()
+_APP_START_TIME = time.time()
+
+
+def _bust_bot_status_cache() -> None:
+    """Invalidate the /api/bot/status micro-cache (called after any start/stop)."""
+    with _bot_status_lock:
+        _bot_status_cache["ts"] = 0.0
+
+
+class SmartGZipMiddleware:
+    """gzip full JSON/text responses over the wire, but NEVER streaming ones.
+
+    SSE (text/event-stream) and any multi-chunk response must flush unbuffered, so
+    the first ``more_body`` chunk switches this to transparent pass-through. Only a
+    single-shot compressible body above ``minimum_size`` is compressed — which is
+    exactly the candles / backtest-history / signals payloads.
+    """
+
+    _COMPRESSIBLE = ("application/json", "text/", "application/javascript", "application/xml")
+
+    def __init__(self, app, minimum_size: int = 500, compresslevel: int = 6) -> None:
+        self.app = app
+        self.minimum_size = minimum_size
+        self.compresslevel = compresslevel
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        accept = ""
+        for k, v in scope.get("headers", []):
+            if k == b"accept-encoding":
+                accept = v.decode("latin-1")
+                break
+        if "gzip" not in accept.lower():
+            return await self.app(scope, receive, send)
+
+        state: dict[str, Any] = {"start": None, "streaming": False}
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                state["start"] = message
+                return
+            if message["type"] != "http.response.body":
+                return await send(message)
+            if state["streaming"]:
+                return await send(message)
+            if message.get("more_body", False):
+                # Multi-chunk (SSE / streaming) — flush start + chunk uncompressed.
+                state["streaming"] = True
+                await send(state["start"])
+                return await send(message)
+            # Single-shot body: compress when it is worth it.
+            body = message.get("body", b"")
+            start = state["start"]
+            headers = MutableHeaders(raw=start["headers"])
+            ctype = headers.get("content-type", "")
+            worth_it = (
+                "content-encoding" not in headers
+                and len(body) >= self.minimum_size
+                and not ctype.startswith("text/event-stream")
+                and any(ctype.startswith(t) for t in self._COMPRESSIBLE)
+            )
+            if worth_it:
+                buf = _io.BytesIO()
+                with _gzip.GzipFile(mode="wb", fileobj=buf, compresslevel=self.compresslevel) as gz:
+                    gz.write(body)
+                body = buf.getvalue()
+                headers["Content-Encoding"] = "gzip"
+                headers["Content-Length"] = str(len(body))
+                vary = headers.get("vary")
+                headers["Vary"] = f"{vary}, Accept-Encoding" if vary else "Accept-Encoding"
+            await send(start)
+            await send({"type": "http.response.body", "body": body, "more_body": False})
+
+        await self.app(scope, receive, send_wrapper)
+
+
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="SEAN0-ALGO Dashboard API", docs_url="/api/docs")
 app.add_middleware(
@@ -214,6 +303,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# SSE-safe gzip for the big JSON payloads (candles / history / signals).
+app.add_middleware(SmartGZipMiddleware, minimum_size=500)
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -297,7 +388,13 @@ def _run_systemctl(action: str, extra_args: list[str] | None = None) -> subproce
     else:
         command = base_cmd
 
-    return subprocess.run(command, capture_output=True, text=True, check=False)
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=SYSTEMCTL_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        result = subprocess.CompletedProcess(command, 124, "", f"systemctl {action} timed out after {SYSTEMCTL_TIMEOUT}s")
+    if action in ("start", "stop", "restart"):
+        _bust_bot_status_cache()
+    return result
 
 
 def _run_systemctl_named(service: str, action: str) -> subprocess.CompletedProcess[str]:
@@ -311,7 +408,60 @@ def _run_systemctl_named(service: str, action: str) -> subprocess.CompletedProce
         command = ["sudo", *base_cmd]
     else:
         command = base_cmd
-    return subprocess.run(command, capture_output=True, text=True, check=False)
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=SYSTEMCTL_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        result = subprocess.CompletedProcess(command, 124, "", f"systemctl {action} {service} timed out after {SYSTEMCTL_TIMEOUT}s")
+    if action in ("start", "stop", "restart"):
+        _bust_bot_status_cache()
+    return result
+
+
+def _service_status_many(services: list[str]) -> dict[str, dict[str, Any]]:
+    """One `systemctl show` for many units → {service: {running, pid, active_state}}.
+
+    Collapses the per-service subprocess fan-out in /api/bot/status into a single
+    fork. Never raises: on timeout / error every service reports not-running so the
+    status endpoint degrades gracefully instead of 500-ing.
+    """
+    result = {s: {"running": False, "pid": None, "active_state": "unknown"} for s in services}
+    if not SYSTEMCTL_PATH or not services:
+        return result
+    base_cmd = [SYSTEMCTL_PATH, "show", "--property=Id,ActiveState,MainPID", *services]
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        command = base_cmd
+    elif shutil.which("sudo"):
+        command = ["sudo", *base_cmd]
+    else:
+        command = base_cmd
+    try:
+        proc = subprocess.run(command, capture_output=True, text=True, check=False, timeout=SYSTEMCTL_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        LOGGER.warning("[BOT] batched systemctl show timed out after %ss", SYSTEMCTL_TIMEOUT)
+        return result
+    if not proc.stdout:
+        if proc.returncode != 0:
+            LOGGER.warning("[BOT] batched systemctl show rc=%s: %s", proc.returncode, (proc.stderr or "").strip())
+        return result
+
+    def _norm(name: str) -> str:
+        return name[:-8] if name.endswith(".service") else name
+
+    want = {_norm(s): s for s in services}
+    for block in proc.stdout.split("\n\n"):
+        vals: dict[str, str] = {}
+        for line in block.splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                vals[k] = v.strip()
+        svc = want.get(_norm(vals.get("Id", "")))
+        if svc is None:
+            continue
+        active = vals.get("ActiveState", "inactive")
+        pid_raw = vals.get("MainPID", "0")
+        pid = int(pid_raw) if pid_raw.isdigit() and int(pid_raw) > 0 else None
+        result[svc] = {"running": active == "active" and pid is not None, "pid": pid, "active_state": active}
+    return result
 
 
 def _service_status_named(service: str) -> dict[str, Any]:
@@ -351,15 +501,19 @@ def _service_status() -> dict[str, Any]:
 
     uptime_seconds: float | None = None
     if pid is not None:
-        elapsed = subprocess.run(
-            ["ps", "-o", "etimes=", "-p", str(pid)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        elapsed_text = elapsed.stdout.strip()
-        if elapsed.returncode == 0 and elapsed_text.isdigit():
-            uptime_seconds = float(elapsed_text)
+        try:
+            elapsed = subprocess.run(
+                ["ps", "-o", "etimes=", "-p", str(pid)],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=3,
+            )
+            elapsed_text = elapsed.stdout.strip()
+            if elapsed.returncode == 0 and elapsed_text.isdigit():
+                uptime_seconds = float(elapsed_text)
+        except subprocess.TimeoutExpired:
+            uptime_seconds = None
 
     return {
         "running": running,
@@ -1469,22 +1623,37 @@ def api_macd_gold_bot_stop() -> dict[str, Any]:
 from fastapi.responses import FileResponse
 
 # ── Unified bot status ─────────────────────────────────────────────────────
-@app.get("/api/bot/status", tags=["bot"])
-def api_bot_status() -> dict[str, Any]:
-    """Unified status for all strategy bots."""
-    # RSI EMA bot status
-    rsi_running = False
-    rsi_pid = None
-    if _use_systemd_bot():
-        try:
-            svc = _service_status()
-            rsi_running = bool(svc.get("running"))
-            rsi_pid = svc.get("pid")
-        except Exception as exc:
-            LOGGER.warning("[BOT] systemd status lookup failed: %s", exc)
+def _compute_bot_status() -> dict[str, Any]:
+    """Actual status assembly — one batched systemctl call for every strategy service."""
+    # Map internal keys → configured systemd unit names (skip any that are unset).
+    svc_names: dict[str, str] = {}
+    if SYSTEMCTL_PATH:
+        if BOT_SERVICE_NAME:
+            svc_names["rsi"] = BOT_SERVICE_NAME
+        if VWAP_ST_SERVICE_NAME:
+            svc_names["vwap"] = VWAP_ST_SERVICE_NAME
+        if BTC_RSI_EMA_SERVICE_NAME:
+            svc_names["btc"] = BTC_RSI_EMA_SERVICE_NAME
+        if MACD_GOLD_SERVICE_NAME:
+            svc_names["macd"] = MACD_GOLD_SERVICE_NAME
+    statuses = _service_status_many(list(svc_names.values())) if svc_names else {}
+
+    def _st(key: str) -> tuple[bool, int | None]:
+        name = svc_names.get(key)
+        s = statuses.get(name) if name else None
+        return (bool(s and s["running"]), (s or {}).get("pid"))
+
+    # RSI EMA: systemd unit if configured, else the in-process subprocess fallback.
+    if "rsi" in svc_names:
+        rsi_running, rsi_pid = _st("rsi")
     elif _bot_process is not None and _bot_process.poll() is None:
-        rsi_running = True
-        rsi_pid = _bot_process.pid
+        rsi_running, rsi_pid = True, _bot_process.pid
+    else:
+        rsi_running, rsi_pid = False, None
+
+    vwap_running, vwap_pid = _st("vwap")
+    btc_running, btc_pid = _st("btc")
+    macd_running, macd_pid = _st("macd")
 
     market = is_market_open()
 
@@ -1492,40 +1661,7 @@ def api_bot_status() -> dict[str, Any]:
     rsi_eth_running = _rsi_eth is not None and getattr(_rsi_eth, "_initialized", False) and not getattr(_rsi_eth, "_paused", False)
     rsi_eth_status = _rsi_eth.get_status() if _rsi_eth is not None else {}
 
-    # VWAP + Supertrend live signal bot status
-    vwap_running = False
-    vwap_pid = None
-    if SYSTEMCTL_PATH and VWAP_ST_SERVICE_NAME:
-        try:
-            svc = _service_status_named(VWAP_ST_SERVICE_NAME)
-            vwap_running = bool(svc.get("running"))
-            vwap_pid = svc.get("pid")
-        except Exception as exc:
-            LOGGER.warning("[BOT] vwap-st status lookup failed: %s", exc)
-
-    # BTC RSI EMA live signal bot status
-    btc_running = False
-    btc_pid = None
-    if SYSTEMCTL_PATH and BTC_RSI_EMA_SERVICE_NAME:
-        try:
-            svc = _service_status_named(BTC_RSI_EMA_SERVICE_NAME)
-            btc_running = bool(svc.get("running"))
-            btc_pid = svc.get("pid")
-        except Exception as exc:
-            LOGGER.warning("[BOT] btc-rsi-ema status lookup failed: %s", exc)
-
-    # Gold MACD day-trade bot status
-    macd_running = False
-    macd_pid = None
-    if SYSTEMCTL_PATH and MACD_GOLD_SERVICE_NAME:
-        try:
-            svc = _service_status_named(MACD_GOLD_SERVICE_NAME)
-            macd_running = bool(svc.get("running"))
-            macd_pid = svc.get("pid")
-        except Exception as exc:
-            LOGGER.warning("[BOT] macd-gold status lookup failed: %s", exc)
-
-    # Load uptime started_at from MongoDB
+    # Load uptime started_at from MongoDB (only for running bots)
     rsi_started = load_strategy_started_at("rsi-ema") if rsi_running else None
     eth_started = load_strategy_started_at("rsi-eth") if rsi_eth_running else None
     vwap_started = load_strategy_started_at("vwap-st") if vwap_running else None
@@ -1547,15 +1683,61 @@ def api_bot_status() -> dict[str, Any]:
             "strategy_behavior": rsi_eth_status.get("strategy_behavior"),
             "market_open": rsi_eth_status.get("market_open", True),
         },
-        "anyRunning": rsi_running or rsi_eth_running or vwap_running or btc_running,
+        "anyRunning": rsi_running or rsi_eth_running or vwap_running or btc_running or macd_running,
         "market": market,
     }
+
+
+@app.get("/api/bot/status", tags=["bot"])
+def api_bot_status() -> dict[str, Any]:
+    """Unified status for all strategy bots (micro-cached; single batched systemctl)."""
+    now = time.time()
+    with _bot_status_lock:
+        cached = _bot_status_cache["data"]
+        if cached is not None and (now - _bot_status_cache["ts"]) < _BOT_STATUS_TTL:
+            return cached
+    data = _compute_bot_status()
+    with _bot_status_lock:
+        _bot_status_cache["ts"] = time.time()
+        _bot_status_cache["data"] = data
+    return data
 
 
 @app.get("/api/market/status", tags=["market"])
 def api_market_status() -> dict[str, Any]:
     """Check if forex market is currently open."""
     return is_market_open()
+
+
+@app.get("/api/health", tags=["health"])
+def api_health() -> dict[str, Any]:
+    """Lightweight readiness probe. Stays fast under load — never hits OANDA."""
+    engine_ready = _stream_engine is not None
+    m1 = 0
+    if engine_ready:
+        try:
+            m1 = len(_stream_engine.store.get_all("M1") or [])
+        except Exception:
+            m1 = 0
+    mongo_ok = False
+    try:
+        from core.mongo_store import _get_db
+        mongo_ok = _get_db() is not None
+    except Exception:
+        mongo_ok = False
+    status = api_bot_status()  # served from the micro-cache
+    running = sum(1 for k in ("rsiEma", "vwapSt", "btcRsiEma", "macdGold") if (status.get(k) or {}).get("running"))
+    healthy = engine_ready and m1 > 0
+    return {
+        "status": "ok" if healthy else "degraded",
+        "uptime_seconds": round(time.time() - _APP_START_TIME, 1),
+        "engine_initialized": engine_ready,
+        "m1_candles": m1,
+        "mongo_available": mongo_ok,
+        "strategies_running": running,
+        "market_open": (status.get("market") or {}).get("open"),
+        "time": int(time.time()),
+    }
 
 
 @app.post("/api/bot/rsi-ema/start", tags=["bot"])
