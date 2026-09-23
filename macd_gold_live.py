@@ -226,7 +226,10 @@ async def _cycle(fetcher: DataFetcher, tg, last_signal_ts: str | None) -> str | 
                 signal_kind="macd_gold",
                 telegram_sent=telegram_sent,
                 candle_time_utc=ts_str,
-                timestamp=int(dt.datetime.utcnow().timestamp()),
+                # Entry is at the H1 CLOSE (ts is the H1 open); the resolver must
+                # score outcomes from here, not from the pre-entry hour.
+                entry_time_utc=str(ts + pd.Timedelta(hours=1))[:19],
+                timestamp=int(dt.datetime.now(dt.timezone.utc).timestamp()),
             )
             LOG.info("mongo: saved")
         except Exception as e:

@@ -1215,10 +1215,9 @@ def api_live_price() -> dict[str, Any]:
     if _stream_engine is None:
         return {"price": None, "time": None, "initialized": False}
     try:
-        candles = _stream_engine.store.get_all("M1") or []
-        if not candles:
+        last = _stream_engine.store.get_latest("M1")  # O(1) — no full-deque copy
+        if not last:
             return {"price": None, "time": None, "initialized": False}
-        last = candles[-1]
         return {
             "price": float(last.get("close", 0.0)),
             "time": int(last.get("time", 0)),

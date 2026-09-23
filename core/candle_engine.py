@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as _dt
+import itertools
 import json
 import logging
 import math
@@ -55,11 +56,24 @@ DAYS_HISTORY   = 7
 OANDA_MAX_COUNT = 5_000
 SYMBOL          = "XAU_USD"
 
-# Force a stream reconnect if no PRICE message arrives for this long.
-# OANDA keeps sending HEARTBEATs on half-dead sessions (e.g. across the daily
-# settlement break), so the socket never times out while prices stay frozen —
-# the reconnect triggers the existing gap-backfill and resumes live ticks.
-STALE_PRICE_RECONNECT_SEC = 900
+# Force a stream reconnect if no PRICE message arrives for this long while
+# HEARTBEATs keep the socket alive (half-dead session). Across the daily 21:00-
+# 22:00 UTC settlement break and weekends a frozen price is EXPECTED, so we
+# tolerate it; mid-session it's a real stall and we reconnect fast (else the
+# chart/price can freeze for the full window). The reconnect triggers the
+# existing gap-backfill and resumes live ticks.
+STALE_PRICE_RECONNECT_SEC = 900          # settlement break / weekend (avoid churn)
+STALE_PRICE_RECONNECT_ACTIVE_SEC = 180   # active trading hours (mid-session stall)
+
+
+def _stale_reconnect_threshold() -> int:
+    """Price-silence tolerated before a forced reconnect — short during active
+    market hours, long across the known settlement break / weekend."""
+    now = _dt.datetime.now(_dt.timezone.utc)
+    wd, h = now.weekday(), now.hour  # Mon=0 … Sun=6
+    weekend = (wd == 4 and h >= 22) or wd == 5 or (wd == 6 and h < 22)
+    settlement = (h == 21)  # daily 21:00-22:00 UTC gold settlement break
+    return STALE_PRICE_RECONNECT_SEC if (weekend or settlement) else STALE_PRICE_RECONNECT_ACTIVE_SEC
 
 TF_MAX_CANDLES: dict[str, int] = {
     "M1":  11_000,  # 7 days × 1 440  = 10 080 M1 candles
@@ -244,6 +258,26 @@ class CandleStore:
         """Closed candles + forming candle (for SSE init / API response)."""
         with self._lock:
             result = list(self._completed[timeframe])
+            if self._current[timeframe]:
+                result.append(dict(self._current[timeframe]))
+            return result
+
+    def get_latest(self, timeframe: str) -> dict | None:
+        """O(1) newest candle — forming if present, else last completed. For the
+        3s live-price poll, so it doesn't copy the whole (up to ~11k) M1 deque."""
+        with self._lock:
+            c = self._current[timeframe]
+            if c:
+                return dict(c)
+            dq = self._completed[timeframe]
+            return dict(dq[-1]) if dq else None
+
+    def get_last_n(self, timeframe: str, n: int) -> list[dict]:
+        """Last n closed candles + forming candle, without copying the whole deque."""
+        with self._lock:
+            dq = self._completed[timeframe]
+            start = max(0, len(dq) - n)
+            result = list(itertools.islice(dq, start, len(dq)))
             if self._current[timeframe]:
                 result.append(dict(self._current[timeframe]))
             return result
@@ -798,9 +832,10 @@ class OandaStreamEngine:
                     continue
 
                 if msg.get("type") == "HEARTBEAT":
-                    if time.time() - last_price_at > STALE_PRICE_RECONNECT_SEC:
+                    _stale_limit = _stale_reconnect_threshold()
+                    if time.time() - last_price_at > _stale_limit:
                         raise TimeoutError(
-                            f"no PRICE for {STALE_PRICE_RECONNECT_SEC}s "
+                            f"no PRICE for {_stale_limit}s "
                             "(heartbeats only) — forcing reconnect"
                         )
                     continue
@@ -882,9 +917,15 @@ def _safe_put(q: asyncio.Queue, payload: str) -> None:
         pass
 
 
+# Reconnect/startup init is broadcast to EVERY connected client, so cap it — a
+# reconnect must not push the full ~11k-candle M1 store (uncompressed) to all
+# open charts at once. Matches the per-connection init cap in web_server.
+INIT_BROADCAST_CAP = 800
+
+
 def _init_event(store: CandleStore) -> dict:
-    """Init event includes CLOSED + FORMING candle for each TF."""
+    """Init event: last INIT_BROADCAST_CAP closed candles + forming candle per TF."""
     return {
         "type":    "init",
-        "candles": {tf: store.get_all(tf) for tf in TIMEFRAMES},
+        "candles": {tf: store.get_last_n(tf, INIT_BROADCAST_CAP) for tf in TIMEFRAMES},
     }

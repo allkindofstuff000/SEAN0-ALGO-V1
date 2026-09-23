@@ -92,16 +92,22 @@ export default function RsiEma() {
     }
   };
 
-  // Only RSI EMA forex runs — filter out VWAP+ST (shown on its own page) and any legacy XAU Scalp runs
+  // Only RSI EMA forex runs — exclude the other XAU strategies (VWAP+ST, Gold
+  // MACD, each shown on its own page), BTC, and any legacy XAU Scalp runs.
   const rsiReports = (history?.reports || []).filter((r) => {
     const strat = r.params?.strategy;
-    return strat !== "xau-scalp" && strat !== "vwap-st" && r.metrics?.total_trades != null;
+    return strat !== "xau-scalp" && strat !== "vwap-st" && strat !== "macd-gold"
+      && strat !== "rsi-btc" && r.metrics?.total_trades != null;
   });
 
-  // Forex-only signal history — exclude ETH/crypto strategies (this is a XAU dashboard)
+  // RSI EMA gold signals only — exclude ETH/BTC/crypto AND the other XAU
+  // strategies. VWAP+ST and Gold MACD are non-crypto XAUUSD, so without the
+  // vwap/supertrend/macd excludes they'd be counted in this page's Signal
+  // History and its win/loss summary (they carry those strategy/signal_kind tags).
   const forexSignals = (signalsData?.signals || []).filter((s) => {
     const blob = `${s.symbol || ""} ${s.strategy || ""} ${s.strategyName || ""} ${s.signal_kind || ""}`.toLowerCase();
-    return !blob.includes("eth") && !blob.includes("btc") && !blob.includes("crypto");
+    return !blob.includes("eth") && !blob.includes("btc") && !blob.includes("crypto")
+      && !blob.includes("vwap") && !blob.includes("supertrend") && !blob.includes("macd");
   });
 
   // Win/loss summary over resolved signals

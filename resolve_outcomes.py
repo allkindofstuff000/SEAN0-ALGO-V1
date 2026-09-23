@@ -183,27 +183,32 @@ def _resolve_one(sig: dict, df: pd.DataFrame) -> tuple[str, float, str] | None:
     except (KeyError, TypeError, ValueError):
         return None
 
-    ct_raw = sig.get("candle_time_utc") or sig.get("sent_at")
-    if not ct_raw:
+    # Entry reference: an explicit entry_time_utc wins — the MACD bot enters at
+    # the H1 CLOSE, so its signal-bar OPEN (candle_time_utc) would otherwise make
+    # us scan a full pre-entry hour and mis-mark WIN/LOSS. Otherwise use the M5
+    # convention: signal-bar open, entry on the NEXT bar.
+    et_raw = sig.get("entry_time_utc")
+    ref_raw = et_raw or sig.get("candle_time_utc") or sig.get("sent_at")
+    if not ref_raw:
         return None
-    ct = pd.Timestamp(ct_raw)
-    if ct.tzinfo is None:
-        ct = ct.tz_localize("UTC")
+    ref = pd.Timestamp(ref_raw)
+    if ref.tzinfo is None:
+        ref = ref.tz_localize("UTC")
+    inclusive = et_raw is not None  # entry is AT entry_time → include that bar
 
-    # Coverage guard: the fetched window must reach back to (or before) the
-    # signal candle. If the earliest fetched bar is AFTER the signal candle, an
-    # early SL/TP touch could have happened off the front of the window — so
-    # resolving now risks a wrong verdict (e.g. the stop was hit first but price
-    # later tagged the target). Stay OPEN and retry next cycle instead of guessing.
+    # Coverage guard: the fetched window must reach back to (or before) the entry
+    # reference. If the earliest fetched bar is AFTER it, an early SL/TP touch
+    # could have happened off the front of the window — so resolving now risks a
+    # wrong verdict. Stay OPEN and retry next cycle instead of guessing.
     if not df.empty:
         earliest = pd.Timestamp(df["timestamp"].min())
         if earliest.tzinfo is None:
             earliest = earliest.tz_localize("UTC")
-        if earliest > ct:
+        if earliest > ref:
             return None
 
-    # Bars strictly AFTER the signal candle (entry is the next bar onward).
-    fut = df[df["timestamp"] > ct]
+    # Bars from the entry onward (>= when entry is AT the reference, else strictly after).
+    fut = df[df["timestamp"] >= ref] if inclusive else df[df["timestamp"] > ref]
     for _, bar in fut.iterrows():
         hi = float(bar["high"])
         lo = float(bar["low"])

@@ -436,6 +436,11 @@ async def run_loop() -> None:
                 # the backtest's next-bar-open convention. Each signal's SL/TP
                 # DISTANCES (and thus its RR) are preserved exactly. Falls back to
                 # the original close if no live snapshot is available.
+                # Capture the signal-bar close BEFORE re-anchoring — it's the
+                # sanity guard's independent reference for the bad-tick check;
+                # without it ref_price == entry (both the live snapshot) and the
+                # deviation check is a silent no-op.
+                _orig_primary_entry = float(primary_signal.entry_price)
                 if live_snapshot is not None:
                     try:
                         _live_entry = float(live_snapshot["close"])
@@ -467,7 +472,7 @@ async def run_loop() -> None:
                         stop_loss=primary_signal.stop_loss,
                         take_profit=primary_signal.take_profit,
                         atr=primary_signal.atr,
-                        ref_price=(float(live_snapshot["close"]) if live_snapshot is not None else None),
+                        ref_price=_orig_primary_entry,
                     )
                     if not _g_ok:
                         allowed = False
@@ -510,6 +515,8 @@ async def run_loop() -> None:
                             atr_expansion=decision.atr_expansion,
                             reason=decision.reason,
                             signal_kind=primary_signal.signal_kind,
+                            strategy="rsi-ema",
+                            strategyName="RSI EMA",
                             telegram_sent=sent_any,
                             candle_time_utc=primary_signal.timestamp_utc.isoformat(),
                         )
