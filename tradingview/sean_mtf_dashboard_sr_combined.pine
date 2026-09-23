@@ -73,7 +73,7 @@ thick     = input.float(0.35, "Zone half-height (x ATR)", minval=0.05, step=0.05
 mergeMult = input.float(0.75, "Merge distance (x ATR)", minval=0.10, step=0.05, group=grpD, tooltip="A new swing within this distance of an existing zone strengthens that zone instead of creating a new one.")
 
 grpM     = "S/R Zone management"
-maxZones = input.int(8, "Max zones on chart", minval=1, maxval=30, group=grpM, tooltip="When exceeded, the WEAKEST zone (fewest swings; ties -> least recently touched) is dropped.")
+maxZones = input.int(10, "Max zones on chart", minval=1, maxval=30, group=grpM, tooltip="When exceeded, the WEAKEST zone (fewest swings; ties -> farthest from price) is dropped, so fresh structure near price is kept.")
 minTouch = input.int(1, "Min swings to display", minval=1, maxval=10, group=grpM, tooltip="Zones with fewer confirming swings stay in memory (so they can still strengthen) but are hidden.")
 maxAge   = input.int(800, "Expire if untouched for (bars)", minval=0, group=grpM, tooltip="0 = never. A zone price hasn't touched for this many bars is removed.")
 maxDist  = input.float(0, "Only show within (x ATR of price)", minval=0, step=0.5, group=grpM, tooltip="0 = show all. Otherwise hide zones farther than this many ATRs from the current price.")
@@ -146,20 +146,22 @@ addSwing(float px) =>
         array.push(hits, 1)
         array.push(lastHit, bar_index)
 
-// Drop the WEAKEST zone first (fewest swings; ties -> least recently touched).
+// Drop the WEAKEST zone first (fewest swings; ties -> farthest from price): a
+// strong old level survives, but stale far-away clutter goes before the fresh
+// structure forming near price (which is what you trade off on fast timeframes).
 pruneWeakest() =>
     while array.size(zones) > maxZones
         wi = 0
         wh = array.get(hits, 0)
-        wl = array.get(lastHit, 0)
+        wd = math.abs(close - array.get(centers, 0))
         if array.size(zones) > 1
             for i = 1 to array.size(zones) - 1
                 h = array.get(hits, i)
-                t = array.get(lastHit, i)
-                if h < wh or (h == wh and t < wl)
+                d = math.abs(close - array.get(centers, i))
+                if h < wh or (h == wh and d > wd)
                     wi := i
                     wh := h
-                    wl := t
+                    wd := d
         removeAt(wi)
 
 // Zones price has stopped touching fade away.
