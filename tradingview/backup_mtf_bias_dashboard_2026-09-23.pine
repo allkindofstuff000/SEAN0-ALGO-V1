@@ -1,0 +1,52 @@
+//@version=5
+// BACKUP (2026-09-23) of the user's TradingView slot script before S/R zones were combined into it.
+// Slot id: USER;491d0d2504634cdbb8d8bdec1b010252  (saved name "VWAP+ST — SEAN ALGO", v18.0)
+indicator("MTF Bias Dashboard [BTC / XAU]", overlay=true)
+
+emaFastLen = input.int(50,  "Fast EMA length", minval=1, group="Bias (EMA lineup)")
+emaSlowLen = input.int(200, "Slow EMA length", minval=1, group="Bias (EMA lineup)")
+
+tf1 = input.timeframe("5",   "Timeframe 1", group="Timeframes")
+tf2 = input.timeframe("15",  "Timeframe 2", group="Timeframes")
+tf3 = input.timeframe("60",  "Timeframe 3", group="Timeframes")
+tf4 = input.timeframe("240", "Timeframe 4", group="Timeframes")
+
+sess   = input.session("0800-2100", "NY / London session", group="Session")
+sessTz = input.string("GMT", "Session timezone", group="Session")
+
+posInput = input.string("Top Right", "Table position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group="Display")
+bullCol  = input.color(#26a69a, "Bullish colour", group="Display")
+bearCol  = input.color(#ef5350, "Bearish colour", group="Display")
+txtCol   = input.color(color.white, "Text colour", group="Display")
+
+biasNow() =>
+    ta.ema(close, emaFastLen) >= ta.ema(close, emaSlowLen)
+
+b1 = request.security(syminfo.tickerid, tf1, biasNow(), lookahead=barmerge.lookahead_off)
+b2 = request.security(syminfo.tickerid, tf2, biasNow(), lookahead=barmerge.lookahead_off)
+b3 = request.security(syminfo.tickerid, tf3, biasNow(), lookahead=barmerge.lookahead_off)
+b4 = request.security(syminfo.tickerid, tf4, biasNow(), lookahead=barmerge.lookahead_off)
+
+inSession = not na(time(timeframe.period, sess, sessTz))
+
+tfLabel(tf) =>
+    n = str.tonumber(tf)
+    na(n) ? tf : n >= 1440 ? str.tostring(int(n / 1440)) + " D" : n >= 60 ? str.tostring(int(n / 60)) + " H" : str.tostring(int(n)) + " M"
+
+pos = posInput == "Top Right" ? position.top_right : posInput == "Top Left" ? position.top_left : posInput == "Bottom Right" ? position.bottom_right : position.bottom_left
+
+var table dash = table.new(pos, 2, 6, border_width=1, border_color=color.new(color.gray, 50))
+
+row(r, lbl, bull) =>
+    table.cell(dash, 0, r, lbl, text_color=txtCol, text_size=size.normal, bgcolor=color.new(color.gray, 80))
+    table.cell(dash, 1, r, bull ? "BULLISH" : "BEARISH", text_color=txtCol, text_size=size.normal, bgcolor=bull ? bullCol : bearCol)
+
+if barstate.islast
+    table.cell(dash, 0, 0, "EMA Lineup", text_color=txtCol, text_size=size.normal, bgcolor=color.new(color.blue, 40))
+    table.cell(dash, 1, 0, "Bias",       text_color=txtCol, text_size=size.normal, bgcolor=color.new(color.blue, 40))
+    row(1, tfLabel(tf1), b1)
+    row(2, tfLabel(tf2), b2)
+    row(3, tfLabel(tf3), b3)
+    row(4, tfLabel(tf4), b4)
+    table.cell(dash, 0, 5, "NY / London Session", text_color=txtCol, text_size=size.normal, bgcolor=color.new(color.gray, 80))
+    table.cell(dash, 1, 5, inSession ? "open" : "closed", text_color=txtCol, text_size=size.normal, bgcolor=inSession ? bullCol : bearCol)

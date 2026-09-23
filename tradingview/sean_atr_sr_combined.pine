@@ -1,0 +1,197 @@
+//@version=6
+// ATR + SMA20 volatility filter (own pane) + Universal Support/Resistance zones (drawn on price).
+// Combined into ONE script so both live in a single TradingView slot.
+// S/R zones have an on/off switch: Settings > Inputs > "Show S/R Zones".
+//
+// The S/R engine is pair- and timeframe-agnostic: every distance is an ATR multiple, so it
+// self-sizes on BTC/USDT, XAUUSD, FX... on any timeframe. Zones are ranked by strength (how
+// many swings confirmed them) - the WEAKEST is dropped first, untouched zones expire, and an
+// optional higher timeframe can supply the swings (e.g. H1 zones on an M5 chart).
+indicator("ATR+SMA20 + S/R Zones - SEAN", "ATR+S/R", overlay = false, max_boxes_count = 500, max_labels_count = 500)
+
+// ===================== ATR + SMA20 volatility gate (this pane) =====================
+atrLen = input.int(14,   "ATR length",           group = "ATR Filter")
+smaLen = input.int(20,   "ATR SMA length",        group = "ATR Filter")
+mult   = input.float(1.1, "Volatility gate x SMA", group = "ATR Filter")
+
+atrF   = ta.atr(atrLen)
+smaAtr = ta.sma(atrF, smaLen)
+gate   = smaAtr * mult
+gopen  = atrF > gate
+
+plot(atrF,   "ATR(14)",         color = gopen ? color.new(color.lime, 0) : color.new(color.gray, 20), linewidth = 2)
+plot(smaAtr, "SMA20 of ATR",    color = color.new(color.orange, 0), linewidth = 2)
+plot(gate,   "Gate (1.1x SMA)", color = color.new(color.orange, 55), linewidth = 1, style = plot.style_stepline)
+bgcolor(gopen ? color.new(color.lime, 90) : na, title = "Gate OPEN")
+
+// ===================== Universal S/R zones (force_overlay on price) =====================
+grpTog = "S/R Zones - ON / OFF"
+showSR = input.bool(true, "Show S/R Zones", group = grpTog, tooltip = "Master switch. Uncheck to hide all support/resistance zones without touching the ATR filter.")
+
+grpD      = "S/R Detection"
+srTF      = input.timeframe("", "Zone timeframe", group = grpD, tooltip = "Blank = chart timeframe. Set e.g. 60 to project 1-hour zones onto a lower-timeframe chart (non-repainting).")
+autoLb    = input.bool(true, "Auto swing strength by timeframe", group = grpD, tooltip = "Scales how many bars on each side must confirm a swing, per timeframe, so you get useful levels from M1 to 1D without retuning.")
+lbManual  = input.int(12, "Swing strength (manual)", minval = 2, group = grpD, tooltip = "Only used when auto is OFF. Higher = fewer, stronger levels.")
+srAtrLen  = input.int(14, "S/R ATR length", minval = 1, group = grpD)
+thick     = input.float(0.35, "Zone half-height (x ATR)", minval = 0.05, step = 0.05, group = grpD)
+mergeMult = input.float(0.75, "Merge distance (x ATR)", minval = 0.10, step = 0.05, group = grpD, tooltip = "A new swing within this distance of an existing zone strengthens that zone instead of creating a new one.")
+
+grpM     = "S/R Zone management"
+maxZones = input.int(8, "Max zones on chart", minval = 1, maxval = 30, group = grpM, tooltip = "When exceeded, the WEAKEST zone (fewest swings; ties -> least recently touched) is dropped.")
+minTouch = input.int(1, "Min swings to display", minval = 1, maxval = 10, group = grpM, tooltip = "Zones with fewer confirming swings stay in memory (so they can still strengthen) but are hidden.")
+maxAge   = input.int(800, "Expire if untouched for (bars)", minval = 0, group = grpM, tooltip = "0 = never. A zone price hasn't touched for this many bars is removed.")
+maxDist  = input.float(0, "Only show within (x ATR of price)", minval = 0, step = 0.5, group = grpM, tooltip = "0 = show all. Otherwise hide zones farther than this many ATRs from the current price.")
+
+grpS     = "S/R Style"
+supCol   = input.color(color.new(color.teal,   75), "Support",           group = grpS)
+resCol   = input.color(color.new(color.red,    75), "Resistance",        group = grpS)
+inCol    = input.color(color.new(color.orange, 65), "Price inside zone", group = grpS)
+showLbl  = input.bool(true,  "Show price labels",        group = grpS)
+showStr  = input.bool(true,  "Show strength (x swings)", group = grpS)
+showRole = input.bool(false, "Show role (S / R / IN)",   group = grpS)
+
+// Timeframe-adaptive swing strength, based on the ZONE timeframe.
+zoneTF = srTF == "" ? timeframe.period : srTF
+tfSec  = timeframe.in_seconds(zoneTF)
+lbAuto = tfSec <= 60 ? 20 : tfSec <= 300 ? 15 : tfSec <= 900 ? 12 : tfSec <= 3600 ? 10 : tfSec <= 14400 ? 8 : tfSec <= 86400 ? 6 : 5
+lb     = autoLb ? lbAuto : lbManual
+useHTF = zoneTF != timeframe.period
+barsPerZoneBar = int(math.max(1, math.round(tfSec / timeframe.in_seconds())))
+
+atrS = ta.atr(srAtrLen)
+
+// Swings: chart timeframe, or a higher one without repainting (gaps_on = each HTF swing once).
+ph = useHTF ? request.security(syminfo.tickerid, zoneTF, ta.pivothigh(lb, lb), gaps = barmerge.gaps_on, lookahead = barmerge.lookahead_off) : ta.pivothigh(lb, lb)
+pl = useHTF ? request.security(syminfo.tickerid, zoneTF, ta.pivotlow(lb, lb),  gaps = barmerge.gaps_on, lookahead = barmerge.lookahead_off) : ta.pivotlow(lb, lb)
+
+var array<box>   zones   = array.new<box>()
+var array<label> tags    = array.new<label>()
+var array<float> centers = array.new<float>()
+var array<float> halves  = array.new<float>()
+var array<int>   hits    = array.new<int>()
+var array<int>   lastHit = array.new<int>()
+
+removeAt(int i) =>
+    box.delete(array.get(zones, i))
+    label.delete(array.get(tags, i))
+    array.remove(zones, i)
+    array.remove(tags, i)
+    array.remove(centers, i)
+    array.remove(halves, i)
+    array.remove(hits, i)
+    array.remove(lastHit, i)
+
+addSwing(float px) =>
+    half   = atrS * thick
+    merged = false
+    if array.size(centers) > 0
+        for i = 0 to array.size(centers) - 1
+            c = array.get(centers, i)
+            if math.abs(px - c) <= atrS * mergeMult
+                n  = array.get(hits, i) + 1
+                nc = (c * (n - 1) + px) / n
+                array.set(hits, i, n)
+                array.set(centers, i, nc)
+                array.set(halves, i, math.max(array.get(halves, i), half))
+                array.set(lastHit, i, bar_index)
+                merged := true
+                break
+    if not merged
+        x0 = math.max(0, bar_index - lb * barsPerZoneBar)
+        b  = box.new(x0, px + half, bar_index, px - half, border_color = color.new(color.gray, 40), border_width = 1, bgcolor = color.new(color.gray, 85), extend = extend.right, force_overlay = true)
+        l  = label.new(bar_index, px, "", style = label.style_none, textcolor = color.gray, size = size.small, force_overlay = true)
+        array.push(zones, b)
+        array.push(tags, l)
+        array.push(centers, px)
+        array.push(halves, half)
+        array.push(hits, 1)
+        array.push(lastHit, bar_index)
+
+pruneWeakest() =>
+    while array.size(zones) > maxZones
+        wi = 0
+        wh = array.get(hits, 0)
+        wl = array.get(lastHit, 0)
+        if array.size(zones) > 1
+            for i = 1 to array.size(zones) - 1
+                h = array.get(hits, i)
+                t = array.get(lastHit, i)
+                if h < wh or (h == wh and t < wl)
+                    wi := i
+                    wh := h
+                    wl := t
+        removeAt(wi)
+
+expire() =>
+    if maxAge > 0 and array.size(zones) > 0
+        for i = array.size(zones) - 1 to 0  // counts down; Pine rejects a negative 'by' step
+            if bar_index - array.get(lastHit, i) > maxAge
+                removeAt(i)
+
+clearAll() =>
+    while array.size(zones) > 0
+        removeAt(0)
+
+tested = false
+broken = false
+if showSR
+    if array.size(zones) > 0
+        for i = 0 to array.size(zones) - 1
+            c   = array.get(centers, i)
+            h   = array.get(halves, i)
+            top = c + h
+            bot = c - h
+            if high >= bot and low <= top
+                array.set(lastHit, i, bar_index)
+                tested := true
+            if (close[1] < bot and close > top) or (close[1] > top and close < bot)
+                broken := true
+    if not na(ph)
+        addSwing(ph)
+        pruneWeakest()
+    if not na(pl)
+        addSwing(pl)
+        pruneWeakest()
+    expire()
+else
+    clearAll()
+
+if barstate.islast and showSR and array.size(zones) > 0
+    for i = 0 to array.size(zones) - 1
+        b   = array.get(zones, i)
+        c   = array.get(centers, i)
+        hf  = array.get(halves, i)
+        n   = array.get(hits, i)
+        top = c + hf
+        bot = c - hf
+        isRes   = close < bot
+        isSup   = close > top
+        farAway = maxDist > 0 and math.abs(close - c) > atrS * maxDist
+        visible = n >= minTouch and not farAway
+        baseCol = isSup ? supCol : isRes ? resCol : inCol
+        zT   = int(math.max(0, math.min(100, color.t(baseCol) + (n >= 3 ? -15 : n == 2 ? 0 : 10))))
+        fill = visible ? color.new(baseCol, zT) : color.new(color.gray, 100)
+        bord = visible ? color.new(baseCol, math.max(0, zT - 45)) : color.new(color.gray, 100)
+        box.set_top(b, top)
+        box.set_bottom(b, bot)
+        box.set_bgcolor(b, fill)
+        box.set_border_color(b, bord)
+        l = array.get(tags, i)
+        if showLbl and visible
+            role = showRole ? (isSup ? "  S" : isRes ? "  R" : "  IN") : ""
+            label.set_xy(l, bar_index + 2, c)
+            label.set_text(l, str.tostring(c, format.mintick) + (showStr and n > 1 ? "  x" + str.tostring(n) : "") + role)
+            label.set_textcolor(l, color.new(baseCol, 0))
+        else
+            label.set_text(l, "")
+
+alertcondition(gopen and not gopen[1], "Volatility gate opened", "ATR expansion gate OPEN")
+alertcondition(not na(ph), "New swing high (resistance)", "SEAN S/R: new resistance swing formed")
+alertcondition(not na(pl), "New swing low (support)",     "SEAN S/R: new support swing formed")
+// `tested` is mutated inside a loop, so never history-reference it ([1]) —
+// Pine can't size that buffer at runtime. Track the previous bar explicitly.
+var bool prevTested = false
+newTest = tested and not prevTested
+prevTested := tested
+alertcondition(newTest, "Price testing a zone", "SEAN S/R: price entered a support/resistance zone")
+alertcondition(broken, "Zone broken", "SEAN S/R: price closed decisively through a zone")

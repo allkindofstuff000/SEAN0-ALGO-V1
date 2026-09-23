@@ -1,0 +1,100 @@
+//@version=5
+// ============================================================================
+//  SEAN RSI-EMA  -  Support / Resistance Zones
+//  Auto-detects structural S/R zones from swing pivots, ATR-scaled so they
+//  self-size on M5 / M15 / H1.
+//    RED   zone = price BELOW it   -> acting as RESISTANCE
+//    TEAL  zone = price broke ABOVE -> flipped to SUPPORT
+//    AMBER zone = price INSIDE it   -> live decision area
+//  "xN" tag = how many swings reinforced that level.
+//  Overlay indicator - sits on top of price. Verified clean-compile on TV.
+// ============================================================================
+indicator("SEAN RSI-EMA S/R Zones", "SEAN S/R", overlay = true, max_boxes_count = 500, max_labels_count = 500)
+
+grpD = "Detection"
+lb        = input.int(15,   "Swing lookback (bars)",     minval = 2, group = grpD, tooltip = "Bars each side needed to confirm a swing pivot. Higher = fewer, stronger levels. 15 suits M5/M15; try 8-10 on H1.")
+atrLen    = input.int(14,   "ATR length",                minval = 1, group = grpD)
+thick     = input.float(0.40, "Zone thickness (x ATR)",  minval = 0.05, step = 0.05, group = grpD, tooltip = "Half-height of each zone, scaled by ATR so zones auto-size to each timeframe's volatility.")
+mergeMult = input.float(0.80, "Merge distance (x ATR)",  minval = 0.10, step = 0.10, group = grpD, tooltip = "A fresh pivot within this distance of an existing zone strengthens it instead of adding a new one.")
+maxEach   = input.int(6,    "Max zones kept",            minval = 1, maxval = 15, group = grpD, tooltip = "Oldest zones are dropped once this many are on the chart.")
+
+grpS = "Style"
+supCol  = input.color(color.new(color.teal,   78), "Support (broken up)",  group = grpS)
+resCol  = input.color(color.new(color.red,    78), "Resistance",           group = grpS)
+inCol   = input.color(color.new(color.orange, 70), "Price inside zone",    group = grpS)
+showLbl = input.bool(true,  "Show price labels",        group = grpS)
+showStr = input.bool(true,  "Show strength (x touches)", group = grpS)
+
+var box[]   zones   = array.new_box()
+var float[] centers = array.new_float()
+var int[]   hits    = array.new_int()
+var label[] tags    = array.new_label()
+
+atr  = ta.atr(atrLen)
+half = atr * thick
+
+ph = ta.pivothigh(lb, lb)
+pl = ta.pivotlow(lb, lb)
+
+addPivot(float px) =>
+    merged = false
+    if array.size(centers) > 0
+        for i = 0 to array.size(centers) - 1
+            c = array.get(centers, i)
+            if math.abs(px - c) <= atr * mergeMult
+                n  = array.get(hits, i) + 1
+                nc = (c * (n - 1) + px) / n
+                array.set(hits, i, n)
+                array.set(centers, i, nc)
+                b = array.get(zones, i)
+                box.set_top(b, nc + half)
+                box.set_bottom(b, nc - half)
+                box.set_right(b, bar_index)
+                merged := true
+                break
+    if not merged
+        b = box.new(bar_index - lb, px + half, bar_index, px - half, border_color = color.new(color.gray, 40), border_width = 1, bgcolor = color.new(color.gray, 80), extend = extend.right)
+        l = label.new(bar_index, px, "", style = label.style_none, textcolor = color.gray, size = size.small)
+        array.push(zones, b)
+        array.push(centers, px)
+        array.push(hits, 1)
+        array.push(tags, l)
+
+prune() =>
+    while array.size(zones) > maxEach
+        box.delete(array.shift(zones))
+        label.delete(array.shift(tags))
+        array.shift(centers)
+        array.shift(hits)
+
+if not na(ph)
+    addPivot(ph)
+    prune()
+if not na(pl)
+    addPivot(pl)
+    prune()
+
+if barstate.islast and array.size(zones) > 0
+    for i = 0 to array.size(zones) - 1
+        b   = array.get(zones, i)
+        c   = array.get(centers, i)
+        n   = array.get(hits, i)
+        top = c + half
+        bot = c - half
+        isRes = close < bot
+        isSup = close > top
+        col   = isSup ? supCol : isRes ? resCol : inCol
+        box.set_top(b, top)
+        box.set_bottom(b, bot)
+        box.set_bgcolor(b, col)
+        box.set_border_color(b, color.new(isSup ? color.teal : isRes ? color.red : color.orange, 20))
+        l = array.get(tags, i)
+        if showLbl
+            label.set_xy(l, bar_index + 2, c)
+            label.set_text(l, str.tostring(c, format.mintick) + (showStr and n > 1 ? "  x" + str.tostring(n) : ""))
+            label.set_textcolor(l, isSup ? color.teal : isRes ? color.red : color.orange)
+        else
+            label.set_text(l, "")
+
+alertcondition(not na(ph), "New resistance swing", "SEAN S/R: new resistance zone formed")
+alertcondition(not na(pl), "New support swing",    "SEAN S/R: new support zone formed")
