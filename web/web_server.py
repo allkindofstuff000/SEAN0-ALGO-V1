@@ -1726,15 +1726,37 @@ def api_health() -> dict[str, Any]:
         mongo_ok = False
     status = api_bot_status()  # served from the micro-cache
     running = sum(1 for k in ("rsiEma", "vwapSt", "btcRsiEma", "macdGold") if (status.get(k) or {}).get("running"))
-    healthy = engine_ready and m1 > 0
+    market_open = bool((status.get("market") or {}).get("open"))
+    # Stream liveness: the OANDA price stream can die while the process stays up
+    # (it did, for 57h and 33h, while this probe still said "ok"). Report the
+    # thread state and the age of the newest M1 tick, and degrade on a stale feed.
+    stream_status = None
+    thread_alive = None
+    last_tick_age = None
+    if engine_ready:
+        eng = _stream_engine
+        stream_status = getattr(eng, "_status", None) or getattr(eng, "status", None)
+        th = getattr(eng, "_thread", None) or getattr(eng, "_stream_thread", None)
+        thread_alive = bool(th.is_alive()) if th is not None else None
+        try:
+            last = eng.store.get_latest("M1")
+            if last and last.get("time"):
+                last_tick_age = int(time.time()) - int(last["time"])
+        except Exception:
+            last_tick_age = None
+    feed_stale = market_open and last_tick_age is not None and last_tick_age > 300
+    healthy = engine_ready and m1 > 0 and thread_alive is not False and not feed_stale
     return {
         "status": "ok" if healthy else "degraded",
         "uptime_seconds": round(time.time() - _APP_START_TIME, 1),
         "engine_initialized": engine_ready,
         "m1_candles": m1,
+        "stream_status": stream_status,
+        "stream_thread_alive": thread_alive,
+        "last_tick_age_s": last_tick_age,
         "mongo_available": mongo_ok,
         "strategies_running": running,
-        "market_open": (status.get("market") or {}).get("open"),
+        "market_open": market_open,
         "time": int(time.time()),
     }
 
@@ -2398,4 +2420,13 @@ async def serve_spa(full_path: str):
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
     LOGGER.info("Starting SEAN0-ALGO dashboard on http://0.0.0.0:%s", port)
-    uvicorn.run("web.web_server:app", host="0.0.0.0", port=port, reload=False)
+    # Loopback by default: nginx (:80) is the only public entry point, so :8000 is
+    # no longer reachable from the internet. timeout_graceful_shutdown lets uvicorn
+    # cancel the long-lived SSE generators on SIGTERM instead of hanging the stop.
+    uvicorn.run(
+        "web.web_server:app",
+        host=os.getenv("BIND_HOST", "127.0.0.1"),
+        port=port,
+        reload=False,
+        timeout_graceful_shutdown=5,
+    )

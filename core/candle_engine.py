@@ -773,10 +773,16 @@ class OandaStreamEngine:
                 self._connect_and_read()
             except urllib.error.HTTPError as exc:
                 if exc.code == 401:
-                    LOGGER.error("[STREAM] 401 Invalid API Key — stopping stream")
-                    self._broadcast({"type": "status", "status": "error", "detail": "Invalid API Key"})
-                    self._running = False
-                    return
+                    # OANDA returns TRANSIENT 401s (seen at the 22:00 reopen; the same
+                    # key keeps working on REST). Stopping the thread here left the
+                    # dashboard feed dead for 57h and 33h while /api/health said "ok".
+                    # Treat it as retryable with escalating backoff (30s .. 5min).
+                    self._auth_fail = getattr(self, "_auth_fail", 0) + 1
+                    wait = min(30 * 2 ** (self._auth_fail - 1), 300)
+                    LOGGER.error("[STREAM] 401 Invalid API Key (%d consecutive) — retry in %ds", self._auth_fail, wait)
+                    self._broadcast({"type": "status", "status": "reconnecting", "detail": f"401 — retry in {wait}s"})
+                    self._set_status("reconnecting")
+                    time.sleep(wait)
                 elif exc.code == 429:
                     LOGGER.warning("[STREAM] 429 rate-limited — waiting 60 s")
                     self._set_status("reconnecting")
@@ -818,6 +824,7 @@ class OandaStreamEngine:
         with urllib.request.urlopen(req, timeout=30, context=ssl_ctx) as resp:
             self._set_status("connected")
             LOGGER.info("[STREAM] connected — reading ticks")
+            self._auth_fail = 0  # a good connect clears the 401 backoff
             last_price_at = time.time()
 
             for raw_line in resp:

@@ -89,15 +89,25 @@ def _forex_open(now) -> bool:
 
 def _send_tg_sync(tg, text: str) -> None:
     """send_message is a coroutine, but health_check runs in a worker thread
-    (via asyncio.to_thread) that has no running event loop — so we must actually
-    run the coroutine to completion here. Calling tg.send_message(...) bare just
-    builds a coroutine object that is never awaited and the alert never sends."""
+    (via asyncio.to_thread) with no running event loop, so run it to completion
+    here. A FRESH client per call is essential: asyncio.run() closes its loop,
+    and a shared TelegramNotifier's pooled httpx connection then dies on every
+    other send ("RuntimeError: Event loop is closed") — that silently dropped
+    ~43% of alerts, including every daily heartbeat since 2026-09-26."""
     if tg is None:
         return
-    try:
-        asyncio.run(tg.send_message(text))
-    except Exception:
-        pass
+    from telegram import Bot  # local import keeps the optional dependency optional
+
+    async def _go() -> None:
+        async with Bot(tg.token) as bot:
+            await bot.send_message(chat_id=tg.chat_id, text=text)
+
+    for attempt in (1, 2):
+        try:
+            asyncio.run(_go())
+            return
+        except Exception:  # noqa: BLE001
+            LOG.exception("telegram send failed (attempt %d/2)", attempt)
 
 
 def _daily_heartbeat_msg(fetcher: DataFetcher, now: "pd.Timestamp") -> str:
@@ -157,6 +167,12 @@ def health_check(fetcher: DataFetcher, tg) -> None:
         bar_ts = pd.Timestamp(snap["timestamp"])
         if bar_ts.tzinfo is None:
             bar_ts = bar_ts.tz_localize("UTC")
+        # Don't measure staleness across the 21:00-22:00 UTC settlement break (or
+        # the Sunday reopen): right at 22:00 the last bar is legitimately ~60 min
+        # old, which fired a false STALE FEED alert almost every day at 22:00.
+        reopen = now.normalize() + pd.Timedelta(hours=22)
+        if now >= reopen and bar_ts < reopen:
+            bar_ts = reopen
         age = (now - bar_ts) / pd.Timedelta(minutes=1)
     except Exception as e:  # noqa: BLE001
         LOG.warning("health: snapshot failed: %s", e)
