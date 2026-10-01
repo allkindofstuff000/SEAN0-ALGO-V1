@@ -40,3 +40,11 @@ rg_results.json
 trades_2026-*.csv
 .env.*_backup
 web/static-old-*/
+.claude/
+.idea/
+.vscode/
+*.code-workspace
+**/settings.local.json
+state_*.txt
+.bridgespace/
+SEAN-ALGO-V1/

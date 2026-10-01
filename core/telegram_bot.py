@@ -12,6 +12,12 @@ if TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 
+# httpx logs every request URL at INFO — for Telegram that URL embeds the bot
+# token (…/bot<TOKEN>/sendMessage) and would land in /var/log + journald.
+# Silenced here so every importer (all live bots + the resolver) is covered.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 @dataclass
 class TelegramNotifier:
