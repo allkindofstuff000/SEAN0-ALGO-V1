@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { Activity } from "lucide-react";
 import { clsx } from "clsx";
 
 // Strategies grouped by traded pair so the navbar reads as separate sections:
@@ -28,7 +29,7 @@ export function TopNav() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-14 items-center gap-2 px-4 md:px-6 w-full">
         <div className="flex items-center gap-2 mr-2 md:mr-4 shrink-0">
-          <img src="/favicon.svg" alt="SEAN ALGO" draggable={false} className="h-5 w-5 shrink-0 select-none" />
+          <Activity className="h-5 w-5 text-primary" />
           <span className="font-bold tracking-tight text-lg uppercase hidden md:inline-block">
             Sean Algo
           </span>

@@ -1,3 +1,6 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="180" height="180">
+  <rect width="24" height="24" rx="5" fill="#0F1420"/>
+  <g transform="translate(12 12) scale(0.78) translate(-12 -12)" fill="none" stroke="#F4A006" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+  </g>
 </svg>
