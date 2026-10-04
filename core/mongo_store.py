@@ -273,6 +273,26 @@ def load_live_signals(limit: int = 100) -> list[dict[str, Any]]:
         return []
 
 
+def load_open_signals(limit: int = 500) -> list[dict[str, Any]]:
+    """Signals with no outcome yet (the resolver's work queue), newest first.
+    Queried directly so an old open signal can never fall off the end of a
+    size-limited 'latest N' list and sit unresolved forever."""
+    db = _get_db()
+    if db is None:
+        return []
+    try:
+        col = db["live_signals"]
+        cursor = col.find({"outcome": None}).sort("sent_at", -1).limit(limit)
+        docs = []
+        for d in cursor:
+            d["_id"] = str(d["_id"])
+            docs.append(d)
+        return docs
+    except Exception as exc:
+        LOGGER.error("[MONGO] load_open_signals failed: %s", exc)
+        return []
+
+
 def update_signal_outcome(
     signal_id: str,
     outcome: str,

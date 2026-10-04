@@ -1,0 +1,6 @@
+[Unit]
+Description=Telegram alert: unit %i failed
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/sean0algo/.env
+ExecStart=/bin/sh -c 'curl -fsS -m 10 -o /dev/null "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" --data-urlencode chat_id="$TELEGRAM_CHAT_ID" --data-urlencode text="SEAN VPS $(hostname): unit %i FAILED at $(date -u +%%FT%%TZ) - $(systemctl show -p Result,NRestarts --value %i | tr "\n" " ")"'

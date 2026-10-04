@@ -1,0 +1,19 @@
+[Unit]
+Description=SEAN0-ALGO Trading Bot Dashboard
+After=network.target mongod.service
+Wants=mongod.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sean0algo
+ExecStart=/opt/sean0algo/.venv/bin/python /opt/sean0algo/web/web_server.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+Environment=PORT=8000
+Environment=BOT_SERVICE_NAME=sean-algo
+
+[Install]
+WantedBy=multi-user.target

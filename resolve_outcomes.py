@@ -13,6 +13,8 @@ Rules (match the strategies' fill convention):
   • If one bar spans BOTH levels, count it a LOSS (stop-first — conservative,
     same honest assumption the backtester makes without tick data).
   • A signal that hasn't hit either level yet stays OPEN and is retried next run.
+  • After MAX_SIGNAL_AGE_H *market* hours with no touch it is closed as EXPIRED
+    (terminal; the dashboard excludes it from win/loss) — never left null.
 """
 from __future__ import annotations
 
@@ -47,6 +49,11 @@ try:
 except Exception as _exc:  # pragma: no cover
     _MONGO_OK = False
 
+try:  # dedicated open-signal query (added 2026-10-05); fall back to the latest-N list
+    from core.mongo_store import load_open_signals
+except Exception:  # pragma: no cover
+    load_open_signals = None  # type: ignore
+
 try:
     from core.telegram_bot import TelegramNotifier
     _TG_OK = True
@@ -56,7 +63,11 @@ except Exception:
 
 ROOT = Path(__file__).resolve().parent
 POLL_SECS = 120          # re-check open signals every 2 min
-MAX_SIGNAL_AGE_H = 48    # don't chase signals older than 2 days
+MAX_SIGNAL_AGE_H = 48    # MARKET hours (gold skips the 21-22 UTC break + weekend;
+                         # crypto = wall-clock). Was calendar hours: a Friday-evening
+                         # gold signal "aged out" over the weekend and was abandoned
+                         # with outcome=null (both 2026-10-02 gold signals). Past this
+                         # a signal is closed as EXPIRED, never left open.
 CANDLE_COUNT = 600       # ~50h+ of M5 — MUST exceed MAX_SIGNAL_AGE_H so the fetch
                          # window always reaches back past the signal candle
                          # (otherwise an early SL/TP touch falls off the front and
@@ -85,6 +96,42 @@ def _forex_open(now) -> bool:
     if h == 21:                    # nightly settlement break
         return False
     return True
+
+
+def _sym(s: dict) -> str:
+    return str(s.get("symbol", "")).upper()
+
+
+def _is_crypto(s: dict) -> bool:
+    return any(x in _sym(s) for x in ("BTC", "ETH", "CRYPTO"))
+
+
+def _market_hours_between(start: "pd.Timestamp", end: "pd.Timestamp", crypto: bool) -> float:
+    """Hours the market was OPEN between two UTC timestamps. Crypto trades 24/7
+    (plain wall-clock); gold skips the daily 21:00-22:00 UTC settlement break
+    and the Fri 21:00 → Sun 22:00 weekend, hour slot by hour slot."""
+    if end <= start:
+        return 0.0
+    one_h = pd.Timedelta(hours=1)
+    if crypto:
+        return (end - start) / one_h
+    hours = 0.0
+    t = start
+    while t < end:
+        slot_end = t.replace(minute=0, second=0, microsecond=0, nanosecond=0) + one_h
+        nxt = min(slot_end, end)
+        if _forex_open(t):
+            hours += (nxt - t) / one_h
+        t = nxt
+    return hours
+
+
+def _signal_time(s: dict) -> "pd.Timestamp | None":
+    raw = s.get("candle_time_utc") or s.get("sent_at")
+    if not raw:
+        return None
+    ts = pd.Timestamp(raw)
+    return ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
 
 
 def _send_tg_sync(tg, text: str) -> None:
@@ -190,6 +237,31 @@ def health_check(fetcher: DataFetcher, tg) -> None:
             )
 
 
+def _entry_ref(sig: dict) -> "tuple[pd.Timestamp, bool] | None":
+    """(entry reference time, inclusive). An explicit entry_time_utc wins — the
+    MACD bot enters at the H1 CLOSE, so its signal-bar OPEN (candle_time_utc)
+    would otherwise make us scan a full pre-entry hour and mis-mark WIN/LOSS.
+    Otherwise the M5 convention: signal-bar open, entry on the NEXT bar."""
+    et_raw = sig.get("entry_time_utc")
+    ref_raw = et_raw or sig.get("candle_time_utc") or sig.get("sent_at")
+    if not ref_raw:
+        return None
+    ref = pd.Timestamp(ref_raw)
+    if ref.tzinfo is None:
+        ref = ref.tz_localize("UTC")
+    return ref, et_raw is not None  # entry is AT entry_time → include that bar
+
+
+def _window_covers(df: pd.DataFrame, ref: "pd.Timestamp") -> bool:
+    """True when the fetched candles reach back to (or before) the entry reference."""
+    if df.empty:
+        return False
+    earliest = pd.Timestamp(df["timestamp"].min())
+    if earliest.tzinfo is None:
+        earliest = earliest.tz_localize("UTC")
+    return earliest <= ref
+
+
 def _resolve_one(sig: dict, df: pd.DataFrame) -> tuple[str, float, str] | None:
     """Return (outcome, exit_price, note) or None if still open / unresolvable."""
     try:
@@ -199,29 +271,16 @@ def _resolve_one(sig: dict, df: pd.DataFrame) -> tuple[str, float, str] | None:
     except (KeyError, TypeError, ValueError):
         return None
 
-    # Entry reference: an explicit entry_time_utc wins — the MACD bot enters at
-    # the H1 CLOSE, so its signal-bar OPEN (candle_time_utc) would otherwise make
-    # us scan a full pre-entry hour and mis-mark WIN/LOSS. Otherwise use the M5
-    # convention: signal-bar open, entry on the NEXT bar.
-    et_raw = sig.get("entry_time_utc")
-    ref_raw = et_raw or sig.get("candle_time_utc") or sig.get("sent_at")
-    if not ref_raw:
+    er = _entry_ref(sig)
+    if er is None:
         return None
-    ref = pd.Timestamp(ref_raw)
-    if ref.tzinfo is None:
-        ref = ref.tz_localize("UTC")
-    inclusive = et_raw is not None  # entry is AT entry_time → include that bar
+    ref, inclusive = er
 
-    # Coverage guard: the fetched window must reach back to (or before) the entry
-    # reference. If the earliest fetched bar is AFTER it, an early SL/TP touch
-    # could have happened off the front of the window — so resolving now risks a
-    # wrong verdict. Stay OPEN and retry next cycle instead of guessing.
-    if not df.empty:
-        earliest = pd.Timestamp(df["timestamp"].min())
-        if earliest.tzinfo is None:
-            earliest = earliest.tz_localize("UTC")
-        if earliest > ref:
-            return None
+    # Coverage guard: if the earliest fetched bar is AFTER the entry reference,
+    # an early SL/TP touch could have happened off the front of the window — so
+    # resolving now risks a wrong verdict. Stay OPEN and retry next cycle.
+    if not _window_covers(df, ref):
+        return None
 
     # Bars from the entry onward (>= when entry is AT the reference, else strictly after).
     fut = df[df["timestamp"] >= ref] if inclusive else df[df["timestamp"] > ref]
@@ -264,58 +323,117 @@ def _resolve_batch(open_sigs: list[dict], df: "pd.DataFrame", label: str) -> int
     return resolved
 
 
+def _expire_batch(sigs: list[dict], df: "pd.DataFrame", label: str) -> int:
+    """Signals past MAX_SIGNAL_AGE_H market hours: give the candle window one
+    last chance to show a SL/TP touch, otherwise close them as EXPIRED — a
+    terminal state the dashboard excludes from win/loss — instead of leaving
+    outcome=null forever. Exit = last close when the window covers the entry
+    (an honest time-exit mark), else flat at entry (no data to judge)."""
+    done = 0
+    for s in sigs:
+        verdict = _resolve_one(s, df)
+        if verdict is None:
+            er = _entry_ref(s)
+            covered = er is not None and _window_covers(df, er[0])
+            entry = s.get("entry_price")
+            if covered and not df.empty:
+                exit_price: float | None = float(df["close"].iloc[-1])
+                how = f"marked at last close {exit_price:.2f}"
+            else:
+                exit_price = float(entry) if entry is not None else None
+                how = "no candle coverage, marked flat at entry"
+            verdict = (
+                "EXPIRED",
+                exit_price,
+                f"no SL/TP touch within {MAX_SIGNAL_AGE_H} market hours "
+                f"({s.get('_age_h', 0.0):.0f}h open); {how}",
+            )
+        outcome, exit_price, note = verdict
+        if update_signal_outcome(str(s["_id"]), outcome, exit_price, note):
+            done += 1
+            LOG.info(
+                "aged-out %s %s @ %s -> %s (%s)",
+                s.get("direction"), s.get("symbol"), s.get("entry_price"), outcome, note,
+            )
+    LOG.info("[%s] closed %d/%d aged-out signals", label, done, len(sigs))
+    return done
+
+
+def _classify(s: dict, now: "pd.Timestamp") -> "tuple[str, float] | None":
+    """('open' | 'expired', market hours since the signal) or None if not resolvable."""
+    if s.get("outcome"):
+        return None
+    if s.get("stop_loss") is None or s.get("take_profit") is None:
+        return None
+    ct = _signal_time(s)
+    if ct is None:
+        return None
+    age = _market_hours_between(ct, now, _is_crypto(s))
+    return ("open" if age <= MAX_SIGNAL_AGE_H else "expired"), age
+
+
+def _fetch_xau(fetcher: DataFetcher) -> "pd.DataFrame":
+    return fetcher.fetch_oanda("5m", CANDLE_COUNT).sort_values("timestamp").reset_index(drop=True)
+
+
+def _fetch_btc(fetcher: DataFetcher) -> "pd.DataFrame | None":
+    if not _BTC_OK:
+        return None
+    return BtcFetcher().fetch_klines("5m", 600, closed_only=True).sort_values("timestamp").reset_index(drop=True)
+
+
 def resolve_once(fetcher: DataFetcher) -> int:
     if not _MONGO_OK:
         LOG.warning("mongo unavailable; nothing to do")
         return 0
 
-    signals = load_live_signals(limit=200)
+    # Work queue = every signal without an outcome (not "the newest 200", where an
+    # old open signal could fall off the end and sit unresolved forever).
+    if load_open_signals is not None:
+        signals = load_open_signals(limit=500)
+    else:
+        signals = [s for s in load_live_signals(limit=500) if not s.get("outcome")]
     now = pd.Timestamp.now(tz="UTC")
 
-    def _open_within_age(s: dict) -> bool:
-        if s.get("outcome"):
-            return False
-        if s.get("stop_loss") is None or s.get("take_profit") is None:
-            return False
-        ct_raw = s.get("candle_time_utc") or s.get("sent_at")
-        if not ct_raw:
-            return False
-        ct = pd.Timestamp(ct_raw)
-        if ct.tzinfo is None:
-            ct = ct.tz_localize("UTC")
-        return (now - ct) <= pd.Timedelta(hours=MAX_SIGNAL_AGE_H)
+    # Group by feed (XAU = OANDA M5, BTC = Binance mirror M5; ETH/other crypto has
+    # no resolver feed and is skipped) and by state (open vs aged-out).
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for s in signals:
+        c = _classify(s, now)
+        if c is None:
+            continue
+        state, age = c
+        s["_age_h"] = age
+        if "BTC" in _sym(s):
+            feed = "BTC"
+        elif _is_crypto(s):
+            continue
+        else:
+            feed = "XAU"
+        groups.setdefault((feed, state), []).append(s)
 
-    def _sym(s: dict) -> str:
-        return str(s.get("symbol", "")).upper()
-
-    open_xau = [s for s in signals if _open_within_age(s)
-                and not any(x in _sym(s) for x in ("BTC", "ETH", "CRYPTO"))]
-    open_btc = [s for s in signals if _open_within_age(s) and "BTC" in _sym(s)]
-
-    if not open_xau and not open_btc:
+    if not groups:
         LOG.info("no open signals to resolve")
         return 0
 
     total = 0
-
-    # XAU / gold — OANDA M5
-    if open_xau:
+    for feed, fetch in (("XAU", _fetch_xau), ("BTC", _fetch_btc)):
+        open_sigs = groups.get((feed, "open"), [])
+        expired = groups.get((feed, "expired"), [])
+        if not open_sigs and not expired:
+            continue
         try:
-            xdf = fetcher.fetch_oanda("5m", CANDLE_COUNT).sort_values("timestamp").reset_index(drop=True)
-            total += _resolve_batch(open_xau, xdf, "XAU")
+            df = fetch(fetcher)
         except Exception as exc:  # noqa: BLE001
-            LOG.warning("XAU candle fetch failed: %s", exc)
-
-    # BTC — Binance mirror M5 (24/7); needs its own price feed
-    if open_btc:
-        if not _BTC_OK:
-            LOG.warning("BTC fetcher unavailable; %d BTC signals left open", len(open_btc))
-        else:
-            try:
-                bdf = BtcFetcher().fetch_klines("5m", 600, closed_only=True).sort_values("timestamp").reset_index(drop=True)
-                total += _resolve_batch(open_btc, bdf, "BTC")
-            except Exception as exc:  # noqa: BLE001
-                LOG.warning("BTC candle fetch failed: %s", exc)
+            LOG.warning("%s candle fetch failed: %s", feed, exc)
+            continue
+        if df is None:
+            LOG.warning("%s fetcher unavailable; %d signals left open", feed, len(open_sigs) + len(expired))
+            continue
+        if open_sigs:
+            total += _resolve_batch(open_sigs, df, feed)
+        if expired:
+            total += _expire_batch(expired, df, feed)
 
     return total
 

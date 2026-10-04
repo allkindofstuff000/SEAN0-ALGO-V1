@@ -1,0 +1,1 @@
+15 3,9,15,21 * * * root /opt/sean0algo/ops/backup.sh >> /var/log/sean0algo-backup.log 2>&1

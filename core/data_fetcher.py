@@ -23,6 +23,14 @@ except ImportError:  # pragma: no cover - optional dependency guard
 
 LOGGER = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent.parent
+
+
+class OandaAuthError(RuntimeError):
+    """OANDA answered 401/403 on every retry. Around the daily 21:00 UTC
+    settlement break and the 22:00 reopen OANDA returns *transient* 401s for a
+    few minutes (seen 2026-09-28 .. 2026-10-04 on every gold bot), so callers
+    should log this as a skipped cycle and only suspect the API key when it
+    persists outside those windows."""
 ENV_PATH = ROOT / ".env"
 XAU_SYMBOLS = {"XAUUSD", "XAUUSDT"}
 OANDA_INSTRUMENT = "XAU_USD"
@@ -252,10 +260,22 @@ class DataFetcher:
                 body = error.read().decode("utf-8", errors="ignore")
                 wait_seconds = self.retry_base_seconds
                 if error.code in {401, 403}:
-                    raise RuntimeError(
-                        "OANDA authorization failed. Verify OANDA_API_KEY and the live/practice endpoint settings "
-                        "(OANDA_API_URL or OANDA_ENV)."
-                    ) from error
+                    # Transient around the 21:00 break / 22:00 reopen: retry with a
+                    # short backoff (5,10,15,20s) instead of failing the cycle on
+                    # the first 401 with a full traceback.
+                    wait_seconds = min(5.0 * attempt, 20.0)
+                    LOGGER.warning(
+                        "oanda_auth_transient status=%s attempt=%s/%s retry_in=%.0fs",
+                        error.code, attempt, self.max_retries, wait_seconds,
+                    )
+                    if attempt >= self.max_retries:
+                        raise OandaAuthError(
+                            f"OANDA authorization failed (HTTP {error.code}) on {attempt} attempts. "
+                            "This is transient around the 21:00-22:00 UTC break; if it persists, verify "
+                            "OANDA_API_KEY and the live/practice endpoint settings (OANDA_API_URL or OANDA_ENV)."
+                        ) from error
+                    time.sleep(wait_seconds)
+                    continue
                 LOGGER.warning(
                     "oanda_fetch_failed status=%s attempt=%s/%s error=%s retry_in=%.2fs",
                     error.code,

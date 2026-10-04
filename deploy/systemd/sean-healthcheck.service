@@ -1,0 +1,5 @@
+[Unit]
+Description=SEAN ALGO healthcheck (units, /api/health, price freshness, disk)
+[Service]
+Type=oneshot
+ExecStart=/opt/sean0algo/ops/healthcheck.sh

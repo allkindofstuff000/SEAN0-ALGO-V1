@@ -19,7 +19,7 @@ from pathlib import Path
 import pandas as pd
 from dotenv import load_dotenv
 
-from core.data_fetcher import DataFetcher
+from core.data_fetcher import DataFetcher, OandaAuthError
 from core.indicator_engine import IndicatorEngine
 from core.signal_guard import check_signal
 from strategies.vwap_supertrend import config as cfg
@@ -295,6 +295,9 @@ async def run() -> None:
     while not stop.is_set():
         try:
             last = await _cycle(fetcher, ind_engine, tg, last)
+        except OandaAuthError as e:
+            # Transient 401s around the 21:00 break / 22:00 reopen — skip, retry next poll.
+            LOG.warning("cycle skipped (OANDA auth transient): %s", e)
         except Exception as e:
             LOG.exception("cycle error: %s", e)
         try:

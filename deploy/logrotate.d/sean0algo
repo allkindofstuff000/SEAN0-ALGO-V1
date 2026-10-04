@@ -1,0 +1,22 @@
+/var/log/vwap-st.log /var/log/btc-rsi-ema.log /var/log/macd-gold.log /var/log/signal-resolver.log /var/log/sean0algo-backup.log /opt/sean0algo/logs/decision_trace.log /opt/sean0algo/decision_trace.log {
+    su root syslog
+    daily
+    rotate 14
+    maxsize 50M
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 root adm
+}
+/var/log/mongodb/mongod.log {
+    su mongodb mongodb
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

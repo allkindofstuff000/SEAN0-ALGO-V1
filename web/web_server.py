@@ -156,26 +156,24 @@ ENABLE_BINANCE_ETH = _env_flag("ENABLE_BINANCE_ETH", default=False)
 import datetime as _dt
 
 def is_market_open(now_utc: _dt.datetime | None = None) -> dict[str, Any]:
-    """Check if forex market is open. Closed Fri 22:00 UTC → Sun 22:00 UTC."""
+    """Gold (OANDA XAU_USD) availability: closed Fri 22:00 UTC → Sun 22:00 UTC,
+    plus the daily 21:00-22:00 UTC settlement break. The break used to count as
+    "open", so /api/health flagged the feed stale and the VPS healthcheck sent a
+    false alarm every weekday evening."""
     if now_utc is None:
         now_utc = _dt.datetime.now(_dt.timezone.utc)
     wd = now_utc.weekday()  # Mon=0 … Sun=6
     h, m = now_utc.hour, now_utc.minute
     t = h * 60 + m  # minutes since midnight
 
-    # Closed: Friday 22:00 UTC → Sunday 22:00 UTC
     closed = False
-    if wd == 4 and t >= 22 * 60:        # Friday after 22:00
-        closed = True
-    elif wd == 5:                        # Saturday (all day)
-        closed = True
-    elif wd == 6 and t < 22 * 60:        # Sunday before 22:00
-        closed = True
-
-    # Calculate next open time
+    settlement = False
+    reason = None
     next_open = None
-    if closed:
-        # Next Sunday 22:00 UTC
+    if (wd == 4 and t >= 22 * 60) or wd == 5 or (wd == 6 and t < 22 * 60):
+        # Weekend: Friday 22:00 UTC → Sunday 22:00 UTC
+        closed = True
+        reason = "Weekend — Forex market closed (Fri 22:00 → Sun 22:00 UTC)"
         days_until_sunday = (6 - wd) % 7
         if days_until_sunday == 0 and t >= 22 * 60:
             days_until_sunday = 7
@@ -183,11 +181,22 @@ def is_market_open(now_utc: _dt.datetime | None = None) -> dict[str, Any]:
             hour=22, minute=0, second=0, microsecond=0
         )
         next_open = next_open_dt.isoformat()
+    elif 21 * 60 <= t < 22 * 60:
+        # Daily settlement break, Mon-Fri 21:00 → 22:00 UTC (Friday's rolls
+        # straight into the weekend, so point at Sunday's reopen).
+        closed = True
+        settlement = True
+        reason = "Daily settlement break (21:00 → 22:00 UTC)"
+        days = 2 if wd == 4 else 0
+        next_open = (now_utc + _dt.timedelta(days=days)).replace(
+            hour=22, minute=0, second=0, microsecond=0
+        ).isoformat()
 
     return {
         "open": not closed,
         "closed": closed,
-        "reason": "Weekend — Forex market closed (Fri 22:00 → Sun 22:00 UTC)" if closed else None,
+        "settlement": settlement,
+        "reason": reason,
         "nextOpen": next_open,
     }
 
@@ -1735,7 +1744,11 @@ def api_health() -> dict[str, Any]:
     last_tick_age = None
     if engine_ready:
         eng = _stream_engine
-        stream_status = getattr(eng, "_status", None) or getattr(eng, "status", None)
+        stream_status = (
+            getattr(eng, "stream_status", None)
+            or getattr(eng, "_status", None)
+            or getattr(eng, "status", None)
+        )
         th = getattr(eng, "_thread", None) or getattr(eng, "_stream_thread", None)
         thread_alive = bool(th.is_alive()) if th is not None else None
         try:
@@ -1744,7 +1757,18 @@ def api_health() -> dict[str, Any]:
                 last_tick_age = int(time.time()) - int(last["time"])
         except Exception:
             last_tick_age = None
-    feed_stale = market_open and last_tick_age is not None and last_tick_age > 300
+    # Stale = no tick for >5 min while the market has ALSO been open for >5 min.
+    # Right after the 22:00 UTC reopen (daily break / Sunday) the newest tick is
+    # legitimately up to an hour — or a weekend — old, which used to report
+    # "degraded" and trip the VPS healthcheck until the stream caught up.
+    feed_stale = False
+    if market_open and last_tick_age is not None:
+        _now = _dt.datetime.now(_dt.timezone.utc)
+        _reopen = _now.replace(hour=22, minute=0, second=0, microsecond=0)
+        if _now < _reopen:
+            _reopen -= _dt.timedelta(days=1)
+        _since_reopen = (_now - _reopen).total_seconds()
+        feed_stale = min(last_tick_age, _since_reopen) > 300
     healthy = engine_ready and m1 > 0 and thread_alive is not False and not feed_stale
     return {
         "status": "ok" if healthy else "degraded",

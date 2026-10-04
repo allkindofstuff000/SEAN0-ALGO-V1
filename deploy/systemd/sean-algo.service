@@ -1,0 +1,17 @@
+[Unit]
+Description=SEAN-ALGO RSI EMA Live Bot
+After=network.target mongod.service
+Wants=mongod.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sean0algo
+ExecStart=/opt/sean0algo/.venv/bin/python /opt/sean0algo/main.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

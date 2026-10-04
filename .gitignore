@@ -48,3 +48,4 @@ web/static-old-*/
 state_*.txt
 .bridgespace/
 SEAN-ALGO-V1/
+*.bak_*

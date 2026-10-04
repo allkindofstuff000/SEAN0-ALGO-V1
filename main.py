@@ -12,7 +12,7 @@ import pandas as pd
 import pytz
 from dotenv import load_dotenv
 
-from core.data_fetcher import DataFetcher
+from core.data_fetcher import DataFetcher, OandaAuthError
 from core.indicator_engine import IndicatorEngine
 from core.risk_manager import RiskManager
 from core.signal_guard import check_signal
@@ -530,6 +530,12 @@ async def run_loop() -> None:
                 runtime_state.status = "idle"
                 runtime_state.last_signal_modes = []
                 LOGGER.info("[RISK] symbol=%s no signal to route", SYMBOL)
+        except OandaAuthError as auth_error:
+            # Transient 401s around the 21:00 break / 22:00 reopen — skip this
+            # cycle quietly; the next poll retries (no traceback spam).
+            runtime_state.status = "error"
+            runtime_state.last_reason = "oanda_auth_transient"
+            LOGGER.warning("[ENGINE] symbol=%s cycle skipped: %s", SYMBOL, auth_error)
         except Exception:
             runtime_state.status = "error"
             runtime_state.last_reason = "exception"

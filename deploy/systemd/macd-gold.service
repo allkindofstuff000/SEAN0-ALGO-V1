@@ -1,0 +1,18 @@
+[Unit]
+Description=SEAN ALGO - Gold MACD day-trade signal bot (H1)
+After=network-online.target mongod.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sean0algo
+Environment=PYTHONPATH=/opt/sean0algo
+ExecStart=/opt/sean0algo/.venv/bin/python /opt/sean0algo/macd_gold_live.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/macd-gold.log
+StandardError=append:/var/log/macd-gold.log
+
+[Install]
+WantedBy=multi-user.target

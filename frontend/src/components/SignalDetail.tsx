@@ -114,7 +114,7 @@ export function SignalDetail({ s }: { s: LiveSignal }) {
             <Field
               label="Outcome"
               value={`${s.outcome} @ ${num(s.exit_price)}`}
-              tone={s.outcome === "WIN" ? "good" : "bad"}
+              tone={s.outcome === "WIN" ? "good" : s.outcome === "LOSS" ? "bad" : "muted"}
             />
             <Field
               label="P&L"
