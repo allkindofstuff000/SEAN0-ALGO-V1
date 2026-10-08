@@ -64,14 +64,12 @@ MAX_SIGNALS_PER_DAY = int(os.getenv("BTC_MAX_SIGNALS_PER_DAY", "8"))
 COOLDOWN_BARS = int(os.getenv("BTC_COOLDOWN_BARS", "3"))
 _RISK: dict = {"day": None, "count": 0, "last_fired_ts": None}
 
-# ── Session filter (validated edge) ──────────────────────────────────────────
-# BTC's edge is concentrated in the NY-overlap / NY window: Dhaka evening 18-24
-# = 12-18 UTC. Validated on 3 NON-overlapping 45-day windows — trading only this
-# window holds PF 1.40-1.58 in all three, and beats "trade 24/7" in every one,
-# while off-hours are regime-dependent (Morning was great ~4 months ago, negative
-# recently). Only fire signals in [START, END) UTC. Set BTC_SESSION_UTC="0,24"
-# to disable (trade 24/7).
-_sess = os.getenv("BTC_SESSION_UTC", "12,18").split(",")
+# ── Session filter: OFF (removed 2026-10-08 at the user's request — fire 24/7) ─
+# History: a 12-18 UTC window (Dhaka evening 18-24) was validated on 3 non-
+# overlapping 45-day windows (PF 1.40-1.58, beat 24/7 in all three) and ran live
+# from 2026-09-06 to 2026-10-08. The user chose more signals over that edge.
+# Re-enable any time with env BTC_SESSION_UTC="12,18" (no code change needed).
+_sess = os.getenv("BTC_SESSION_UTC", "0,24").split(",")
 SESSION_UTC_START, SESSION_UTC_END = int(_sess[0]), int(_sess[1])
 
 LOG = logging.getLogger("btc-rsi-ema.live")

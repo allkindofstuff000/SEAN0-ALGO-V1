@@ -33,8 +33,9 @@ from core.indicator_engine import IndicatorEngine
 # ~1,440 M15 bars = ~7× the EMA200 period, so the 200-EMA is fully converged.
 WARMUP_DAYS = 15
 
-# Session filter (matches the deployed live bot): BTC's edge is concentrated in
-# 12-18 UTC (Dhaka evening 18-24). Validated on 3 non-overlapping 45d windows.
+# Session filter: OFF by default since 2026-10-08 (matches the live bot, which
+# now fires 24/7 at the user's request). The validated 12-18 UTC window is kept
+# here so a backtest can still be run with session_filter=True for comparison.
 SESSION_UTC = (12, 18)
 
 
@@ -46,7 +47,7 @@ def run_backtest(
     risk_per_trade: float = 0.02,
     max_hold_bars: int | None = None,
     detection_lag_seconds: float = 0.0,
-    session_filter: bool = True,
+    session_filter: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, Any], list[dict[str, Any]]]:
     """Run the RSI EMA strategy over BTCUSDT M5 candles. Returns (trades_df, metrics, equity_curve)."""
     max_hold = engine.DEFAULT_MAX_HOLD if max_hold_bars is None else int(max_hold_bars)

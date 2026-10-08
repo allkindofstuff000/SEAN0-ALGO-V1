@@ -3,7 +3,8 @@ VWAP + Supertrend live signal bot.
 
 Polls OANDA XAUUSD M5 candles every 60s, evaluates the LAST CLOSED bar,
 and fires a signal on a Supertrend flip that agrees with the daily-anchored VWAP.
-Session-filtered (12-21 UTC). Signals go to Telegram + Mongo (visible in /signals).
+No session filter since 2026-10-08 (was 12-21 UTC): every market hour is evaluated.
+Signals go to Telegram + Mongo (visible in /signals).
 
 Deduplicates: only one signal per candle timestamp per lifetime of the state file.
 """

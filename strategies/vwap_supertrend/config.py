@@ -20,9 +20,12 @@ STOP_LOSS_ATR_MULTIPLIER = 1.5
 TAKE_PROFIT_ATR_MULTIPLIER = 3.0   # 1:2 RR — the winning config
 DEFAULT_MAX_HOLD_BARS = 12         # ~1 hour on M5
 
-# ── Session gate (UTC) ────────────────────────────────────────────────────
-SESSION_START_HOUR = 12
-SESSION_END_HOUR = 21          # London-NY overlap + NY (same as RSI EMA)
+# ── Session gate (UTC) — REMOVED 2026-10-08 at the user's request ─────────
+# Was 12-21 (London-NY overlap + NY, the window the backtests were validated
+# on). 0-24 = every market hour; the closed market (21-22 UTC, weekend) has no
+# bars so nothing fires then. Put 12 / 21 back here to restore the old gate.
+SESSION_START_HOUR = 0
+SESSION_END_HOUR = 24
 
 # ── Backtest / execution cost model ───────────────────────────────────────
 DEFAULT_STARTING_BALANCE = 5_000.0

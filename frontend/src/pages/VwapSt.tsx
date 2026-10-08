@@ -233,7 +233,7 @@ export default function VwapSt() {
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Supertrend flip + daily-VWAP confirm · M5 · session 12–21 UTC
+            Supertrend flip + daily-VWAP confirm · M5 · all market hours (no session filter)
           </p>
         </div>
         <div className="text-right">
@@ -542,7 +542,7 @@ export default function VwapSt() {
                   </TableHeader>
                   <TableBody>
                     {vwapSignals.length === 0 ? (
-                      <TableRow><TableCell colSpan={11} className="text-center py-10 text-xs text-muted-foreground">No VWAP+ST signals yet. When a Supertrend flip confirms with the daily VWAP during session (12–21 UTC), the signal appears here and is sent to Telegram.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={11} className="text-center py-10 text-xs text-muted-foreground">No VWAP+ST signals yet. When a Supertrend flip confirms with the daily VWAP during market hours, the signal appears here and is sent to Telegram.</TableCell></TableRow>
                     ) : (
                       vwapSignals.map((s) => {
                         const isBuy = (s.direction || "").toUpperCase() === "BUY";

@@ -400,8 +400,11 @@ def detect_session(close_time_utc: pd.Timestamp) -> str:
 
 
 def session_allowed(close_time_utc: pd.Timestamp) -> bool:
-    hour = close_time_utc.hour
-    return 12 <= hour < 21  # London-NY Overlap (12-16) + New York (16-21); skip pure London + Asian
+    """Session gate — REMOVED 2026-10-08 at the user's request: every session is
+    allowed (was 12-21 UTC = Overlap + New York). Kept as a function so callers
+    and the BTC monkeypatch keep working; the closed market (weekend, 21-22 UTC
+    settlement) simply has no bars, so nothing fires then."""
+    return True
 
 
 def indicators_ready(row: pd.Series, columns: tuple[str, ...]) -> bool:
@@ -1150,17 +1153,30 @@ def save_backtest_outputs(
     }
 
 
+def _open_hours_for_day(day: pd.Timestamp, start_hour: int, end_hour: int) -> int:
+    """Hours in [start_hour, end_hour) that gold actually trades on that weekday:
+    no 21:00-22:00 settlement hour, nothing from Fri 22:00, nothing Saturday,
+    nothing Sunday before 22:00."""
+    wd = day.weekday()
+    n = 0
+    for h in range(start_hour, end_hour):
+        if h == 21 or wd == 5 or (wd == 4 and h >= 22) or (wd == 6 and h < 22):
+            continue
+        n += 1
+    return n
+
+
 def assess_data_integrity(
     df: pd.DataFrame,
-    session_start_hour: int = 12,
-    session_end_hour: int = 21,
+    session_start_hour: int = 0,
+    session_end_hour: int = 24,
 ) -> dict[str, Any]:
-    """Estimate M5 data completeness inside the trading-session window.
+    """Estimate M5 data completeness inside the trading window (default: all
+    market hours, since the session filters were removed 2026-10-08).
 
-    Only session hours matter (the strategy trades 12-21 UTC), and only days
-    the market was open (>0 bars) are counted — so weekends and the nightly
-    settlement break are ignored, not flagged as 'missing'. Each open day
-    expects (session_end - session_start) * 12 five-minute bars.
+    Expected bars per day follow the real gold calendar (no settlement hour,
+    no weekend), so the nightly break and Friday/Sunday edges are not flagged
+    as 'missing'. Only days with >0 bars are counted.
 
     Returns completeness %, expected/actual/missing bar counts, and the worst
     gap days — so a run built on a data hole can't be silently trusted.
@@ -1177,12 +1193,12 @@ def assess_data_integrity(
     if sess.empty:
         return empty
 
-    per_day_expected = (session_end_hour - session_start_hour) * 12
     counts = sess.dt.floor("1D").value_counts()
     total_actual = int(counts.sum())
     total_missing = 0
     gap_days: list[dict[str, Any]] = []
     for day, cnt in counts.items():
+        per_day_expected = _open_hours_for_day(pd.Timestamp(day), session_start_hour, session_end_hour) * 12
         miss = per_day_expected - int(cnt)
         if miss > 0:
             total_missing += miss
