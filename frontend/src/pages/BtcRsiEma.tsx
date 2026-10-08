@@ -8,17 +8,16 @@ import { useCryptoCandles, useCryptoLivePrice, useRunCryptoBacktest, useLiveSign
 import { Fragment, useMemo, useState } from "react";
 import { Play, BarChart2, History, TrendingUp, Send, Clock, Bitcoin, Coins } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { LiveChart } from "@/components/LiveChart";
 import { BacktestResults } from "@/components/BacktestResults";
 import { WalkForwardResults } from "@/components/WalkForwardResults";
 import { SignalDetail } from "@/components/SignalDetail";
 import { computeIndicators } from "@/lib/indicators";
-import { Api, openCryptoCandleStream, cryptoSpec, type CryptoKey, type RsiBacktestResult } from "@/lib/api";
+import { Api, cryptoSpec, type CryptoKey, type RsiBacktestResult } from "@/lib/api";
 import { fmtLocal, TZ_LABEL } from "@/lib/tz";
 import { splitWindow } from "@/lib/walkforward";
 
+// Live charts live on the Charts workspace (/charts); this page is backtests + signal history.
 const TABS = [
-  { id: "chart", label: "Chart", icon: BarChart2 },
   { id: "backtest", label: "Backtest", icon: Play },
   { id: "signals", label: "Signal History", icon: History },
 ];
@@ -53,9 +52,8 @@ export default function BtcRsiEma({ symbolKey = "BTC" }: { symbolKey?: CryptoKey
   const sym = symbolKey;
   const spec = cryptoSpec(sym);
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState("chart");
-  const [activeTF, setActiveTF] = useState("5M");
-  const [showEma, setShowEma] = useState(true);
+  const [activeTab, setActiveTab] = useState("backtest");
+  const [activeTF] = useState("5M");
   const [sl, setSl] = useState([1.5]);
   const [tp, setTp] = useState([1.5]);
   const [risk, setRisk] = useState([2]);
@@ -231,31 +229,6 @@ export default function BtcRsiEma({ symbolKey = "BTC" }: { symbolKey?: CryptoKey
       </div>
 
       <div className="flex-1 mx-4 mt-2 mb-4 min-h-0 overflow-hidden">
-        {/* CHART TAB */}
-        {activeTab === "chart" && (
-          <div className="h-full min-h-[400px] flex flex-col rounded-lg border border-border bg-[#131722] overflow-hidden">
-            <div className="flex items-center gap-3 px-3 py-2 border-b border-[#2A2E39] bg-[#1E222D] shrink-0">
-              <span className="font-bold text-white text-sm">{spec.display}</span>
-              <span className={`text-xs font-mono ${changePct >= 0 ? "text-accent" : "text-destructive"}`}>{changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%</span>
-              <div className="h-3 w-px bg-[#2A2E39]" />
-              <div className="flex items-center gap-1">
-                {["1M", "5M", "15M", "1H"].map((t) => (
-                  <button key={t} onClick={() => setActiveTF(t)} className={`px-2 py-0.5 text-xs font-bold rounded transition-all ${activeTF === t ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white hover:bg-[#2A2E39]"}`}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-              <div className="h-3 w-px bg-[#2A2E39]" />
-              <button onClick={() => setShowEma((v) => !v)} className={`px-2 py-0.5 text-xs font-bold rounded transition-all ${showEma ? "text-yellow-400" : "text-gray-500 hover:text-gray-300"}`}>
-                EMA 9 / 21
-              </button>
-            </div>
-            <div className="flex-1 min-h-0">
-              <LiveChart key={sym} tf={tf} showEMA={showEma} candlesFn={(t, c) => Api.cryptoCandles(sym, t, c)} streamFn={(t, on, err) => openCryptoCandleStream(sym, t, on, err)} />
-            </div>
-          </div>
-        )}
-
         {/* BACKTEST TAB */}
         {activeTab === "backtest" && (
           <div className="h-full overflow-auto pb-4 space-y-4">
