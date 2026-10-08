@@ -156,48 +156,21 @@ ENABLE_BINANCE_ETH = _env_flag("ENABLE_BINANCE_ETH", default=False)
 import datetime as _dt
 
 def is_market_open(now_utc: _dt.datetime | None = None) -> dict[str, Any]:
-    """Gold (OANDA XAU_USD) availability: closed Fri 22:00 UTC → Sun 22:00 UTC,
-    plus the daily 21:00-22:00 UTC settlement break. The break used to count as
-    "open", so /api/health flagged the feed stale and the VPS healthcheck sent a
-    false alarm every weekday evening."""
-    if now_utc is None:
-        now_utc = _dt.datetime.now(_dt.timezone.utc)
-    wd = now_utc.weekday()  # Mon=0 … Sun=6
-    h, m = now_utc.hour, now_utc.minute
-    t = h * 60 + m  # minutes since midnight
-
-    closed = False
-    settlement = False
-    reason = None
-    next_open = None
-    if (wd == 4 and t >= 22 * 60) or wd == 5 or (wd == 6 and t < 22 * 60):
-        # Weekend: Friday 22:00 UTC → Sunday 22:00 UTC
-        closed = True
-        reason = "Weekend — Forex market closed (Fri 22:00 → Sun 22:00 UTC)"
-        days_until_sunday = (6 - wd) % 7
-        if days_until_sunday == 0 and t >= 22 * 60:
-            days_until_sunday = 7
-        next_open_dt = (now_utc + _dt.timedelta(days=days_until_sunday)).replace(
-            hour=22, minute=0, second=0, microsecond=0
-        )
-        next_open = next_open_dt.isoformat()
-    elif 21 * 60 <= t < 22 * 60:
-        # Daily settlement break, Mon-Fri 21:00 → 22:00 UTC (Friday's rolls
-        # straight into the weekend, so point at Sunday's reopen).
-        closed = True
-        settlement = True
-        reason = "Daily settlement break (21:00 → 22:00 UTC)"
-        days = 2 if wd == 4 else 0
-        next_open = (now_utc + _dt.timedelta(days=days)).replace(
-            hour=22, minute=0, second=0, microsecond=0
-        ).isoformat()
-
+    """Gold (OANDA XAU_USD) availability from the DST-aware New-York calendar
+    (core.market_calendar): weekend Fri 17:00 → Sun 18:00 ET and the daily
+    17:00-18:00 ET settlement break. Fixed-UTC hours would drift by an hour
+    every time the US changes clocks (next: 2026-11-01)."""
+    from core.market_calendar import gold_market_state
+    st = gold_market_state(now_utc)
     return {
-        "open": not closed,
-        "closed": closed,
-        "settlement": settlement,
-        "reason": reason,
-        "nextOpen": next_open,
+        "open": st["open"],
+        "closed": st["closed"],
+        "settlement": st["settlement"],
+        "weekend": st["weekend"],
+        "reason": st["reason"],
+        "nextOpen": st["next_open_utc"].isoformat() if st["next_open_utc"] else None,
+        "secondsSinceOpen": st["seconds_since_open"],
+        "nyTime": st["ny_time"],
     }
 
 
@@ -1758,17 +1731,16 @@ def api_health() -> dict[str, Any]:
         except Exception:
             last_tick_age = None
     # Stale = no tick for >5 min while the market has ALSO been open for >5 min.
-    # Right after the 22:00 UTC reopen (daily break / Sunday) the newest tick is
-    # legitimately up to an hour — or a weekend — old, which used to report
-    # "degraded" and trip the VPS healthcheck until the stream caught up.
+    # Right after a reopen (daily break / Sunday) the newest tick is legitimately
+    # up to an hour — or a weekend — old. The reopen time comes from the
+    # DST-aware calendar via the cached market status.
     feed_stale = False
+    since_open = (status.get("market") or {}).get("secondsSinceOpen")
     if market_open and last_tick_age is not None:
-        _now = _dt.datetime.now(_dt.timezone.utc)
-        _reopen = _now.replace(hour=22, minute=0, second=0, microsecond=0)
-        if _now < _reopen:
-            _reopen -= _dt.timedelta(days=1)
-        _since_reopen = (_now - _reopen).total_seconds()
-        feed_stale = min(last_tick_age, _since_reopen) > 300
+        if since_open is None:
+            feed_stale = last_tick_age > 300
+        else:
+            feed_stale = min(last_tick_age, since_open) > 300
     healthy = engine_ready and m1 > 0 and thread_alive is not False and not feed_stale
     return {
         "status": "ok" if healthy else "degraded",
@@ -1781,6 +1753,7 @@ def api_health() -> dict[str, Any]:
         "mongo_available": mongo_ok,
         "strategies_running": running,
         "market_open": market_open,
+        "seconds_since_open": None if since_open is None else int(since_open),
         "time": int(time.time()),
     }
 

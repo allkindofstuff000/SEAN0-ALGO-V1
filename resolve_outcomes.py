@@ -28,6 +28,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from core.data_fetcher import DataFetcher
+from core.market_calendar import gold_market_state, gold_open_hours_between, is_gold_open
 
 try:
     from core.indicator_engine import IndicatorEngine
@@ -82,20 +83,10 @@ LOG = logging.getLogger("signal-resolver")
 
 
 def _forex_open(now) -> bool:
-    """Rough OANDA XAUUSD availability: closed Fri 21:00 -> Sun 22:00 UTC, plus
-    the nightly 21:00-22:00 settlement break. Used to suppress false stale
-    alerts when the feed is *expected* to be quiet."""
-    wd = now.weekday()  # Mon=0 .. Sun=6
-    h = now.hour
-    if wd == 5:                     # Saturday
-        return False
-    if wd == 4 and h >= 21:        # Friday after 21:00 UTC
-        return False
-    if wd == 6 and h < 22:         # Sunday before 22:00 UTC
-        return False
-    if h == 21:                    # nightly settlement break
-        return False
-    return True
+    """OANDA XAUUSD availability via the DST-aware New-York calendar (weekend +
+    the daily settlement break). Used to suppress false stale alerts when the
+    feed is *expected* to be quiet, and to count market hours for expiry."""
+    return is_gold_open(now)
 
 
 def _sym(s: dict) -> str:
@@ -112,18 +103,9 @@ def _market_hours_between(start: "pd.Timestamp", end: "pd.Timestamp", crypto: bo
     and the Fri 21:00 → Sun 22:00 weekend, hour slot by hour slot."""
     if end <= start:
         return 0.0
-    one_h = pd.Timedelta(hours=1)
     if crypto:
-        return (end - start) / one_h
-    hours = 0.0
-    t = start
-    while t < end:
-        slot_end = t.replace(minute=0, second=0, microsecond=0, nanosecond=0) + one_h
-        nxt = min(slot_end, end)
-        if _forex_open(t):
-            hours += (nxt - t) / one_h
-        t = nxt
-    return hours
+        return (end - start) / pd.Timedelta(hours=1)
+    return gold_open_hours_between(start, end)
 
 
 def _signal_time(s: dict) -> "pd.Timestamp | None":
@@ -152,6 +134,7 @@ def _send_tg_sync(tg, text: str) -> None:
     for attempt in (1, 2):
         try:
             asyncio.run(_go())
+            LOG.info("telegram sent: %s", (text.splitlines() or [""])[0][:90])
             return
         except Exception:  # noqa: BLE001
             LOG.exception("telegram send failed (attempt %d/2)", attempt)
@@ -214,12 +197,12 @@ def health_check(fetcher: DataFetcher, tg) -> None:
         bar_ts = pd.Timestamp(snap["timestamp"])
         if bar_ts.tzinfo is None:
             bar_ts = bar_ts.tz_localize("UTC")
-        # Don't measure staleness across the 21:00-22:00 UTC settlement break (or
-        # the Sunday reopen): right at 22:00 the last bar is legitimately ~60 min
-        # old, which fired a false STALE FEED alert almost every day at 22:00.
-        reopen = now.normalize() + pd.Timedelta(hours=22)
-        if now >= reopen and bar_ts < reopen:
-            bar_ts = reopen
+        # Don't measure staleness across the settlement break / Sunday reopen:
+        # right after a reopen the last bar is legitimately up to an hour (or a
+        # weekend) old. The reopen instant comes from the DST-aware calendar.
+        last_open = gold_market_state(now)["last_open_utc"]
+        if last_open is not None and bar_ts < pd.Timestamp(last_open):
+            bar_ts = pd.Timestamp(last_open)
         age = (now - bar_ts) / pd.Timedelta(minutes=1)
     except Exception as e:  # noqa: BLE001
         LOG.warning("health: snapshot failed: %s", e)

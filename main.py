@@ -13,6 +13,7 @@ import pytz
 from dotenv import load_dotenv
 
 from core.data_fetcher import DataFetcher, OandaAuthError
+from core.market_calendar import gold_market_state, is_gold_open
 from core.indicator_engine import IndicatorEngine
 from core.risk_manager import RiskManager
 from core.signal_guard import check_signal
@@ -104,7 +105,9 @@ def _build_components() -> tuple[DataFetcher, IndicatorEngine, SignalLogic, Risk
     signal_engine = SignalLogic(symbol=SYMBOL, signal_modes=SIGNAL_MODES)
     risk_manager = RiskManager(
         max_signals_per_day=int(os.getenv("MAX_SIGNALS_PER_DAY", "3")),
-        cooldown_candles=int(os.getenv("COOLDOWN_CANDLES", "1")),
+        # 6 M5 candles = 30 min. With 1 the bot fired three same-direction sells
+        # within 45 min on 2026-10-07 (two of them 5 min apart) = one setup at 3x risk.
+        cooldown_candles=int(os.getenv("COOLDOWN_CANDLES", "6")),
         max_loss_streak=int(os.getenv("MAX_LOSS_STREAK", os.getenv("MAX_CONSECUTIVE_LOSSES", "2"))),
     )
     notifier = TelegramNotifier(
@@ -142,19 +145,16 @@ def _build_week_boundary(
 
 
 def is_market_open(now_utc: datetime.datetime) -> bool:
-    close_weekday, close_hour, close_minute = MARKET_HOURS["close_time"]
-    open_weekday, open_hour, open_minute = MARKET_HOURS["open_time"]
-    weekend_close = _build_week_boundary(now_utc, close_weekday, close_hour, close_minute)
-    weekend_open = _build_week_boundary(now_utc, open_weekday, open_hour, open_minute)
-    return not (weekend_close <= now_utc < weekend_open)
+    """DST-aware (New-York calendar) — weekend AND the daily settlement break.
+    MARKET_HOURS fixed-UTC values are kept only for the always_open switch."""
+    if MARKET_HOURS.get("always_open"):
+        return True
+    return is_gold_open(now_utc)
 
 
 def next_market_open(now_utc: datetime.datetime) -> datetime.datetime:
-    open_weekday, open_hour, open_minute = MARKET_HOURS["open_time"]
-    next_open = _build_week_boundary(now_utc, open_weekday, open_hour, open_minute)
-    if now_utc >= next_open:
-        next_open += datetime.timedelta(days=7)
-    return next_open
+    nxt = gold_market_state(now_utc)["next_open_utc"]
+    return nxt if nxt is not None else now_utc + datetime.timedelta(days=7)
 
 
 def should_log_skip(now_utc: datetime.datetime, last_skip_log: datetime.datetime | None) -> bool:

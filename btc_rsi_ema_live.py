@@ -39,13 +39,17 @@ except Exception:  # pragma: no cover
     TelegramNotifier = None  # type: ignore
 
 try:
-    from core.mongo_store import save_live_signal as _save_live_signal
+    from core.mongo_store import save_live_signal_queued as _save_live_signal
+    from core.mongo_store import flush_pending_signals as _flush_pending
     _MONGO_OK = True
 except Exception:  # pragma: no cover
     _MONGO_OK = False
 
     def _save_live_signal(**_):
         return None
+
+    def _flush_pending():
+        return 0
 
 
 ROOT = Path(__file__).resolve().parent
@@ -114,7 +118,12 @@ def _fetch_btc_history(fetcher: BtcFetcher) -> pd.DataFrame:
     start = end - pd.Timedelta(days=HISTORY_DAYS)
     df = fetcher.fetch_range(start, end, "5m")
     if df is not None and len(df) > 1:
-        df = df.iloc[:-1].reset_index(drop=True)  # last row is the forming candle
+        # Keep only bars whose close time has passed. Blindly dropping the last
+        # row assumed it was always the forming candle; when the Binance mirror
+        # lags (CDN cache) the last row is already CLOSED and we evaluated one
+        # bar late.
+        ts = pd.to_datetime(df["timestamp"], utc=True)
+        df = df[ts + pd.Timedelta(minutes=5) <= end].reset_index(drop=True)
     return df
 
 
@@ -244,7 +253,7 @@ async def _cycle(fetcher: BtcFetcher, ind_engine: IndicatorEngine, tg, last_sign
                 signal_kind="rsi_btc",
                 telegram_sent=telegram_sent,
                 candle_time_utc=ts_str,
-                timestamp=int(dt.datetime.utcnow().timestamp()),
+                timestamp=int(dt.datetime.now(dt.timezone.utc).timestamp()),
             )
             LOG.info("mongo: saved")
         except Exception as e:
@@ -308,6 +317,8 @@ async def run() -> None:
     while not stop.is_set():
         try:
             last = await _cycle(fetcher, ind_engine, tg, last, risk_pct)
+            if _MONGO_OK:
+                await asyncio.to_thread(_flush_pending)   # replay any save that failed earlier
         except Exception as e:
             LOG.exception("cycle error: %s", e)
         try:

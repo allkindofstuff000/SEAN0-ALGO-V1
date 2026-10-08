@@ -49,3 +49,4 @@ state_*.txt
 .bridgespace/
 SEAN-ALGO-V1/
 *.bak_*
+web/static/

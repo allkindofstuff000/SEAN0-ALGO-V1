@@ -8,11 +8,11 @@ status=$(printf '%s' "$h" | python3 -c 'import sys,json; d=json.load(sys.stdin);
 [[ "${status%% *}" == ok ]] || fail+=("health=${status:-none}")
 mo=${status##* }
 pt=$(curl -fsS -m 10 http://127.0.0.1:8000/api/live/price 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("time") or 0)' 2>/dev/null || echo 0)
-now=$(date +%s); reopen=$(date -u -d 'today 22:00' +%s)
-# Grace after the 22:00 UTC reopen (daily settlement break / Sunday): the newest tick is
-# legitimately up to an hour (or a weekend) old until the stream catches up — measure from the reopen.
-(( now >= reopen && pt < reopen )) && pt=$reopen
-age=$(( now - pt ))
+age=$(( $(date +%s) - pt ))
+# Grace after a reopen (daily settlement break / Sunday): the newest tick is legitimately old until
+# the stream catches up. The API reports seconds since the DST-aware New-York reopen — use the smaller.
+sso=$(printf '%s' "$h" | python3 -c 'import sys,json; v=json.load(sys.stdin).get("seconds_since_open"); print(int(v) if v is not None else -1)' 2>/dev/null || echo -1)
+(( sso >= 0 && sso < age )) && age=$sso
 [[ "$mo" == True && $age -gt 300 ]] && fail+=("price stale ${age}s")
 use=$(df --output=pcent / | tail -1 | tr -dc 0-9); (( use > 85 )) && fail+=("disk ${use}%")
 if ((${#fail[@]})); then

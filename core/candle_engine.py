@@ -68,12 +68,10 @@ STALE_PRICE_RECONNECT_ACTIVE_SEC = 180   # active trading hours (mid-session sta
 
 def _stale_reconnect_threshold() -> int:
     """Price-silence tolerated before a forced reconnect — short during active
-    market hours, long across the known settlement break / weekend."""
-    now = _dt.datetime.now(_dt.timezone.utc)
-    wd, h = now.weekday(), now.hour  # Mon=0 … Sun=6
-    weekend = (wd == 4 and h >= 22) or wd == 5 or (wd == 6 and h < 22)
-    settlement = (h == 21)  # daily 21:00-22:00 UTC gold settlement break
-    return STALE_PRICE_RECONNECT_SEC if (weekend or settlement) else STALE_PRICE_RECONNECT_ACTIVE_SEC
+    market hours, long across the settlement break / weekend. The calendar is
+    the DST-aware New-York one (core.market_calendar), not fixed UTC hours."""
+    from core.market_calendar import is_gold_open
+    return STALE_PRICE_RECONNECT_ACTIVE_SEC if is_gold_open() else STALE_PRICE_RECONNECT_SEC
 
 TF_MAX_CANDLES: dict[str, int] = {
     "M1":  11_000,  # 7 days × 1 440  = 10 080 M1 candles
@@ -590,13 +588,10 @@ def _seed_timeframe(
     )
 
     if not raw:
-        # Expected on weekends when market is closed — suppress to debug level
-        import datetime as _dtmod
-        _now = _dtmod.datetime.now(_dtmod.timezone.utc)
-        _wd = _now.weekday()
-        _is_weekend = (_wd == 4 and _now.hour >= 22) or _wd == 5 or (_wd == 6 and _now.hour < 22)
-        if _is_weekend:
-            LOGGER.debug("[%s] No candles (market closed — weekend)", tf)
+        # Expected while the market is closed (weekend / settlement) — debug level
+        from core.market_calendar import is_gold_open as _is_open
+        if not _is_open():
+            LOGGER.debug("[%s] No candles (market closed)", tf)
         else:
             LOGGER.warning("[%s] OANDA returned 0 candles for backfill window", tf)
         return
@@ -839,6 +834,13 @@ class OandaStreamEngine:
                     continue
 
                 if msg.get("type") == "HEARTBEAT":
+                    # A silent feed is EXPECTED while the market is closed — don't
+                    # churn a reconnect every 15 min all weekend (was ~95/day). The
+                    # first heartbeat after the reopen trips the check once and
+                    # forces a fresh session + gap backfill.
+                    from core.market_calendar import is_gold_open as _open_now
+                    if not _open_now():
+                        continue
                     _stale_limit = _stale_reconnect_threshold()
                     if time.time() - last_price_at > _stale_limit:
                         raise TimeoutError(

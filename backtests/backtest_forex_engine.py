@@ -1154,15 +1154,24 @@ def save_backtest_outputs(
 
 
 def _open_hours_for_day(day: pd.Timestamp, start_hour: int, end_hour: int) -> int:
-    """Hours in [start_hour, end_hour) that gold actually trades on that weekday:
-    no 21:00-22:00 settlement hour, nothing from Fri 22:00, nothing Saturday,
-    nothing Sunday before 22:00."""
-    wd = day.weekday()
+    """Hours in [start_hour, end_hour) UTC that gold actually trades on that day,
+    per the DST-aware New-York calendar (settlement break, weekend)."""
+    try:
+        from core.market_calendar import is_gold_open
+    except Exception:  # pragma: no cover — fixed-UTC fallback
+        is_gold_open = None
+    base = pd.Timestamp(day)
+    base = base.tz_localize("UTC") if base.tzinfo is None else base.tz_convert("UTC")
     n = 0
     for h in range(start_hour, end_hour):
-        if h == 21 or wd == 5 or (wd == 4 and h >= 22) or (wd == 6 and h < 22):
-            continue
-        n += 1
+        t = base + pd.Timedelta(hours=h)
+        if is_gold_open is not None:
+            ok = is_gold_open(t)
+        else:
+            wd = t.weekday()
+            ok = not (t.hour == 21 or wd == 5 or (wd == 4 and t.hour >= 22) or (wd == 6 and t.hour < 22))
+        if ok:
+            n += 1
     return n
 
 

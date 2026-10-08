@@ -428,3 +428,65 @@ def load_strategy_started_at(strategy_id: str) -> str | None:
     except Exception as exc:
         LOGGER.error("[MONGO] load_strategy_started_at failed: %s", exc)
         return None
+
+# ── Durable retry for failed signal saves ────────────────────────────────────
+# A bot that has already SENT a signal to Telegram must never lose it from the
+# track record because Mongo hiccupped at that instant. On failure the kwargs
+# are appended to a local JSONL queue and retried every bot cycle.
+import json as _json
+import threading as _threading
+from pathlib import Path as _Path
+
+PENDING_SIGNALS_PATH = _Path(__file__).resolve().parent.parent / "pending_signals.jsonl"
+_PENDING_LOCK = _threading.Lock()
+
+
+def save_live_signal_queued(**kwargs: Any) -> str | None:
+    """save_live_signal(), but queue the document for retry when it fails."""
+    sid = save_live_signal(**kwargs)
+    if sid is not None:
+        return sid
+    try:
+        kwargs["_queued_at"] = datetime.now(timezone.utc).isoformat()
+        with _PENDING_LOCK:
+            with open(PENDING_SIGNALS_PATH, "a", encoding="utf-8") as fh:
+                fh.write(_json.dumps(kwargs, default=str) + "\n")
+        LOGGER.warning("[MONGO] signal save failed — queued for retry (%s)", PENDING_SIGNALS_PATH.name)
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.error("[MONGO] could not queue failed signal: %s", exc)
+    return None
+
+
+def flush_pending_signals(max_items: int = 100) -> int:
+    """Retry queued signal saves. Returns how many were persisted this call."""
+    if not PENDING_SIGNALS_PATH.exists():
+        return 0
+    with _PENDING_LOCK:
+        try:
+            lines = [ln for ln in PENDING_SIGNALS_PATH.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.error("[MONGO] pending queue unreadable: %s", exc)
+            return 0
+        if not lines:
+            PENDING_SIGNALS_PATH.unlink(missing_ok=True)
+            return 0
+        kept: list[str] = []
+        saved = 0
+        for ln in lines[:max_items]:
+            try:
+                kw = _json.loads(ln)
+                kw.pop("_queued_at", None)
+                if save_live_signal(**kw) is not None:
+                    saved += 1
+                    continue
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.error("[MONGO] pending signal replay failed: %s", exc)
+            kept.append(ln)
+        kept.extend(lines[max_items:])
+        if kept:
+            PENDING_SIGNALS_PATH.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        else:
+            PENDING_SIGNALS_PATH.unlink(missing_ok=True)
+    if saved:
+        LOGGER.info("[MONGO] replayed %d queued signal(s); %d still pending", saved, len(kept))
+    return saved

@@ -38,13 +38,17 @@ except Exception:  # pragma: no cover
     TelegramNotifier = None  # type: ignore
 
 try:
-    from core.mongo_store import save_live_signal as _save_live_signal
+    from core.mongo_store import save_live_signal_queued as _save_live_signal
+    from core.mongo_store import flush_pending_signals as _flush_pending
     _MONGO_OK = True
 except Exception:  # pragma: no cover
     _MONGO_OK = False
 
     def _save_live_signal(**_):
         return None
+
+    def _flush_pending():
+        return 0
 
 
 ROOT = Path(__file__).resolve().parent
@@ -281,6 +285,8 @@ async def run() -> None:
     while not stop.is_set():
         try:
             last = await _cycle(fetcher, tg, last)
+            if _MONGO_OK:
+                await asyncio.to_thread(_flush_pending)   # replay any save that failed earlier
         except OandaAuthError as e:
             # Transient 401s around the 21:00 break / 22:00 reopen — skip, retry next poll.
             LOG.warning("cycle skipped (OANDA auth transient): %s", e)

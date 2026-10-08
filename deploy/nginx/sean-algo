@@ -5,6 +5,13 @@ server {
 
     client_max_body_size 10m;
 
+    # Compress the dashboard bundle + API JSON (SSE text/event-stream is NOT listed, so it stays untouched).
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_comp_level 5;
+    gzip_types text/css application/javascript text/javascript application/json image/svg+xml text/plain;
+
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $connection_upgrade;
