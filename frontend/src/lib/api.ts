@@ -59,6 +59,8 @@ export type BotStatus = {
   rsiEma: { running: boolean; pid: number | null; startedAt: string | null };
   vwapSt: { running: boolean; pid: number | null; startedAt: string | null };
   btcRsiEma: { running: boolean; pid: number | null; startedAt: string | null };
+  ethRsiEma: { running: boolean; pid: number | null; startedAt: string | null };
+  solRsiEma: { running: boolean; pid: number | null; startedAt: string | null };
   macdGold: { running: boolean; pid: number | null; startedAt: string | null };
   rsiEth: Record<string, any>;
   anyRunning: boolean;
@@ -188,6 +190,26 @@ export type LiveSignal = {
   marked_at?: string | null;
 };
 
+// ── Crypto pairs (BTC / ETH / SOL) — one registry for charts, bots and pages ─
+export type CryptoKey = "BTC" | "ETH" | "SOL";
+export type BotId = "rsi-ema" | "vwap-st" | "btc-rsi-ema" | "eth-rsi-ema" | "sol-rsi-ema" | "macd-gold";
+export type CryptoSpec = {
+  key: CryptoKey;
+  display: string; // BTCUSD
+  pair: string; // BTC/USD
+  name: string;
+  binance: string; // BTCUSDT
+  strategyTag: string; // Mongo tag on signals + backtests
+  botId: BotId; // /api/bot/<botId>/start|stop
+  botKey: "btcRsiEma" | "ethRsiEma" | "solRsiEma"; // key inside /api/bot/status
+};
+export const CRYPTO_SYMBOLS: CryptoSpec[] = [
+  { key: "BTC", display: "BTCUSD", pair: "BTC/USD", name: "Bitcoin", binance: "BTCUSDT", strategyTag: "rsi-btc", botId: "btc-rsi-ema", botKey: "btcRsiEma" },
+  { key: "ETH", display: "ETHUSD", pair: "ETH/USD", name: "Ethereum", binance: "ETHUSDT", strategyTag: "rsi-eth", botId: "eth-rsi-ema", botKey: "ethRsiEma" },
+  { key: "SOL", display: "SOLUSD", pair: "SOL/USD", name: "Solana", binance: "SOLUSDT", strategyTag: "rsi-sol", botId: "sol-rsi-ema", botKey: "solRsiEma" },
+];
+export const cryptoSpec = (key: CryptoKey): CryptoSpec => CRYPTO_SYMBOLS.find((s) => s.key === key) ?? CRYPTO_SYMBOLS[0];
+
 // ── Endpoints ────────────────────────────────────────────────────────────────
 export const Api = {
   candles: (tf: string, count = 240) =>
@@ -203,9 +225,9 @@ export const Api = {
   runRsiBacktest: (p: RsiBacktestParams) => apiPost<RsiBacktestResult>("/backtest", p),
   runVwapStBacktest: (p: VwapStBacktestParams) => apiPost<VwapStBacktestResult>("/api/vwap-st/backtest", p),
   liveSignals: (limit = 100) => apiGet<{ signals: LiveSignal[]; count: number }>(`/signals?limit=${limit}`),
-  startBot: (strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema" | "macd-gold") =>
+  startBot: (strategy: BotId) =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/start`),
-  stopBot: (strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema" | "macd-gold") =>
+  stopBot: (strategy: BotId) =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/stop`),
 
   // ── BTC RSI EMA (Binance data mirror) ──────────────────────────────────────
@@ -215,6 +237,15 @@ export const Api = {
     ),
   btcLivePrice: () => apiGet<LivePrice>("/api/btc/price"),
   runBtcBacktest: (p: RsiBacktestParams) => apiPost<RsiBacktestResult>("/api/btc/backtest", p),
+
+  // ── Any crypto pair (BTC / ETH / SOL): Coinbase live display, Binance history ──
+  cryptoCandles: (symbol: CryptoKey, tf: string, count = 240) =>
+    apiGet<{ candles: Candle[]; granularity: string; source: string }>(
+      `/api/crypto/${symbol}/candles/${tf}?count=${count}`,
+    ),
+  cryptoLivePrice: (symbol: CryptoKey) => apiGet<LivePrice>(`/api/crypto/${symbol}/price`),
+  runCryptoBacktest: (symbol: CryptoKey, p: RsiBacktestParams) =>
+    apiPost<RsiBacktestResult>(`/api/crypto/${symbol}/backtest`, p),
 
   // ── Gold MACD day-trade (OANDA H1) ─────────────────────────────────────────
   runMacdGoldBacktest: (p: RsiBacktestParams) =>
@@ -235,6 +266,25 @@ export function openCandleStream(
   onError?: (e: Event) => void,
 ): EventSource {
   const es = new EventSource(apiUrl(`/api/stream/${tf}`));
+  es.onmessage = (m) => {
+    try {
+      onEvent(JSON.parse(m.data));
+    } catch {
+      /* ignore malformed */
+    }
+  };
+  if (onError) es.onerror = onError;
+  return es;
+}
+
+// Any crypto pair's live candle stream (polling SSE — /api/crypto/{symbol}/stream)
+export function openCryptoCandleStream(
+  symbol: CryptoKey,
+  tf: string,
+  onEvent: (e: StreamEvent) => void,
+  onError?: (e: Event) => void,
+): EventSource {
+  const es = new EventSource(apiUrl(`/api/crypto/${symbol}/stream/${tf}`));
   es.onmessage = (m) => {
     try {
       onEvent(JSON.parse(m.data));

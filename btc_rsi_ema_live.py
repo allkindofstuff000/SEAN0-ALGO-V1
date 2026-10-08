@@ -1,4 +1,8 @@
-"""BTC RSI EMA live signal bot (24/7 crypto).
+"""Crypto RSI EMA live signal bot (24/7) — BTC, ETH or SOL, chosen by env CRYPTO_SYMBOL.
+
+Runs as `btc-rsi-ema.service` (BTC, default) and as the systemd template
+`crypto-rsi-ema@{eth,sol}.service` (Environment=CRYPTO_SYMBOL=%i). Everything
+below — feed, state file, Telegram text, Mongo tags — follows the symbol.
 
 Polls BTCUSDT M5 candles from the Binance data mirror every 60s, evaluates the
 LAST CLOSED bar with the EXACT XAU RSI EMA signal engine
@@ -27,7 +31,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from backtests import backtest_forex_engine as engine
-from core.btc_fetcher import BtcFetcher
+from core.btc_fetcher import BtcFetcher, resolve_crypto
 from core.indicator_engine import IndicatorEngine
 from core.signal_guard import check_signal
 
@@ -53,7 +57,13 @@ except Exception:  # pragma: no cover
 
 
 ROOT = Path(__file__).resolve().parent
-STATE_PATH = ROOT / "state_btc_rsi_ema.txt"
+# Which crypto this process trades (BTC default keeps the original unit unchanged).
+CRYPTO = resolve_crypto(os.getenv("CRYPTO_SYMBOL", "BTC"))
+KEY = CRYPTO["key"]                       # "BTC" | "ETH" | "SOL"
+DISPLAY_SYMBOL = CRYPTO["display"]        # "ETHUSD"
+PAIR = CRYPTO["pair"]                     # "ETH/USD"
+STRATEGY_TAG = f"rsi-{KEY.lower()}"       # Mongo strategy tag (rsi-btc stays as before)
+STATE_PATH = ROOT / f"state_{KEY.lower()}_rsi_ema.txt"   # state_btc_rsi_ema.txt for BTC
 POLL_SECS = 30   # detect a just-closed M5 bar within ~30s (was 60s)
 HISTORY_DAYS = 12   # M5 history per cycle — enough for the M15 EMA200 to converge
 
@@ -64,8 +74,8 @@ SL_ATR = 1.5
 TP_ATR = 1.5
 
 # Risk guards (env-overridable)
-MAX_SIGNALS_PER_DAY = int(os.getenv("BTC_MAX_SIGNALS_PER_DAY", "8"))
-COOLDOWN_BARS = int(os.getenv("BTC_COOLDOWN_BARS", "3"))
+MAX_SIGNALS_PER_DAY = int(os.getenv(f"{KEY}_MAX_SIGNALS_PER_DAY", os.getenv("BTC_MAX_SIGNALS_PER_DAY", "8")))
+COOLDOWN_BARS = int(os.getenv(f"{KEY}_COOLDOWN_BARS", os.getenv("BTC_COOLDOWN_BARS", "3")))
 _RISK: dict = {"day": None, "count": 0, "last_fired_ts": None}
 
 # ── Session filter: OFF (removed 2026-10-08 at the user's request — fire 24/7) ─
@@ -73,10 +83,10 @@ _RISK: dict = {"day": None, "count": 0, "last_fired_ts": None}
 # overlapping 45-day windows (PF 1.40-1.58, beat 24/7 in all three) and ran live
 # from 2026-09-06 to 2026-10-08. The user chose more signals over that edge.
 # Re-enable any time with env BTC_SESSION_UTC="12,18" (no code change needed).
-_sess = os.getenv("BTC_SESSION_UTC", "0,24").split(",")
+_sess = os.getenv(f"{KEY}_SESSION_UTC", os.getenv("BTC_SESSION_UTC", "0,24")).split(",")
 SESSION_UTC_START, SESSION_UTC_END = int(_sess[0]), int(_sess[1])
 
-LOG = logging.getLogger("btc-rsi-ema.live")
+LOG = logging.getLogger(f"{KEY.lower()}-rsi-ema.live")
 
 
 def _load_last_signal_ts() -> str | None:
@@ -102,8 +112,8 @@ def _format_message(direction: str, entry: float, sl: float, tp: float, atr: flo
     # Dhaka (UTC+6), not the raw UTC open, so the timing reads right on your clock.
     bd = (pd.Timestamp(ts) + pd.Timedelta(minutes=5, hours=6)).strftime("%Y-%m-%d %H:%M")
     return (
-        f"📊 *RSI EMA — BTC/USD* — {arrow}\n"
-        f"Symbol: BTCUSD  ·  M5  ·  Binance\n"
+        f"📊 *RSI EMA — {PAIR}* — {arrow}\n"
+        f"Symbol: {DISPLAY_SYMBOL}  ·  M5  ·  Binance\n"
         f"🕒 Signal (BD): `{bd}`  ·  enter now\n"
         f"Entry: `{entry:.2f}`\n"
         f"SL:    `{sl:.2f}`\n"
@@ -232,7 +242,7 @@ async def _cycle(fetcher: BtcFetcher, ind_engine: IndicatorEngine, tg, last_sign
         try:
             await asyncio.to_thread(
                 _save_live_signal,
-                symbol="BTCUSD",
+                symbol=DISPLAY_SYMBOL,
                 direction=direction,
                 entry_price=entry,
                 stop_loss=sl,
@@ -248,9 +258,9 @@ async def _cycle(fetcher: BtcFetcher, ind_engine: IndicatorEngine, tg, last_sign
                 rsi_filter=True,
                 atr_expansion=True,
                 reason="rsi_ema_breakout",
-                strategy="rsi-btc",
-                strategyName="BTC RSI EMA",
-                signal_kind="rsi_btc",
+                strategy=STRATEGY_TAG,
+                strategyName=f"{KEY} RSI EMA",
+                signal_kind=f"rsi_{KEY.lower()}",
                 telegram_sent=telegram_sent,
                 candle_time_utc=ts_str,
                 timestamp=int(dt.datetime.now(dt.timezone.utc).timestamp()),
@@ -274,15 +284,15 @@ async def run() -> None:
     load_dotenv(ROOT / ".env")
 
     global MAX_SIGNALS_PER_DAY, COOLDOWN_BARS
-    MAX_SIGNALS_PER_DAY = int(os.getenv("BTC_MAX_SIGNALS_PER_DAY", str(MAX_SIGNALS_PER_DAY)))
-    COOLDOWN_BARS = int(os.getenv("BTC_COOLDOWN_BARS", str(COOLDOWN_BARS)))
-    risk_pct = int(float(os.getenv("BTC_RISK_PCT", "2")))
+    MAX_SIGNALS_PER_DAY = int(os.getenv(f"{KEY}_MAX_SIGNALS_PER_DAY", os.getenv("BTC_MAX_SIGNALS_PER_DAY", str(MAX_SIGNALS_PER_DAY))))
+    COOLDOWN_BARS = int(os.getenv(f"{KEY}_COOLDOWN_BARS", os.getenv("BTC_COOLDOWN_BARS", str(COOLDOWN_BARS))))
+    risk_pct = int(float(os.getenv(f"{KEY}_RISK_PCT", os.getenv("BTC_RISK_PCT", "2"))))
 
     # RSI EMA strategy config on the engine module (this process only).
     engine.STOP_LOSS_ATR_MULTIPLIER = SL_ATR
     engine.TAKE_PROFIT_ATR_MULTIPLIER = TP_ATR
 
-    fetcher = BtcFetcher()
+    fetcher = BtcFetcher(KEY)
     ind_engine = IndicatorEngine()
 
     tg = None
@@ -299,8 +309,8 @@ async def run() -> None:
         LOG.warning("telegram module unavailable -- running signal-silent")
 
     LOG.info(
-        "started; BTCUSD 24/7; RSI EMA SL %.1fx / TP %.1fx ATR (RR 1:1); poll %ds; history %dd",
-        SL_ATR, TP_ATR, POLL_SECS, HISTORY_DAYS,
+        "started; %s 24/7 (%s via Binance mirror); RSI EMA SL %.1fx / TP %.1fx ATR (RR 1:1); poll %ds; history %dd",
+        DISPLAY_SYMBOL, CRYPTO["binance"], SL_ATR, TP_ATR, POLL_SECS, HISTORY_DAYS,
     )
 
     last = _load_last_signal_ts()

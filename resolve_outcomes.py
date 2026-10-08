@@ -94,7 +94,16 @@ def _sym(s: dict) -> str:
 
 
 def _is_crypto(s: dict) -> bool:
-    return any(x in _sym(s) for x in ("BTC", "ETH", "CRYPTO"))
+    return any(x in _sym(s) for x in ("BTC", "ETH", "SOL", "CRYPTO"))
+
+
+def _crypto_key(s: dict) -> str | None:
+    """'BTCUSD' → 'BTC', 'ETHUSD' → 'ETH', 'SOLUSD' → 'SOL'; None for anything else."""
+    sym = _sym(s)
+    for key in ("BTC", "ETH", "SOL"):
+        if key in sym:
+            return key
+    return None
 
 
 def _market_hours_between(start: "pd.Timestamp", end: "pd.Timestamp", crypto: bool) -> float:
@@ -359,10 +368,16 @@ def _fetch_xau(fetcher: DataFetcher) -> "pd.DataFrame":
     return fetcher.fetch_oanda("5m", CANDLE_COUNT).sort_values("timestamp").reset_index(drop=True)
 
 
-def _fetch_btc(fetcher: DataFetcher) -> "pd.DataFrame | None":
-    if not _BTC_OK:
-        return None
-    return BtcFetcher().fetch_klines("5m", 600, closed_only=True).sort_values("timestamp").reset_index(drop=True)
+def _fetch_crypto(key: str):
+    """Binance-mirror M5 fetcher for one crypto key (BTC / ETH / SOL)."""
+    def _fetch(_fetcher: DataFetcher) -> "pd.DataFrame | None":
+        if not _BTC_OK:
+            return None
+        return BtcFetcher(key).fetch_klines("5m", 600, closed_only=True).sort_values("timestamp").reset_index(drop=True)
+    return _fetch
+
+
+_fetch_btc = _fetch_crypto("BTC")  # kept for callers/tests that import it
 
 
 def resolve_once(fetcher: DataFetcher) -> int:
@@ -378,8 +393,8 @@ def resolve_once(fetcher: DataFetcher) -> int:
         signals = [s for s in load_live_signals(limit=500) if not s.get("outcome")]
     now = pd.Timestamp.now(tz="UTC")
 
-    # Group by feed (XAU = OANDA M5, BTC = Binance mirror M5; ETH/other crypto has
-    # no resolver feed and is skipped) and by state (open vs aged-out).
+    # Group by feed (XAU = OANDA M5; BTC / ETH / SOL = Binance mirror M5 for that
+    # pair; any other crypto has no resolver feed and is skipped) and by state.
     groups: dict[tuple[str, str], list[dict]] = {}
     for s in signals:
         c = _classify(s, now)
@@ -387,8 +402,9 @@ def resolve_once(fetcher: DataFetcher) -> int:
             continue
         state, age = c
         s["_age_h"] = age
-        if "BTC" in _sym(s):
-            feed = "BTC"
+        key = _crypto_key(s)
+        if key is not None:
+            feed = key
         elif _is_crypto(s):
             continue
         else:
@@ -400,7 +416,8 @@ def resolve_once(fetcher: DataFetcher) -> int:
         return 0
 
     total = 0
-    for feed, fetch in (("XAU", _fetch_xau), ("BTC", _fetch_btc)):
+    feeds = [("XAU", _fetch_xau)] + [(k, _fetch_crypto(k)) for k in ("BTC", "ETH", "SOL")]
+    for feed, fetch in feeds:
         open_sigs = groups.get((feed, "open"), [])
         expired = groups.get((feed, "expired"), [])
         if not open_sigs and not expired:

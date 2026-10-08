@@ -1,4 +1,4 @@
-/var/log/vwap-st.log /var/log/btc-rsi-ema.log /var/log/macd-gold.log /var/log/signal-resolver.log /var/log/sean0algo-backup.log /opt/sean0algo/logs/decision_trace.log /opt/sean0algo/decision_trace.log {
+/var/log/vwap-st.log /var/log/btc-rsi-ema.log /var/log/crypto-rsi-ema-*.log /var/log/macd-gold.log /var/log/signal-resolver.log /var/log/sean0algo-backup.log /opt/sean0algo/logs/decision_trace.log /opt/sean0algo/decision_trace.log {
     su root syslog
     daily
     rotate 14

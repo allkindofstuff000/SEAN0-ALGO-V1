@@ -4,16 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useBtcCandles, useBtcLivePrice, useRunBtcBacktest, useLiveSignals, useBacktestHistory, useBotStatus } from "@/hooks/use-trading-data";
+import { useCryptoCandles, useCryptoLivePrice, useRunCryptoBacktest, useLiveSignals, useBacktestHistory, useBotStatus } from "@/hooks/use-trading-data";
 import { Fragment, useMemo, useState } from "react";
-import { Play, BarChart2, History, TrendingUp, Send, Clock, Bitcoin } from "lucide-react";
+import { Play, BarChart2, History, TrendingUp, Send, Clock, Bitcoin, Coins } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { LiveChart } from "@/components/LiveChart";
 import { BacktestResults } from "@/components/BacktestResults";
 import { WalkForwardResults } from "@/components/WalkForwardResults";
 import { SignalDetail } from "@/components/SignalDetail";
 import { computeIndicators } from "@/lib/indicators";
-import { Api, openBtcCandleStream, type RsiBacktestResult } from "@/lib/api";
+import { Api, openCryptoCandleStream, cryptoSpec, type CryptoKey, type RsiBacktestResult } from "@/lib/api";
 import { fmtLocal, TZ_LABEL } from "@/lib/tz";
 import { splitWindow } from "@/lib/walkforward";
 
@@ -47,7 +47,11 @@ function signalPnl(s: {
   return { pips, r };
 }
 
-export default function BtcRsiEma() {
+// One page for every crypto RSI EMA bot: BTC (default), ETH and SOL share the
+// same engine, endpoints and layout — only the symbol changes.
+export default function BtcRsiEma({ symbolKey = "BTC" }: { symbolKey?: CryptoKey }) {
+  const sym = symbolKey;
+  const spec = cryptoSpec(sym);
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("chart");
   const [activeTF, setActiveTF] = useState("5M");
@@ -67,15 +71,15 @@ export default function BtcRsiEma() {
   const [loadingReport, setLoadingReport] = useState<string | null>(null);
 
   const tf = TF_MAP[activeTF];
-  const { data: candleData } = useBtcCandles(tf, 240);
-  const { data: livePrice } = useBtcLivePrice();
+  const { data: candleData } = useCryptoCandles(sym, tf, 240);
+  const { data: livePrice } = useCryptoLivePrice(sym);
   const { data: signalsData } = useLiveSignals(100);
   const { data: history } = useBacktestHistory();
-  const runBacktest = useRunBtcBacktest();
+  const runBacktest = useRunCryptoBacktest(sym);
 
   // BTC RSI EMA live bot status (start/stop lives on the Live Bot overview page)
   const { data: botStatus } = useBotStatus();
-  const btcRunning = !!botStatus?.btcRsiEma?.running;
+  const btcRunning = !!(botStatus as any)?.[spec.botKey]?.running;
 
   const openReport = async (id: string) => {
     setLoadingReport(id);
@@ -92,12 +96,12 @@ export default function BtcRsiEma() {
   };
 
   // BTC RSI EMA backtests only
-  const btcReports = (history?.reports || []).filter((r) => r.params?.strategy === "rsi-btc" && r.metrics?.total_trades != null);
+  const btcReports = (history?.reports || []).filter((r) => r.params?.strategy === spec.strategyTag && r.metrics?.total_trades != null);
 
   // BTC live signals only (there is no live BTC bot yet, so this is normally empty)
   const btcSignals = (signalsData?.signals || []).filter((s) => {
     const blob = `${s.symbol || ""} ${s.strategy || ""} ${s.strategyName || ""} ${s.signal_kind || ""}`.toLowerCase();
-    return blob.includes("btc");
+    return blob.includes(spec.strategyTag) || blob.includes(spec.display.toLowerCase());
   });
   const sigResolved = btcSignals.filter((s) => s.outcome === "WIN" || s.outcome === "LOSS");
   const sigWins = sigResolved.filter((s) => s.outcome === "WIN").length;
@@ -141,7 +145,7 @@ export default function BtcRsiEma() {
         setRanBalance(bal);
         const m = res.metrics;
         toast({
-          title: "BTC Backtest Complete",
+          title: `${sym} Backtest Complete`,
           description: `${m.total_trades} trades · ${m.win_rate.toFixed(1)}% win · final $${m.ending_balance.toFixed(2)}`,
         });
       },
@@ -158,9 +162,9 @@ export default function BtcRsiEma() {
     setWfRunning(true);
     setWf(null);
     try {
-      const train = await Api.runBtcBacktest(btcParams(startDate, split));
+      const train = await Api.runCryptoBacktest(sym, btcParams(startDate, split));
       if (train.error) throw new Error(train.error);
-      const test = await Api.runBtcBacktest(btcParams(split, endDate));
+      const test = await Api.runCryptoBacktest(sym, btcParams(split, endDate));
       if (test.error) throw new Error(test.error);
       setWf({ train, test, split });
       toast({ title: "Walk-Forward Complete", description: `Train ${startDate}→${split} · Test ${split}→${endDate}` });
@@ -192,7 +196,7 @@ export default function BtcRsiEma() {
       <div className="px-4 py-2 border-b border-border/30 shrink-0 flex items-center gap-2 flex-wrap">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-bold bg-accent/10 border-accent/20 text-accent">
           <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-          BTCUSD · Crypto · <span className="text-accent">24/7 Open</span>
+          {spec.display} · Crypto · <span className="text-accent">24/7 Open</span>
         </div>
         <span className="text-[11px] text-muted-foreground hidden sm:inline">Binance data · session filter off (crypto trades around the clock)</span>
       </div>
@@ -201,8 +205,8 @@ export default function BtcRsiEma() {
       <div className="mx-4 mt-3 rounded-lg border border-border bg-card px-5 py-3 flex items-center justify-between shrink-0">
         <div>
           <div className="flex items-center gap-2">
-            <Bitcoin className="w-4 h-4 text-primary" />
-            <span className="font-bold text-lg tracking-tight">BTC/USD</span>
+            {sym === "BTC" ? <Bitcoin className="w-4 h-4 text-primary" /> : <Coins className="w-4 h-4 text-primary" />}
+            <span className="font-bold text-lg tracking-tight">{spec.pair}</span>
             {btcRunning && <Badge className="bg-accent/20 text-accent border-accent/40 text-[10px] font-bold px-2 animate-pulse">LIVE</Badge>}
             <Badge className="bg-primary/20 text-primary border-primary/40 text-[10px] font-bold px-2">RSI EMA</Badge>
           </div>
@@ -231,7 +235,7 @@ export default function BtcRsiEma() {
         {activeTab === "chart" && (
           <div className="h-full min-h-[400px] flex flex-col rounded-lg border border-border bg-[#131722] overflow-hidden">
             <div className="flex items-center gap-3 px-3 py-2 border-b border-[#2A2E39] bg-[#1E222D] shrink-0">
-              <span className="font-bold text-white text-sm">BTCUSD</span>
+              <span className="font-bold text-white text-sm">{spec.display}</span>
               <span className={`text-xs font-mono ${changePct >= 0 ? "text-accent" : "text-destructive"}`}>{changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%</span>
               <div className="h-3 w-px bg-[#2A2E39]" />
               <div className="flex items-center gap-1">
@@ -247,7 +251,7 @@ export default function BtcRsiEma() {
               </button>
             </div>
             <div className="flex-1 min-h-0">
-              <LiveChart tf={tf} showEMA={showEma} candlesFn={(t, c) => Api.btcCandles(t, c)} streamFn={openBtcCandleStream} />
+              <LiveChart key={sym} tf={tf} showEMA={showEma} candlesFn={(t, c) => Api.cryptoCandles(sym, t, c)} streamFn={(t, on, err) => openCryptoCandleStream(sym, t, on, err)} />
             </div>
           </div>
         )}
@@ -258,7 +262,7 @@ export default function BtcRsiEma() {
             <div className="rounded-lg border border-border bg-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs font-bold uppercase tracking-wider">Backtest Configuration</p>
-                <p className="text-[10px] font-mono text-muted-foreground">BTCUSDT M5/M15 · Binance history · EMA50/200 + RSI breakout · 24/7</p>
+                <p className="text-[10px] font-mono text-muted-foreground">{spec.binance} M5/M15 · Binance history · EMA50/200 + RSI breakout · 24/7</p>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
                 <div className="space-y-1.5">
@@ -300,7 +304,7 @@ export default function BtcRsiEma() {
                   {wfRunning ? "Running walk-forward…" : <><BarChart2 className="w-4 h-4 mr-2" />Walk-Forward</>}
                 </Button>
               </div>
-              <p className="text-[10px] text-muted-foreground mt-2">BTC trades 24/7 — the gold session filter is off. Backtests can take a bit longer over long windows (Binance history is paginated). Walk-Forward splits train/test to catch curve-fitting.</p>
+              <p className="text-[10px] text-muted-foreground mt-2">{sym} trades 24/7 — the gold session filter is off. Backtests can take a bit longer over long windows (Binance history is paginated). Walk-Forward splits train/test to catch curve-fitting.</p>
             </div>
 
             {wf && <WalkForwardResults train={wf.train} test={wf.test} startBalance={balance} splitDate={wf.split} />}
@@ -308,7 +312,7 @@ export default function BtcRsiEma() {
             {runBacktest.isPending ? (
               <div className="rounded-lg border border-border bg-card p-12 text-center">
                 <div className="inline-block w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3" />
-                <p className="text-xs text-muted-foreground">Running RSI EMA over BTCUSDT history…</p>
+                <p className="text-xs text-muted-foreground">Running RSI EMA over {spec.binance} history…</p>
               </div>
             ) : result ? (
               <BacktestResults result={result} startBalance={ranBalance} />
@@ -316,7 +320,7 @@ export default function BtcRsiEma() {
               <div className="rounded-lg border border-border border-dashed bg-card/50 p-12 text-center">
                 <BarChart2 className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
                 <p className="font-bold text-sm uppercase tracking-wider">No backtest yet</p>
-                <p className="text-xs text-muted-foreground mt-1">Set your window and risk, then click Run Backtest to validate the RSI EMA edge on BTC.</p>
+                <p className="text-xs text-muted-foreground mt-1">Set your window and risk, then click Run Backtest to validate the RSI EMA edge on {sym}.</p>
               </div>
             ) : null}
 
@@ -324,7 +328,7 @@ export default function BtcRsiEma() {
             <div className="rounded-lg border border-border bg-card overflow-hidden">
               <div className="px-4 py-3 border-b border-border bg-secondary/20 flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                <p className="text-xs font-bold uppercase tracking-wider">BTC Backtest History</p>
+                <p className="text-xs font-bold uppercase tracking-wider">{sym} Backtest History</p>
                 <p className="text-[10px] text-muted-foreground font-mono ml-1">click a run to reopen its full report</p>
               </div>
               <div className="overflow-auto max-h-[360px]">
@@ -338,7 +342,7 @@ export default function BtcRsiEma() {
                   </TableHeader>
                   <TableBody>
                     {btcReports.length === 0 ? (
-                      <TableRow><TableCell colSpan={8} className="text-center py-8 text-xs text-muted-foreground">No BTC backtests yet. Run one above — results are stored automatically.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={8} className="text-center py-8 text-xs text-muted-foreground">No {sym} backtests yet. Run one above — results are stored automatically.</TableCell></TableRow>
                     ) : (
                       btcReports.map((r) => {
                         const m = r.metrics;
@@ -372,7 +376,7 @@ export default function BtcRsiEma() {
               <div className="flex items-center gap-2">
                 <Send className="w-3.5 h-3.5 text-muted-foreground" />
                 <p className="text-xs font-bold uppercase tracking-wider">Signal History</p>
-                <p className="text-[10px] text-muted-foreground font-mono ml-1 hidden md:inline">BTC RSI EMA fired signals · auto-marked WIN/LOSS</p>
+                <p className="text-[10px] text-muted-foreground font-mono ml-1 hidden md:inline">{sym} RSI EMA fired signals · auto-marked WIN/LOSS</p>
               </div>
               <div className="flex items-center gap-3 text-[11px] font-mono">
                 <span className="text-accent font-bold">{sigWins}W</span>
@@ -394,7 +398,7 @@ export default function BtcRsiEma() {
                 </TableHeader>
                 <TableBody>
                   {btcSignals.length === 0 ? (
-                    <TableRow><TableCell colSpan={11} className="text-center py-10 text-xs text-muted-foreground">No BTC signals yet. The BTC live bot deploys next — until then, validate the edge in the Backtest tab.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={11} className="text-center py-10 text-xs text-muted-foreground">No {sym} signals yet. They appear here the moment the {sym} bot fires one.</TableCell></TableRow>
                   ) : (
                     btcSignals.map((s) => {
                       const isBuy = (s.direction || "").toUpperCase() === "BUY";

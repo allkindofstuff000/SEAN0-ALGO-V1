@@ -13,6 +13,8 @@ tar --ignore-failed-read -czf "$DIR/config_$TS.tgz" -C / \
   etc/systemd/system/sean0algo.service.d etc/systemd/system/sean-algo.service.d etc/systemd/system/vwap-st.service.d \
   etc/systemd/system/btc-rsi-ema.service.d etc/systemd/system/macd-gold.service.d etc/systemd/system/signal-resolver.service.d \
   etc/systemd/system/alert-telegram@.service etc/systemd/system/sean-healthcheck.service etc/systemd/system/sean-healthcheck.timer \
+  etc/systemd/system/crypto-rsi-ema@.service etc/systemd/system/crypto-rsi-ema@.service.d \
+  opt/sean0algo/state_eth_rsi_ema.txt opt/sean0algo/state_sol_rsi_ema.txt \
   etc/cron.d/sean0algo-backup etc/needrestart/conf.d/sean0algo.conf opt/sean0algo/ops \
   etc/nginx/sites-available/sean-algo etc/logrotate.d/sean0algo 2>/dev/null
 find "$DIR" -type f -mtime +14 -delete

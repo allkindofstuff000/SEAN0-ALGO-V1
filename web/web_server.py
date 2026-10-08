@@ -101,13 +101,24 @@ except Exception as _macd_gold_exc:
 # ── BTC RSI EMA strategy (Binance data mirror; reuses the XAU RSI EMA engine) ──
 try:
     from strategies.rsi_btc.backtester import run_backtest as _btc_run_backtest
-    from core.btc_fetcher import BtcFetcher as _BtcFetcher
-    _btc_fetcher = _BtcFetcher()
+    from core.btc_fetcher import BtcFetcher as _BtcFetcher, CRYPTO_SYMBOLS as _CRYPTO_SYMBOLS, resolve_crypto as _resolve_crypto
+    # One fetcher per crypto pair (BTC / ETH / SOL). `_btc_fetcher` stays as the BTC alias.
+    _crypto_fetchers = {key: _BtcFetcher(key) for key in _CRYPTO_SYMBOLS}
+    _btc_fetcher = _crypto_fetchers["BTC"]
     _BTC_AVAILABLE = True
 except Exception as _btc_exc:
     _BTC_AVAILABLE = False
     _btc_fetcher = None
+    _crypto_fetchers = {}
+    _CRYPTO_SYMBOLS = {}
     logging.getLogger("dashboard").warning("[BTC] import failed: %s", _btc_exc)
+
+
+def _crypto_key_or_404(symbol: str) -> str:
+    try:
+        return _resolve_crypto(symbol)["key"]
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 # ── Binance ETH engine (isolated — does NOT touch OANDA code) ─────────────────
 try:
@@ -188,6 +199,15 @@ _bot_start_time: float | None = None
 BOT_SERVICE_NAME = os.getenv("BOT_SERVICE_NAME", "").strip()
 VWAP_ST_SERVICE_NAME = os.getenv("VWAP_ST_SERVICE_NAME", "vwap-st").strip()
 BTC_RSI_EMA_SERVICE_NAME = os.getenv("BTC_RSI_EMA_SERVICE_NAME", "btc-rsi-ema").strip()
+# ETH / SOL run the same bot script as systemd template instances (crypto-rsi-ema@<key>).
+ETH_RSI_EMA_SERVICE_NAME = os.getenv("ETH_RSI_EMA_SERVICE_NAME", "crypto-rsi-ema@eth").strip()
+SOL_RSI_EMA_SERVICE_NAME = os.getenv("SOL_RSI_EMA_SERVICE_NAME", "crypto-rsi-ema@sol").strip()
+CRYPTO_BOT_SERVICES: dict[str, tuple[str, str, str]] = {
+    # key -> (systemd unit, bot_state strategy id, human label)
+    "BTC": (BTC_RSI_EMA_SERVICE_NAME, "btc-rsi-ema", "BTC RSI EMA"),
+    "ETH": (ETH_RSI_EMA_SERVICE_NAME, "eth-rsi-ema", "ETH RSI EMA"),
+    "SOL": (SOL_RSI_EMA_SERVICE_NAME, "sol-rsi-ema", "SOL RSI EMA"),
+}
 MACD_GOLD_SERVICE_NAME = os.getenv("MACD_GOLD_SERVICE_NAME", "macd-gold").strip()
 SYSTEMCTL_PATH = shutil.which("systemctl")  # None on Windows / non-systemd hosts
 
@@ -1316,13 +1336,14 @@ def vwap_st_backtest(req: VwapStBacktestRequest) -> dict[str, Any]:
         _backtest_lock.release()
 
 
-# ── BTC RSI EMA (Binance data mirror) ─────────────────────────────────────────
-def _btc_candles_payload(timeframe: str, count: int, *, live_last: bool = True) -> dict[str, Any]:
+# ── Crypto (BTC / ETH / SOL): Coinbase live display + Binance mirror history ──
+def _crypto_candles_payload(key: str, timeframe: str, count: int, *, live_last: bool = True) -> dict[str, Any]:
+    fetcher = _crypto_fetchers[key]
     count = min(max(int(count), 10), 1500)
     # Live chart display uses Coinbase candles (fast). The newest /candles bar
     # still lags a little, so overlay the real-time /ticker onto the in-progress
     # (last) candle's close/high/low — that's what makes the chart tick live.
-    df = _btc_fetcher.fetch_display_candles(timeframe, count + 2)
+    df = fetcher.fetch_display_candles(timeframe, count + 2)
     candles = [
         {
             "time": int(pd.Timestamp(r["timestamp"]).timestamp()),
@@ -1337,7 +1358,7 @@ def _btc_candles_payload(timeframe: str, count: int, *, live_last: bool = True) 
     ]
     if live_last and candles:
         try:
-            spot = float(_btc_fetcher.fetch_spot_price().get("price") or 0)
+            spot = float(fetcher.fetch_spot_price().get("price") or 0)
             if spot > 0:
                 last = candles[-1]
                 last["close"] = spot
@@ -1345,7 +1366,71 @@ def _btc_candles_payload(timeframe: str, count: int, *, live_last: bool = True) 
                 last["low"] = min(last["low"], spot)
         except Exception:  # noqa: BLE001
             pass
-    return {"candles": candles[-count:], "granularity": timeframe.upper(), "source": "coinbase"}
+    return {"candles": candles[-count:], "granularity": timeframe.upper(), "source": "coinbase", "symbol": fetcher.display_symbol}
+
+
+def _btc_candles_payload(timeframe: str, count: int, *, live_last: bool = True) -> dict[str, Any]:
+    return _crypto_candles_payload("BTC", timeframe, count, live_last=live_last)
+
+
+@app.get("/api/crypto/symbols", tags=["crypto"])
+def api_crypto_symbols() -> dict[str, Any]:
+    """The crypto pairs the engine knows (chart feeds + live bots)."""
+    return {
+        "symbols": [
+            {"key": k, **spec, "service": CRYPTO_BOT_SERVICES.get(k, ("", "", ""))[1]}
+            for k, spec in _CRYPTO_SYMBOLS.items()
+        ]
+    }
+
+
+@app.get("/api/crypto/{symbol}/price", tags=["crypto"])
+def api_crypto_price(symbol: str) -> dict[str, Any]:
+    key = _crypto_key_or_404(symbol)
+    if not _BTC_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Crypto data source unavailable.")
+    try:
+        snap = _crypto_fetchers[key].fetch_spot_price()  # Coinbase (fast, matches TradingView)
+        return {
+            "price": float(snap["price"]),
+            "time": int(pd.Timestamp(snap["time"]).timestamp()),
+            "initialized": True,
+            "symbol": _crypto_fetchers[key].display_symbol,
+        }
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"{key} price fetch failed: {exc}") from exc
+
+
+@app.get("/api/crypto/{symbol}/candles/{timeframe}", tags=["crypto"])
+def api_crypto_candles(symbol: str, timeframe: str, count: int = 300) -> dict[str, Any]:
+    key = _crypto_key_or_404(symbol)
+    if not _BTC_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Crypto data source unavailable.")
+    try:
+        return _crypto_candles_payload(key, timeframe, count)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"{key} candles fetch failed: {exc}") from exc
+
+
+@app.get("/api/crypto/{symbol}/stream/{timeframe}", tags=["crypto"])
+async def api_crypto_stream(symbol: str, timeframe: str) -> StreamingResponse:
+    key = _crypto_key_or_404(symbol)
+
+    async def event_gen():
+        while True:
+            try:
+                payload = await asyncio.to_thread(_crypto_candles_payload, key, timeframe, 3)
+                for c in payload["candles"][-2:]:
+                    yield f"data: {_json.dumps({'type': 'candle', 'candle': c})}\n\n"
+            except Exception as exc:  # noqa: BLE001
+                yield f"data: {_json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
+            await asyncio.sleep(2)
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
 
 
 @app.get("/api/btc/price", tags=["btc"])
@@ -1393,9 +1478,8 @@ async def api_btc_stream(timeframe: str) -> StreamingResponse:
     )
 
 
-@app.post("/api/btc/backtest", tags=["btc"])
-def api_btc_backtest(req: BacktestRequest) -> dict[str, Any]:
-    """RSI EMA strategy over BTCUSDT M5 (24/7 — the gold session filter is bypassed)."""
+def _crypto_backtest(key: str, req: BacktestRequest) -> dict[str, Any]:
+    """RSI EMA strategy over a crypto pair's M5 candles (24/7 — no session filter)."""
     if not _BTC_AVAILABLE:
         raise HTTPException(status_code=503, detail="BTC strategy module not available.")
     if not _backtest_lock.acquire(blocking=False):
@@ -1425,6 +1509,7 @@ def api_btc_backtest(req: BacktestRequest) -> dict[str, Any]:
         lag_seconds = max(0.0, min(300.0, float(req.detection_lag_seconds or 0.0)))
         try:
             trades_df, metrics, equity_curve = _btc_run_backtest(
+                symbol=key,
                 start_utc=start_utc,
                 end_utc=end_utc,
                 starting_balance=req.starting_balance,
@@ -1446,7 +1531,8 @@ def api_btc_backtest(req: BacktestRequest) -> dict[str, Any]:
         metrics_out = {k: _safe_num(v) for k, v in metrics.items()}
 
         LOGGER.info(
-            "BTC backtest complete  trades=%s  win_rate=%.1f%%  balance=$%.2f",
+            "%s backtest complete  trades=%s  win_rate=%.1f%%  balance=$%.2f",
+            key,
             metrics_out.get("total_trades", 0),
             metrics_out.get("win_rate", 0.0) or 0.0,
             metrics_out.get("ending_balance", 0.0) or 0.0,
@@ -1457,7 +1543,8 @@ def api_btc_backtest(req: BacktestRequest) -> dict[str, Any]:
             trades=trades_out,
             equity_curve=equity_curve,
             params={
-                "strategy": "rsi-btc",
+                "strategy": f"rsi-{key.lower()}",
+                "symbol": key,
                 "start_date": req.start_date,
                 "end_date": req.end_date,
                 "sl_candles": req.sl_candles,
@@ -1475,10 +1562,22 @@ def api_btc_backtest(req: BacktestRequest) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as exc:
-        LOGGER.error("BTC backtest error: %s", exc, exc_info=True)
+        LOGGER.error("%s backtest error: %s", key, exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     finally:
         _backtest_lock.release()
+
+
+@app.post("/api/btc/backtest", tags=["btc"])
+def api_btc_backtest(req: BacktestRequest) -> dict[str, Any]:
+    """RSI EMA backtest on BTC (alias of /api/crypto/BTC/backtest)."""
+    return _crypto_backtest("BTC", req)
+
+
+@app.post("/api/crypto/{symbol}/backtest", tags=["crypto"])
+def api_crypto_backtest(symbol: str, req: BacktestRequest) -> dict[str, Any]:
+    """RSI EMA backtest on BTC / ETH / SOL (M5 + M15 trend, Binance mirror history)."""
+    return _crypto_backtest(_crypto_key_or_404(symbol), req)
 
 
 @app.post("/api/macd-gold/backtest", tags=["macd-gold"])
@@ -1571,6 +1670,40 @@ def api_btc_bot_stop() -> dict[str, Any]:
     return {"status": "stopped", "message": "BTC RSI EMA live bot stopped"}
 
 
+def _crypto_bot_control(key: str, action: str) -> dict[str, Any]:
+    """start/stop a crypto RSI EMA bot (systemd unit per symbol)."""
+    if not SYSTEMCTL_PATH:
+        raise HTTPException(status_code=500, detail="systemctl not available on this host")
+    unit, state_id, label = CRYPTO_BOT_SERVICES[key]
+    result = _run_systemctl_named(unit, action)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip() or f"systemctl {action} failed"
+        raise HTTPException(status_code=500, detail=detail)
+    save_strategy_state(state_id, "running" if action == "start" else "stopped")
+    LOGGER.info("[BOT] %s %s", state_id, "started" if action == "start" else "stopped")
+    return {"status": "started" if action == "start" else "stopped", "message": f"{label} live bot {'started' if action == 'start' else 'stopped'}"}
+
+
+@app.post("/api/bot/eth-rsi-ema/start", tags=["bot"])
+def api_eth_bot_start() -> dict[str, Any]:
+    return _crypto_bot_control("ETH", "start")
+
+
+@app.post("/api/bot/eth-rsi-ema/stop", tags=["bot"])
+def api_eth_bot_stop() -> dict[str, Any]:
+    return _crypto_bot_control("ETH", "stop")
+
+
+@app.post("/api/bot/sol-rsi-ema/start", tags=["bot"])
+def api_sol_bot_start() -> dict[str, Any]:
+    return _crypto_bot_control("SOL", "start")
+
+
+@app.post("/api/bot/sol-rsi-ema/stop", tags=["bot"])
+def api_sol_bot_stop() -> dict[str, Any]:
+    return _crypto_bot_control("SOL", "stop")
+
+
 @app.post("/api/bot/macd-gold/start", tags=["bot"])
 def api_macd_gold_bot_start() -> dict[str, Any]:
     """Start the Gold MACD day-trade bot (systemctl start macd-gold.service)."""
@@ -1615,6 +1748,10 @@ def _compute_bot_status() -> dict[str, Any]:
             svc_names["vwap"] = VWAP_ST_SERVICE_NAME
         if BTC_RSI_EMA_SERVICE_NAME:
             svc_names["btc"] = BTC_RSI_EMA_SERVICE_NAME
+        if ETH_RSI_EMA_SERVICE_NAME:
+            svc_names["eth"] = ETH_RSI_EMA_SERVICE_NAME
+        if SOL_RSI_EMA_SERVICE_NAME:
+            svc_names["sol"] = SOL_RSI_EMA_SERVICE_NAME
         if MACD_GOLD_SERVICE_NAME:
             svc_names["macd"] = MACD_GOLD_SERVICE_NAME
     statuses = _service_status_many(list(svc_names.values())) if svc_names else {}
@@ -1634,6 +1771,8 @@ def _compute_bot_status() -> dict[str, Any]:
 
     vwap_running, vwap_pid = _st("vwap")
     btc_running, btc_pid = _st("btc")
+    eth_running, eth_pid = _st("eth")
+    sol_running, sol_pid = _st("sol")
     macd_running, macd_pid = _st("macd")
 
     market = is_market_open()
@@ -1647,12 +1786,16 @@ def _compute_bot_status() -> dict[str, Any]:
     eth_started = load_strategy_started_at("rsi-eth") if rsi_eth_running else None
     vwap_started = load_strategy_started_at("vwap-st") if vwap_running else None
     btc_started = load_strategy_started_at("btc-rsi-ema") if btc_running else None
+    eth_started = load_strategy_started_at("eth-rsi-ema") if eth_running else None
+    sol_started = load_strategy_started_at("sol-rsi-ema") if sol_running else None
     macd_started = load_strategy_started_at("macd-gold") if macd_running else None
 
     return {
         "rsiEma": {"running": rsi_running, "pid": rsi_pid, "startedAt": rsi_started},
         "vwapSt": {"running": vwap_running, "pid": vwap_pid, "startedAt": vwap_started},
         "btcRsiEma": {"running": btc_running, "pid": btc_pid, "startedAt": btc_started},
+        "ethRsiEma": {"running": eth_running, "pid": eth_pid, "startedAt": eth_started},
+        "solRsiEma": {"running": sol_running, "pid": sol_pid, "startedAt": sol_started},
         "macdGold": {"running": macd_running, "pid": macd_pid, "startedAt": macd_started},
         "rsiEth": {
             "running": rsi_eth_running,
@@ -1664,7 +1807,7 @@ def _compute_bot_status() -> dict[str, Any]:
             "strategy_behavior": rsi_eth_status.get("strategy_behavior"),
             "market_open": rsi_eth_status.get("market_open", True),
         },
-        "anyRunning": rsi_running or rsi_eth_running or vwap_running or btc_running or macd_running,
+        "anyRunning": (rsi_running or rsi_eth_running or vwap_running or btc_running or macd_running) or eth_running or sol_running,
         "market": market,
     }
 
@@ -1707,7 +1850,7 @@ def api_health() -> dict[str, Any]:
     except Exception:
         mongo_ok = False
     status = api_bot_status()  # served from the micro-cache
-    running = sum(1 for k in ("rsiEma", "vwapSt", "btcRsiEma", "macdGold") if (status.get(k) or {}).get("running"))
+    running = sum(1 for k in ("rsiEma", "vwapSt", "btcRsiEma", "ethRsiEma", "solRsiEma", "macdGold") if (status.get(k) or {}).get("running"))
     market_open = bool((status.get("market") or {}).get("open"))
     # Stream liveness: the OANDA price stream can die while the process stays up
     # (it did, for 57h and 33h, while this probe still said "ok"). Report the

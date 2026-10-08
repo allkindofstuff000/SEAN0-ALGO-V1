@@ -1,0 +1,21 @@
+[Unit]
+Description=SEAN ALGO - %I RSI EMA live signal bot (24/7, Binance mirror)
+After=network-online.target mongod.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sean0algo
+Environment=PYTHONPATH=/opt/sean0algo
+# Instance name = crypto symbol key (eth, sol, ...). The bot upper-cases it and
+# resolves the Binance / Coinbase products from core.btc_fetcher.CRYPTO_SYMBOLS.
+Environment=CRYPTO_SYMBOL=%i
+ExecStart=/opt/sean0algo/.venv/bin/python /opt/sean0algo/btc_rsi_ema_live.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/crypto-rsi-ema-%i.log
+StandardError=append:/var/log/crypto-rsi-ema-%i.log
+
+[Install]
+WantedBy=multi-user.target

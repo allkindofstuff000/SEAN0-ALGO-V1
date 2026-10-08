@@ -10,6 +10,7 @@ import RsiEma from "./pages/RsiEma";
 import VwapSt from "./pages/VwapSt";
 import BtcRsiEma from "./pages/BtcRsiEma";
 import MacdGold from "./pages/MacdGold";
+import Charts from "./pages/Charts";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,7 +28,10 @@ function Router() {
       <Route path="/live-bot" component={LiveBot} />
       <Route path="/rsi-ema" component={RsiEma} />
       <Route path="/vwap-st" component={VwapSt} />
-      <Route path="/btc-rsi-ema" component={BtcRsiEma} />
+      <Route path="/charts" component={Charts} />
+      <Route path="/btc-rsi-ema">{() => <BtcRsiEma symbolKey="BTC" />}</Route>
+      <Route path="/eth-rsi-ema">{() => <BtcRsiEma symbolKey="ETH" />}</Route>
+      <Route path="/sol-rsi-ema">{() => <BtcRsiEma symbolKey="SOL" />}</Route>
       <Route path="/macd-gold" component={MacdGold} />
       <Route component={NotFound} />
     </Switch>

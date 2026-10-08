@@ -24,8 +24,25 @@ import pandas as pd
 LOGGER = logging.getLogger(__name__)
 
 BTC_BASE = "https://data-api.binance.vision"
-SYMBOL = "BTCUSDT"
+SYMBOL = "BTCUSDT"          # legacy module defaults (BTC); instances carry their own
 DISPLAY_SYMBOL = "BTCUSD"
+
+# Every crypto pair the engine can trade/display. Key = short symbol used in
+# env (CRYPTO_SYMBOL), API paths (/api/crypto/{key}/...), Mongo tags (rsi-{key}).
+CRYPTO_SYMBOLS: dict[str, dict[str, str]] = {
+    "BTC": {"binance": "BTCUSDT", "coinbase": "BTC-USD", "display": "BTCUSD", "pair": "BTC/USD", "name": "Bitcoin"},
+    "ETH": {"binance": "ETHUSDT", "coinbase": "ETH-USD", "display": "ETHUSD", "pair": "ETH/USD", "name": "Ethereum"},
+    "SOL": {"binance": "SOLUSDT", "coinbase": "SOL-USD", "display": "SOLUSD", "pair": "SOL/USD", "name": "Solana"},
+}
+
+
+def resolve_crypto(symbol: str | None) -> dict[str, str]:
+    """Accept 'BTC', 'btc', 'BTCUSDT', 'BTCUSD', 'BTC-USD', 'BTC/USD' → spec dict (+ 'key')."""
+    raw = (symbol or "BTC").strip().upper().replace("-", "").replace("/", "")
+    for key, spec in CRYPTO_SYMBOLS.items():
+        if raw in (key, spec["binance"], spec["display"]):
+            return {"key": key, **spec}
+    raise ValueError(f"Unsupported crypto symbol: {symbol!r} (known: {', '.join(CRYPTO_SYMBOLS)})")
 
 # Coinbase spot — fast (~0.1s) and real-time, and it matches TradingView's default
 # BTC feed. Used for LIVE DISPLAY only (chart + header price + SSE stream). The
@@ -55,7 +72,12 @@ def _norm_tf(tf: str) -> str:
 class BtcFetcher:
     """Thin, dependency-free BTCUSDT fetcher over the Binance data mirror."""
 
-    def __init__(self, max_retries: int = 4, retry_base_seconds: float = 3.0, timeout: int = 20) -> None:
+    def __init__(self, symbol: str = "BTC", max_retries: int = 4, retry_base_seconds: float = 3.0, timeout: int = 20) -> None:
+        spec = resolve_crypto(symbol)
+        self.key = spec["key"]                     # "BTC" | "ETH" | "SOL"
+        self.symbol = spec["binance"]              # Binance mirror symbol
+        self.coinbase_product = spec["coinbase"]   # Coinbase product id
+        self.display_symbol = spec["display"]      # what the dashboard / Telegram show
         self.max_retries = max_retries
         self.retry_base_seconds = retry_base_seconds
         self.timeout = timeout
@@ -100,7 +122,7 @@ class BtcFetcher:
     def fetch_klines(self, interval: str = "5m", limit: int = 300, closed_only: bool = True) -> pd.DataFrame:
         """Most-recent candles. Drops the still-forming last bar when closed_only."""
         iv = self._interval(interval)
-        raw = self._get("/api/v3/klines", {"symbol": SYMBOL, "interval": iv, "limit": min(1000, int(limit) + 2)})
+        raw = self._get("/api/v3/klines", {"symbol": self.symbol, "interval": iv, "limit": min(1000, int(limit) + 2)})
         df = self._to_frame(raw)
         if df.empty:
             raise RuntimeError("empty_btc_klines")
@@ -116,11 +138,11 @@ class BtcFetcher:
         return df.tail(int(limit)).reset_index(drop=True)
 
     def fetch_live_price(self) -> dict[str, Any]:
-        data = self._get("/api/v3/ticker/price", {"symbol": SYMBOL})
+        data = self._get("/api/v3/ticker/price", {"symbol": self.symbol})
         return {
             "price": float(data["price"]),
             "time": pd.Timestamp.now(tz="UTC").isoformat(),
-            "symbol": DISPLAY_SYMBOL,
+            "symbol": self.display_symbol,
             "initialized": True,
         }
 
@@ -135,11 +157,11 @@ class BtcFetcher:
         """Fast, real-time BTC spot from Coinbase (matches TradingView). Falls back
         to the slower Binance mirror ticker if Coinbase is unreachable."""
         try:
-            data = self._coinbase_get(f"/products/{COINBASE_PRODUCT}/ticker")
+            data = self._coinbase_get(f"/products/{self.coinbase_product}/ticker")
             return {
                 "price": float(data["price"]),
                 "time": pd.Timestamp.now(tz="UTC").isoformat(),
-                "symbol": DISPLAY_SYMBOL,
+                "symbol": self.display_symbol,
                 "initialized": True,
                 "source": "coinbase",
             }
@@ -172,7 +194,7 @@ class BtcFetcher:
             s_iso = pd.to_datetime(s, unit="s", utc=True).isoformat()
             e_iso = pd.to_datetime(e, unit="s", utc=True).isoformat()
             try:
-                return self._coinbase_get(f"/products/{COINBASE_PRODUCT}/candles?granularity={gran}&start={s_iso}&end={e_iso}")
+                return self._coinbase_get(f"/products/{self.coinbase_product}/candles?granularity={gran}&start={s_iso}&end={e_iso}")
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning("coinbase page failed (%s)", exc)
                 return []
@@ -230,7 +252,7 @@ class BtcFetcher:
             try:
                 return self._get(
                     "/api/v3/klines",
-                    {"symbol": SYMBOL, "interval": iv, "startTime": ps, "endTime": pe, "limit": 1000},
+                    {"symbol": self.symbol, "interval": iv, "startTime": ps, "endTime": pe, "limit": 1000},
                 )
             except Exception as exc:  # noqa: BLE001 — one bad page shouldn't kill the run
                 LOGGER.warning("btc page fetch failed (start=%s): %s", ps, exc)

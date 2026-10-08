@@ -48,12 +48,14 @@ def run_backtest(
     max_hold_bars: int | None = None,
     detection_lag_seconds: float = 0.0,
     session_filter: bool = False,
+    symbol: str = "BTC",
 ) -> tuple[pd.DataFrame, dict[str, Any], list[dict[str, Any]]]:
-    """Run the RSI EMA strategy over BTCUSDT M5 candles. Returns (trades_df, metrics, equity_curve)."""
+    """Run the RSI EMA strategy over a crypto pair's M5 candles (BTC / ETH / SOL via the
+    Binance mirror). Returns (trades_df, metrics, equity_curve)."""
     max_hold = engine.DEFAULT_MAX_HOLD if max_hold_bars is None else int(max_hold_bars)
     warmup_start = pd.Timestamp(start_utc) - pd.Timedelta(days=WARMUP_DAYS)
 
-    fetcher = BtcFetcher()
+    fetcher = BtcFetcher(symbol)
     candles_5m = fetcher.fetch_range(warmup_start, pd.Timestamp(end_utc), "5m")
     if candles_5m is None or candles_5m.empty or len(candles_5m) < 250:
         raise RuntimeError(f"insufficient BTC candles ({0 if candles_5m is None else len(candles_5m)})")

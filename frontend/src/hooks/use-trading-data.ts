@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Api, type RsiBacktestParams, type VwapStBacktestParams } from "@/lib/api";
+import { Api, type BotId, type CryptoKey, type RsiBacktestParams, type VwapStBacktestParams } from "@/lib/api";
 
 // ── Live data queries ────────────────────────────────────────────────────────
 export function useCandles(tf: string, count = 240) {
@@ -32,6 +32,33 @@ export function useBtcLivePrice() {
     queryKey: ["btc-live-price"],
     queryFn: Api.btcLivePrice,
     refetchInterval: 3_000,
+  });
+}
+
+// ── Any crypto pair (BTC / ETH / SOL) ─────────────────────────────────────
+export function useCryptoCandles(symbol: CryptoKey, tf: string, count = 240) {
+  return useQuery({
+    queryKey: ["crypto-candles", symbol, tf, count],
+    queryFn: () => Api.cryptoCandles(symbol, tf, count),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useCryptoLivePrice(symbol: CryptoKey) {
+  return useQuery({
+    queryKey: ["crypto-live-price", symbol],
+    queryFn: () => Api.cryptoLivePrice(symbol),
+    refetchInterval: 3_000,
+  });
+}
+
+export function useRunCryptoBacktest(symbol: CryptoKey) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: RsiBacktestParams) => Api.runCryptoBacktest(symbol, p),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["backtest-history"] });
+    },
   });
 }
 
@@ -114,7 +141,7 @@ export function useBotControl() {
       strategy,
     }: {
       action: "START" | "STOP";
-      strategy: "rsi-ema" | "vwap-st" | "btc-rsi-ema" | "macd-gold";
+      strategy: BotId;
     }) => (action === "START" ? Api.startBot(strategy) : Api.stopBot(strategy)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["bot-status"] });

@@ -5,13 +5,17 @@ import { clsx } from "clsx";
 // Strategies grouped by traded pair so the navbar reads as separate sections:
 // XAU / gold strategies on the left, the BTC / crypto strategy in its own
 // section on the right next to the Live Bot overview.
+// All live charts in one workspace (gold + every crypto pair).
+const CHART_ITEMS = [{ href: "/charts", label: "Charts" }];
 const GOLD_ITEMS = [
   { href: "/rsi-ema", label: "RSI EMA" },
   { href: "/vwap-st", label: "VWAP+ST" },
   { href: "/macd-gold", label: "GOLD MACD" },
 ];
 const CRYPTO_ITEMS = [
-  { href: "/btc-rsi-ema", label: "BTC RSI EMA" },
+  { href: "/btc-rsi-ema", label: "BTC" },
+  { href: "/eth-rsi-ema", label: "ETH" },
+  { href: "/sol-rsi-ema", label: "SOL" },
 ];
 
 export function TopNav() {
@@ -34,6 +38,16 @@ export function TopNav() {
             Sean Algo
           </span>
         </div>
+
+        {/* Charts workspace */}
+        <div className="flex items-center gap-1 shrink-0">
+          {CHART_ITEMS.map((item) => (
+            <Link key={item.href} href={item.href} className={linkClass(item.href)}>
+              {item.label}
+            </Link>
+          ))}
+        </div>
+        <span className="h-6 w-px bg-border shrink-0" aria-hidden="true" />
 
         {/* XAU / gold strategies */}
         <nav className="flex items-center gap-1 flex-1 overflow-x-auto no-scrollbar">

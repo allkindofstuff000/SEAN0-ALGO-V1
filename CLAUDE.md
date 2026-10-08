@@ -42,6 +42,20 @@ internally; the dashboard **displays** times in **UTC+6 (Asia/Dhaka)**.
   bypassed, RR 1:1 SL/TP 1.5×ATR), re-anchors entry to live price, and fires to
   Telegram + Mongo. Log `/var/log/btc-rsi-ema.log`.
 
+## Crypto pairs (BTC / ETH / SOL) and the Charts page (added 2026-10-09)
+- `btc_rsi_ema_live.py` is now symbol-parametric via env `CRYPTO_SYMBOL` (default BTC).
+  BTC keeps `btc-rsi-ema.service`; ETH and SOL run as instances of the systemd template
+  `crypto-rsi-ema@{eth,sol}.service` (logs `/var/log/crypto-rsi-ema-<key>.log`, state
+  `state_<key>_rsi_ema.txt`, Mongo tags `rsi-eth` / `rsi-sol`, symbols `ETHUSD` / `SOLUSD`).
+- Registry: `core/btc_fetcher.py` `CRYPTO_SYMBOLS` + `resolve_crypto()`; `BtcFetcher("ETH")`.
+- Endpoints: `GET /api/crypto/symbols`, `/api/crypto/{BTC|ETH|SOL}/{price,candles/{tf},stream/{tf}}`,
+  `POST /api/crypto/{sym}/backtest`, `POST /api/bot/{eth|sol}-rsi-ema/{start|stop}`;
+  `/api/bot/status` has `ethRsiEma` / `solRsiEma`. The `/api/btc/*` paths are aliases.
+- Resolver scores each crypto signal on its own Binance-mirror feed (`_crypto_key`).
+- Frontend: `/charts` = one TradingView-style workspace (symbol picker, timeframe,
+  single or 2x2 grid of all four charts); `/eth-rsi-ema` and `/sol-rsi-ema` reuse
+  `BtcRsiEma.tsx` with a `symbolKey` prop; Live Bot overview shows 6 cards.
+
 ## Production VPS
 - Host `45.132.242.134` (Hostinger, Ubuntu 24.04, hostname `srv1935826`, root).
 - App dir `/opt/sean0algo`; dashboard `http://45.132.242.134/` (nginx `:80 → :8000`).
