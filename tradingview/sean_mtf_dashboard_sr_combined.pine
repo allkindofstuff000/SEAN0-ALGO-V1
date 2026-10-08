@@ -164,12 +164,17 @@ pruneWeakest() =>
                     wd := d
         removeAt(wi)
 
-// Zones price has stopped touching fade away.
+// Zones price has stopped touching fade away. Counts DOWN with a `while` loop:
+// a `for` countdown (with or without `by -1`) dies at runtime with RE10021
+// "'step' in loop must be greater than zero" on the first bar a zone exists,
+// which killed the whole study (no dashboard table) until 2026-10-08.
 expire() =>
-    if maxAge > 0 and array.size(zones) > 0
-        for i = array.size(zones) - 1 to 0  // counts down; Pine rejects a negative 'by' step
+    if maxAge > 0
+        i = array.size(zones) - 1
+        while i >= 0
             if bar_index - array.get(lastHit, i) > maxAge
                 removeAt(i)
+            i -= 1
 
 clearAll() =>
     while array.size(zones) > 0
