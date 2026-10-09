@@ -56,6 +56,16 @@ internally; the dashboard **displays** times in **UTC+6 (Asia/Dhaka)**.
   single or 2x2 grid of all four charts); `/eth-rsi-ema` and `/sol-rsi-ema` reuse
   `BtcRsiEma.tsx` with a `symbolKey` prop; Live Bot overview shows 6 cards.
 
+## ETH NY opening-range breakout (NYORB, added 2026-10-09)
+- Engine `strategies/nyorb/engine.py`: range = 13:30 UTC + 60 min, first M5 close beyond it
+  (until 20:00 UTC), stop = far side of the range, target 1.5R, flat at 21:00 UTC; backtest
+  charges 0.06% round trip. Validated on ETH only (47% win, PF 1.23, 5/6 windows; thin edge).
+- Live bot `nyorb_live.py` as `nyorb@eth.service` (log `/var/log/nyorb-eth.log`, state
+  `state_nyorb_eth.json`, Mongo tag `nyorb-eth`, signal carries `flat_at_utc`).
+- The resolver closes any signal with `flat_at_utc` at that time (WIN/LOSS by P&L).
+- Endpoints `POST /api/nyorb/{sym}/backtest`, `/api/bot/nyorb-eth/{start|stop}`,
+  `nyorbEth` in `/api/bot/status`; page `/nyorb-eth`. RSI EMA crypto bots keep running.
+
 ## Production VPS
 - Host `45.132.242.134` (Hostinger, Ubuntu 24.04, hostname `srv1935826`, root).
 - App dir `/opt/sean0algo`; dashboard `http://45.132.242.134/` (nginx `:80 → :8000`).
