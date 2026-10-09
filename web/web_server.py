@@ -202,6 +202,11 @@ BTC_RSI_EMA_SERVICE_NAME = os.getenv("BTC_RSI_EMA_SERVICE_NAME", "btc-rsi-ema").
 # ETH / SOL run the same bot script as systemd template instances (crypto-rsi-ema@<key>).
 ETH_RSI_EMA_SERVICE_NAME = os.getenv("ETH_RSI_EMA_SERVICE_NAME", "crypto-rsi-ema@eth").strip()
 SOL_RSI_EMA_SERVICE_NAME = os.getenv("SOL_RSI_EMA_SERVICE_NAME", "crypto-rsi-ema@sol").strip()
+NYORB_ETH_SERVICE_NAME = os.getenv("NYORB_ETH_SERVICE_NAME", "nyorb@eth").strip()
+NYORB_BOT_SERVICES: dict[str, tuple[str, str, str]] = {
+    # key -> (systemd unit, bot_state strategy id, label)
+    "ETH": (NYORB_ETH_SERVICE_NAME, "nyorb-eth", "ETH NY Open Range"),
+}
 CRYPTO_BOT_SERVICES: dict[str, tuple[str, str, str]] = {
     # key -> (systemd unit, bot_state strategy id, human label)
     "BTC": (BTC_RSI_EMA_SERVICE_NAME, "btc-rsi-ema", "BTC RSI EMA"),
@@ -1704,6 +1709,84 @@ def api_sol_bot_stop() -> dict[str, Any]:
     return _crypto_bot_control("SOL", "stop")
 
 
+def _nyorb_bot_control(key: str, action: str) -> dict[str, Any]:
+    if not SYSTEMCTL_PATH:
+        raise HTTPException(status_code=500, detail="systemctl not available on this host")
+    if key not in NYORB_BOT_SERVICES:
+        raise HTTPException(status_code=404, detail=f"no NY range bot for {key}")
+    unit, state_id, label = NYORB_BOT_SERVICES[key]
+    result = _run_systemctl_named(unit, action)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip() or f"systemctl {action} failed"
+        raise HTTPException(status_code=500, detail=detail)
+    save_strategy_state(state_id, "running" if action == "start" else "stopped")
+    LOGGER.info("[BOT] %s %s", state_id, action)
+    return {"status": "started" if action == "start" else "stopped", "message": f"{label} bot {'started' if action == 'start' else 'stopped'}"}
+
+
+@app.post("/api/bot/nyorb-eth/start", tags=["bot"])
+def api_nyorb_eth_start() -> dict[str, Any]:
+    return _nyorb_bot_control("ETH", "start")
+
+
+@app.post("/api/bot/nyorb-eth/stop", tags=["bot"])
+def api_nyorb_eth_stop() -> dict[str, Any]:
+    return _nyorb_bot_control("ETH", "stop")
+
+
+class NyorbBacktestRequest(BaseModel):
+    start_date: str | None = None
+    end_date: str | None = None
+    tp_r: float = 1.5
+    range_minutes: int = 60
+    long_only: bool = False
+    starting_balance: float = 10_000.0
+    risk_per_trade_pct: float = 2.0
+
+
+@app.post("/api/nyorb/{symbol}/backtest", tags=["crypto"])
+def api_nyorb_backtest(symbol: str, req: NyorbBacktestRequest) -> dict[str, Any]:
+    """NY opening-range breakout backtest (M5, Binance mirror history, 0.06% cost, flat 21:00 UTC)."""
+    key = _crypto_key_or_404(symbol)
+    if not _backtest_lock.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="A backtest is already running. Please wait.")
+    try:
+        from backtests import backtest_forex_engine as engine  # noqa: PLC0415
+        from strategies.nyorb import engine as nyorb  # noqa: PLC0415
+
+        now_utc = pd.Timestamp.now(tz="UTC")
+        today = now_utc.normalize()
+        start_utc = engine.parse_date_utc(req.start_date) if req.start_date else (today - pd.Timedelta(days=90))
+        end_utc = engine.parse_date_utc(req.end_date, inclusive_end=True) if req.end_date else today
+        end_utc = min(end_utc, now_utc.floor("5min"))
+        if end_utc <= start_utc:
+            return {"error": "End date must be after start date.", "metrics": {}, "trades": [], "equity_curve": []}
+        tp_r = max(0.5, min(5.0, float(req.tp_r)))
+        minutes = 30 if int(req.range_minutes) <= 30 else 60
+        risk_fraction = max(0.005, min(0.10, req.risk_per_trade_pct / 100.0))
+        trades_df, metrics, equity_curve = nyorb.backtest(
+            key, start_utc, end_utc, tp_r=tp_r, minutes=minutes, long_only=bool(req.long_only),
+            starting_balance=float(req.starting_balance), risk_per_trade=risk_fraction,
+        )
+        trades_out = [] if trades_df.empty else [{k: _safe_num(v) if not isinstance(v, str) else v for k, v in row.items()} for row in trades_df.to_dict(orient="records")]
+        metrics_out = {k: _safe_num(v) for k, v in metrics.items()}
+        mongo_id = save_backtest_report(
+            metrics=metrics_out, trades=trades_out, equity_curve=equity_curve,
+            params={"strategy": f"nyorb-{key.lower()}", "symbol": key, "start_date": req.start_date, "end_date": req.end_date,
+                    "tp_r": tp_r, "range_minutes": minutes, "long_only": bool(req.long_only),
+                    "starting_balance": req.starting_balance, "risk_per_trade_pct": req.risk_per_trade_pct},
+        )
+        LOGGER.info("NYORB %s backtest  trades=%s win=%.1f%% pf=%s", key, metrics_out.get("total_trades"), metrics_out.get("win_rate", 0.0) or 0.0, metrics_out.get("profit_factor"))
+        return {"metrics": metrics_out, "trades": trades_out, "equity_curve": equity_curve, "mongo_id": mongo_id}
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.error("NYORB backtest error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        _backtest_lock.release()
+
+
 @app.post("/api/bot/macd-gold/start", tags=["bot"])
 def api_macd_gold_bot_start() -> dict[str, Any]:
     """Start the Gold MACD day-trade bot (systemctl start macd-gold.service)."""
@@ -1752,6 +1835,8 @@ def _compute_bot_status() -> dict[str, Any]:
             svc_names["eth"] = ETH_RSI_EMA_SERVICE_NAME
         if SOL_RSI_EMA_SERVICE_NAME:
             svc_names["sol"] = SOL_RSI_EMA_SERVICE_NAME
+        if NYORB_ETH_SERVICE_NAME:
+            svc_names["nyorb_eth"] = NYORB_ETH_SERVICE_NAME
         if MACD_GOLD_SERVICE_NAME:
             svc_names["macd"] = MACD_GOLD_SERVICE_NAME
     statuses = _service_status_many(list(svc_names.values())) if svc_names else {}
@@ -1773,6 +1858,7 @@ def _compute_bot_status() -> dict[str, Any]:
     btc_running, btc_pid = _st("btc")
     eth_running, eth_pid = _st("eth")
     sol_running, sol_pid = _st("sol")
+    nyorb_eth_running, nyorb_eth_pid = _st("nyorb_eth")
     macd_running, macd_pid = _st("macd")
 
     market = is_market_open()
@@ -1788,6 +1874,7 @@ def _compute_bot_status() -> dict[str, Any]:
     btc_started = load_strategy_started_at("btc-rsi-ema") if btc_running else None
     eth_started = load_strategy_started_at("eth-rsi-ema") if eth_running else None
     sol_started = load_strategy_started_at("sol-rsi-ema") if sol_running else None
+    nyorb_eth_started = load_strategy_started_at("nyorb-eth") if nyorb_eth_running else None
     macd_started = load_strategy_started_at("macd-gold") if macd_running else None
 
     return {
@@ -1796,6 +1883,7 @@ def _compute_bot_status() -> dict[str, Any]:
         "btcRsiEma": {"running": btc_running, "pid": btc_pid, "startedAt": btc_started},
         "ethRsiEma": {"running": eth_running, "pid": eth_pid, "startedAt": eth_started},
         "solRsiEma": {"running": sol_running, "pid": sol_pid, "startedAt": sol_started},
+        "nyorbEth": {"running": nyorb_eth_running, "pid": nyorb_eth_pid, "startedAt": nyorb_eth_started},
         "macdGold": {"running": macd_running, "pid": macd_pid, "startedAt": macd_started},
         "rsiEth": {
             "running": rsi_eth_running,
@@ -1807,7 +1895,7 @@ def _compute_bot_status() -> dict[str, Any]:
             "strategy_behavior": rsi_eth_status.get("strategy_behavior"),
             "market_open": rsi_eth_status.get("market_open", True),
         },
-        "anyRunning": (rsi_running or rsi_eth_running or vwap_running or btc_running or macd_running) or eth_running or sol_running,
+        "anyRunning": ((rsi_running or rsi_eth_running or vwap_running or btc_running or macd_running) or eth_running or sol_running) or nyorb_eth_running,
         "market": market,
     }
 
@@ -1850,7 +1938,7 @@ def api_health() -> dict[str, Any]:
     except Exception:
         mongo_ok = False
     status = api_bot_status()  # served from the micro-cache
-    running = sum(1 for k in ("rsiEma", "vwapSt", "btcRsiEma", "ethRsiEma", "solRsiEma", "macdGold") if (status.get(k) or {}).get("running"))
+    running = sum(1 for k in ("rsiEma", "vwapSt", "btcRsiEma", "ethRsiEma", "solRsiEma", "nyorbEth", "macdGold") if (status.get(k) or {}).get("running"))
     market_open = bool((status.get("market") or {}).get("open"))
     # Stream liveness: the OANDA price stream can die while the process stays up
     # (it did, for 57h and 33h, while this probe still said "ok"). Report the

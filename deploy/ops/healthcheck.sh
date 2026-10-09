@@ -2,7 +2,7 @@
 # Every 5 min: units up, /api/health ok, live price fresh while the market is open, disk < 85%.
 # Telegram alert at most once per 30 min.
 set -u; . /opt/sean0algo/.env; fail=()
-for u in sean0algo sean-algo vwap-st btc-rsi-ema crypto-rsi-ema@eth crypto-rsi-ema@sol macd-gold signal-resolver mongod nginx; do systemctl is-active --quiet "$u" || fail+=("$u down"); done
+for u in sean0algo sean-algo vwap-st btc-rsi-ema crypto-rsi-ema@eth crypto-rsi-ema@sol nyorb@eth macd-gold signal-resolver mongod nginx; do systemctl is-active --quiet "$u" || fail+=("$u down"); done
 h=$(curl -fsS -m 10 http://127.0.0.1:8000/api/health 2>/dev/null) || { h='{}'; fail+=("health unreachable"); }
 status=$(printf '%s' "$h" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("status",""), d.get("market_open",""))' 2>/dev/null)
 [[ "${status%% *}" == ok ]] || fail+=("health=${status:-none}")

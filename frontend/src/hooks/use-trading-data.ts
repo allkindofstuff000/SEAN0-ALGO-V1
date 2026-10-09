@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Api, type BotId, type CryptoKey, type RsiBacktestParams, type VwapStBacktestParams } from "@/lib/api";
+import { Api, type BotId, type CryptoKey, type NyorbBacktestParams, type RsiBacktestParams, type VwapStBacktestParams } from "@/lib/api";
 
 // ── Live data queries ────────────────────────────────────────────────────────
 export function useCandles(tf: string, count = 240) {
@@ -56,6 +56,16 @@ export function useRunCryptoBacktest(symbol: CryptoKey) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (p: RsiBacktestParams) => Api.runCryptoBacktest(symbol, p),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["backtest-history"] });
+    },
+  });
+}
+
+export function useRunNyorbBacktest(symbol: CryptoKey) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: NyorbBacktestParams) => Api.runNyorbBacktest(symbol, p),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["backtest-history"] });
     },

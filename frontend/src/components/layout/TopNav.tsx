@@ -16,6 +16,7 @@ const CRYPTO_ITEMS = [
   { href: "/btc-rsi-ema", label: "BTC" },
   { href: "/eth-rsi-ema", label: "ETH" },
   { href: "/sol-rsi-ema", label: "SOL" },
+  { href: "/nyorb-eth", label: "ETH NY RANGE" },
 ];
 
 export function TopNav() {

@@ -119,7 +119,7 @@ export default function LiveBot() {
         </div>
         <div className="ml-auto flex items-center gap-1.5 text-muted-foreground">
           <span>LIVE STRATEGIES:</span>
-          <span className="text-accent font-bold">{[bot?.rsiEma?.running, bot?.vwapSt?.running, bot?.btcRsiEma?.running, bot?.ethRsiEma?.running, bot?.solRsiEma?.running, bot?.macdGold?.running].filter(Boolean).length} / 6</span>
+          <span className="text-accent font-bold">{[bot?.rsiEma?.running, bot?.vwapSt?.running, bot?.btcRsiEma?.running, bot?.ethRsiEma?.running, bot?.solRsiEma?.running, bot?.nyorbEth?.running, bot?.macdGold?.running].filter(Boolean).length} / 7</span>
         </div>
       </div>
 
@@ -174,6 +174,16 @@ export default function LiveBot() {
             pending={botControl.isPending}
             onToggle={(a) => handleToggle("sol-rsi-ema", "SOL RSI EMA", a)}
             sessionText="24/7 · Crypto"
+          />
+
+          <StrategyCard
+            title="ETH NY RANGE BREAKOUT"
+            subtitle="ETHUSD · M5 · 13:30-14:30 UTC range · 1.5R · flat 21:00"
+            running={!!bot?.nyorbEth?.running}
+            uptime={uptimeFrom(bot?.nyorbEth?.startedAt)}
+            pending={botControl.isPending}
+            onToggle={(a) => handleToggle("nyorb-eth", "ETH NY Range", a)}
+            sessionText="19:30-03:00 Dhaka · NY session"
           />
 
           <StrategyCard

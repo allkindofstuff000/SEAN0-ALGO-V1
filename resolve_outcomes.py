@@ -97,6 +97,10 @@ def _is_crypto(s: dict) -> bool:
     return any(x in _sym(s) for x in ("BTC", "ETH", "SOL", "CRYPTO"))
 
 
+def _classify_time_exit_ok(s: dict) -> bool:  # kept for readability of the work queue
+    return True
+
+
 def _crypto_key(s: dict) -> str | None:
     """'BTCUSD' → 'BTC', 'ETHUSD' → 'ETH', 'SOLUSD' → 'SOL'; None for anything else."""
     sym = _sym(s)
@@ -274,9 +278,26 @@ def _resolve_one(sig: dict, df: pd.DataFrame) -> tuple[str, float, str] | None:
     if not _window_covers(df, ref):
         return None
 
+    # Optional time exit: strategies that must be flat at a fixed time (NY range
+    # breakout -> 21:00 UTC) store `flat_at_utc`; the position is closed at the close
+    # of the last bar before that time if neither level was touched.
+    flat_at = None
+    flat_raw = sig.get("flat_at_utc")
+    if flat_raw:
+        flat_at = pd.Timestamp(flat_raw)
+        if flat_at.tzinfo is None:
+            flat_at = flat_at.tz_localize("UTC")
+    entry_px = sig.get("entry_price")
+    last_close: float | None = None
+
     # Bars from the entry onward (>= when entry is AT the reference, else strictly after).
     fut = df[df["timestamp"] >= ref] if inclusive else df[df["timestamp"] > ref]
     for _, bar in fut.iterrows():
+        bar_ts = pd.Timestamp(bar["timestamp"])
+        if flat_at is not None and bar_ts >= flat_at and entry_px is not None:
+            exit_px = float(last_close) if last_close is not None else float(bar["open"])
+            gain = (exit_px - float(entry_px)) if direction == "BUY" else (float(entry_px) - exit_px)
+            return ("WIN" if gain > 0 else "LOSS"), exit_px, f"flat at {flat_at:%H:%M} UTC (time exit) {gain:+.2f}"
         hi = float(bar["high"])
         lo = float(bar["low"])
         when = str(bar["timestamp"])[:16]
@@ -293,6 +314,7 @@ def _resolve_one(sig: dict, df: pd.DataFrame) -> tuple[str, float, str] | None:
             return "LOSS", sl, f"SL hit {when}"
         if hit_tp:
             return "WIN", tp, f"TP hit {when}"
+        last_close = float(bar["close"])
     return None  # still open
 
 

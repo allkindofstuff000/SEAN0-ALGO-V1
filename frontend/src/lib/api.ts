@@ -61,6 +61,7 @@ export type BotStatus = {
   btcRsiEma: { running: boolean; pid: number | null; startedAt: string | null };
   ethRsiEma: { running: boolean; pid: number | null; startedAt: string | null };
   solRsiEma: { running: boolean; pid: number | null; startedAt: string | null };
+  nyorbEth: { running: boolean; pid: number | null; startedAt: string | null };
   macdGold: { running: boolean; pid: number | null; startedAt: string | null };
   rsiEth: Record<string, any>;
   anyRunning: boolean;
@@ -192,7 +193,18 @@ export type LiveSignal = {
 
 // ── Crypto pairs (BTC / ETH / SOL) — one registry for charts, bots and pages ─
 export type CryptoKey = "BTC" | "ETH" | "SOL";
-export type BotId = "rsi-ema" | "vwap-st" | "btc-rsi-ema" | "eth-rsi-ema" | "sol-rsi-ema" | "macd-gold";
+export type BotId = "rsi-ema" | "vwap-st" | "btc-rsi-ema" | "eth-rsi-ema" | "sol-rsi-ema" | "nyorb-eth" | "macd-gold";
+
+// NY opening-range breakout backtest (POST /api/nyorb/{symbol}/backtest)
+export type NyorbBacktestParams = {
+  start_date?: string | null;
+  end_date?: string | null;
+  tp_r: number;
+  range_minutes: number;
+  long_only: boolean;
+  starting_balance: number;
+  risk_per_trade_pct: number;
+};
 export type CryptoSpec = {
   key: CryptoKey;
   display: string; // BTCUSD
@@ -246,6 +258,8 @@ export const Api = {
   cryptoLivePrice: (symbol: CryptoKey) => apiGet<LivePrice>(`/api/crypto/${symbol}/price`),
   runCryptoBacktest: (symbol: CryptoKey, p: RsiBacktestParams) =>
     apiPost<RsiBacktestResult>(`/api/crypto/${symbol}/backtest`, p),
+  runNyorbBacktest: (symbol: CryptoKey, p: NyorbBacktestParams) =>
+    apiPost<RsiBacktestResult>(`/api/nyorb/${symbol}/backtest`, p),
 
   // ── Gold MACD day-trade (OANDA H1) ─────────────────────────────────────────
   runMacdGoldBacktest: (p: RsiBacktestParams) =>

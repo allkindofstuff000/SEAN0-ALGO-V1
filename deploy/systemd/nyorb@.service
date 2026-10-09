@@ -1,0 +1,19 @@
+[Unit]
+Description=SEAN ALGO - %I NY opening-range breakout live signal bot
+After=network-online.target mongod.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sean0algo
+Environment=PYTHONPATH=/opt/sean0algo
+Environment=CRYPTO_SYMBOL=%i
+ExecStart=/opt/sean0algo/.venv/bin/python /opt/sean0algo/nyorb_live.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/nyorb-%i.log
+StandardError=append:/var/log/nyorb-%i.log
+
+[Install]
+WantedBy=multi-user.target

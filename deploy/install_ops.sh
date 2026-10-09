@@ -21,7 +21,7 @@ put "$HERE/nginx/sean-algo" /etc/nginx/sites-available/sean-algo 644
 ls -l /etc/nginx/sites-enabled/ 2>/dev/null | grep -q "sites-available/sean-algo" || ln -s /etc/nginx/sites-available/sean-algo /etc/nginx/sites-enabled/sean-algo
 for s in "$HERE"/ops/*.sh; do put "$s" "$APP/ops/$(basename "$s")" 755; done
 systemctl daemon-reload
-systemctl enable sean0algo sean-algo vwap-st btc-rsi-ema crypto-rsi-ema@eth crypto-rsi-ema@sol macd-gold signal-resolver sean-healthcheck.timer >/dev/null 2>&1 || true
+systemctl enable sean0algo sean-algo vwap-st btc-rsi-ema crypto-rsi-ema@eth crypto-rsi-ema@sol nyorb@eth macd-gold signal-resolver sean-healthcheck.timer >/dev/null 2>&1 || true
 systemctl start sean-healthcheck.timer >/dev/null 2>&1 || true
 nginx -t && systemctl reload nginx
 echo "install_ops done (changed=$changed)"

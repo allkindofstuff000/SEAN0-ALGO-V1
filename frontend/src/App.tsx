@@ -11,6 +11,7 @@ import VwapSt from "./pages/VwapSt";
 import BtcRsiEma from "./pages/BtcRsiEma";
 import MacdGold from "./pages/MacdGold";
 import Charts from "./pages/Charts";
+import NyOrb from "./pages/NyOrb";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +33,7 @@ function Router() {
       <Route path="/btc-rsi-ema">{() => <BtcRsiEma symbolKey="BTC" />}</Route>
       <Route path="/eth-rsi-ema">{() => <BtcRsiEma symbolKey="ETH" />}</Route>
       <Route path="/sol-rsi-ema">{() => <BtcRsiEma symbolKey="SOL" />}</Route>
+      <Route path="/nyorb-eth">{() => <NyOrb symbolKey="ETH" />}</Route>
       <Route path="/macd-gold" component={MacdGold} />
       <Route component={NotFound} />
     </Switch>
