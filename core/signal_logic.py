@@ -182,10 +182,13 @@ class SignalLogic:
 
         trend_alignment = (bullish_trend or bearish_trend) and trend_regime == "trend"
 
-        # ── Session filter: REMOVED 2026-10-08 at the user's request (signals in
-        # every session). The session is still detected and logged for the
-        # dashboard; the gate is always open. Was: OVERLAP + NEW_YORK (12-21 UTC).
-        session_filter = self.decision_logger.log_session(session, True)
+        # ── Session filter: OVERLAP + NEW_YORK only (12-21 UTC). Removed 2026-10-08,
+        # RESTORED 2026-11-08 on live evidence: with the gate open, 30 days of
+        # signals inside the window were +1R (56% win) and outside -12R (29% win).
+        session_filter = self.decision_logger.log_session(
+            session,
+            session in {"OVERLAP", "NEW_YORK"},
+        )
 
         # ── 5m entry conditions ──────────────────────────────────────────────────
         price_trigger = self.decision_logger.log_breakout(

@@ -2,8 +2,9 @@ import { type BotId } from "@/lib/api";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useBotControl, useBotStatus, useLivePrice, useCandles, useMarketStatus } from "@/hooks/use-trading-data";
+import { useBotControl, useBotStatus, useLivePrice, useCandles, useMarketStatus, useLiveSignals } from "@/hooks/use-trading-data";
 import { SessionSchedule } from "@/components/SessionSchedule";
+import { WinRateRings } from "@/components/WinRateRings";
 import { Play, Square, Wifi, Server, Clock } from "lucide-react";
 import { useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -77,6 +78,7 @@ function StrategyCard({
 export default function LiveBot() {
   const { toast } = useToast();
   const { data: bot } = useBotStatus();
+  const { data: signalsData } = useLiveSignals();
   const { data: live } = useLivePrice();
   const { data: candleData } = useCandles("M5", 60);
   const { data: market } = useMarketStatus();
@@ -124,6 +126,9 @@ export default function LiveBot() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {/* Per-strategy win-rate rings (live signals, resolver-scored) */}
+        <WinRateRings signals={signalsData?.signals ?? []} />
+
         {/* Strategy Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <StrategyCard

@@ -66,6 +66,38 @@ internally; the dashboard **displays** times in **UTC+6 (Asia/Dhaka)**.
 - Endpoints `POST /api/nyorb/{sym}/backtest`, `/api/bot/nyorb-eth/{start|stop}`,
   `nyorbEth` in `/api/bot/status`; page `/nyorb-eth`. RSI EMA crypto bots keep running.
 
+## Operations state and robustness pass (2026-11-08)
+- **Live 30-day scorecard drove config changes:** BTC and SOL RSI EMA are **PAUSED** via the
+  dashboard/API (`bot_state` = stopped; units stay enabled, so a reboot restarts them — stop again
+  from the dashboard if that happens). ETH RSI EMA has `ETH_MAX_SIGNALS_PER_DAY=2` in `.env`.
+  **Gold session gates are back** (RSI EMA: OVERLAP+NEW_YORK in `core/signal_logic.py`; VWAP+ST
+  12–21 UTC in `strategies/vwap_supertrend/config.py`; `session_allowed()` 12–21 UTC in the
+  backtest engine). NYORB keeps alerting (only positive strategy live; `NYORB_PAPER` stays unset).
+- **Heartbeats:** every bot touches `logs/heartbeat/<tag>` after a good cycle (`core/heartbeat.py`);
+  `/api/health` reports `bot_heartbeats`, `bot_stalled`, `stopped_units`; `ops/healthcheck.sh` (v2)
+  pages on stalled bots, NEW automatic restarts, skips deliberately stopped units, honours
+  `/run/sean-healthcheck.mute` (touch it during deploys), and has a 2-min restart grace.
+- **Bot state files are JSON** (`core/bot_state_file.py`): last bar + daily cap/cooldown counters
+  survive restarts. Legacy one-line files migrate automatically.
+- **Mongo retry queue is per process** (`configure_pending_queue(tag)` → `pending_signals_<tag>.jsonl`);
+  the resolver drains the legacy shared file. `_get_db()` has a 30 s negative cache. Indexes on
+  `live_signals` (`outcome_sent_at`, `sent_at_desc`). `MAX_REPORTS` 150.
+- **Stale-bar guards:** gold bots skip bars whose close is older than 10 min (M5) / 55 min (H1) —
+  the 23:00 UTC reopen and Sunday no longer evaluate the last pre-break bar. Crypto bots require the
+  newest closed bar to be < 10 min old; `fetch_range` raises on a failed page.
+- **Crypto display feed:** single-flight cache per (symbol, tf) (1.5 s) and per ticker (1 s) in
+  `web_server.py`; unknown stream tf → 404; `/assets/*` immutable cache headers; SPA deep links no-store.
+- **Dashboard:** overview shows per-strategy win-rate rings (`components/WinRateRings.tsx`, stats in
+  `lib/strategy-stats.ts`); pages fetch 500 signals (server cap) and filter by exact strategy tag.
+- **Telegram:** `make_bot()` gives 20 s timeouts; the resolver's daily check is latched only after a
+  successful send, retries every 30 min, and runs at 00:10 UTC.
+- **Deploy gotchas (Windows host):** Python `write_text` produces CRLF — normalize with
+  `sed -i 's/$//'` before tarring; ship `core/__init__.py` so staged imports work; run import
+  checks after install with rollback. Deploy script pattern: scratchpad `remote_deploy7.sh`.
+- **Still open (user-gated):** public `/api/bot/*/start|stop` + backtest POSTs need an nginx IP
+  allowlist; sshd password auth / ufw; off-box backups; `MAX_SIGNALS=500` prunes history to ~30 days
+  (raise to ≥10k).
+
 ## Production VPS
 - Host `45.132.242.134` (Hostinger, Ubuntu 24.04, hostname `srv1935826`, root).
 - App dir `/opt/sean0algo`; dashboard `http://45.132.242.134/` (nginx `:80 → :8000`).

@@ -75,7 +75,7 @@ export default function VwapSt() {
 
   const { data: live } = useLivePrice();
   const { data: history } = useBacktestHistory();
-  const { data: signalsData } = useLiveSignals(100);
+  const { data: signalsData } = useLiveSignals();
   const { data: market } = useMarketStatus();
   const { data: botStatus } = useBotStatus();
   const runBacktest = useRunVwapStBacktest();
@@ -233,7 +233,7 @@ export default function VwapSt() {
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Supertrend flip + daily-VWAP confirm · M5 · all market hours (no session filter)
+            Supertrend flip + daily-VWAP confirm · M5 · 12:00–21:00 UTC (18:00–03:00 Dhaka) session
           </p>
         </div>
         <div className="text-right">

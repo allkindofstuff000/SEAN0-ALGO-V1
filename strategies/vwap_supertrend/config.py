@@ -20,12 +20,12 @@ STOP_LOSS_ATR_MULTIPLIER = 1.5
 TAKE_PROFIT_ATR_MULTIPLIER = 3.0   # 1:2 RR — the winning config
 DEFAULT_MAX_HOLD_BARS = 12         # ~1 hour on M5
 
-# ── Session gate (UTC) — REMOVED 2026-10-08 at the user's request ─────────
-# Was 12-21 (London-NY overlap + NY, the window the backtests were validated
-# on). 0-24 = every market hour; the closed market (21-22 UTC, weekend) has no
-# bars so nothing fires then. Put 12 / 21 back here to restore the old gate.
-SESSION_START_HOUR = 0
-SESSION_END_HOUR = 24
+# ── Session gate (UTC): London-NY overlap + New York ─────────────────────────
+# Removed 2026-10-08, RESTORED 2026-11-08: 30 days without the gate = 86 trades,
+# 31% win, -5R; the trades inside 12-21 UTC alone were breakeven. This is the
+# window the backtests were validated on.
+SESSION_START_HOUR = 12
+SESSION_END_HOUR = 21
 
 # ── Backtest / execution cost model ───────────────────────────────────────
 DEFAULT_STARTING_BALANCE = 5_000.0

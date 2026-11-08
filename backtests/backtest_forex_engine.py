@@ -400,11 +400,12 @@ def detect_session(close_time_utc: pd.Timestamp) -> str:
 
 
 def session_allowed(close_time_utc: pd.Timestamp) -> bool:
-    """Session gate — REMOVED 2026-10-08 at the user's request: every session is
-    allowed (was 12-21 UTC = Overlap + New York). Kept as a function so callers
-    and the BTC monkeypatch keep working; the closed market (weekend, 21-22 UTC
-    settlement) simply has no bars, so nothing fires then."""
-    return True
+    """Gold session gate: London-NY overlap + New York (12-21 UTC). Removed
+    2026-10-08, RESTORED 2026-11-08 on live evidence (gold RSI EMA inside the
+    window +1R, outside -12R over 30 days). The crypto bots monkeypatch this to
+    always-True for their 24/7 evaluation."""
+    hour = pd.Timestamp(close_time_utc).hour
+    return 12 <= hour < 21
 
 
 def indicators_ready(row: pd.Series, columns: tuple[str, ...]) -> bool:
