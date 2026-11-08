@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { LiveChart } from "@/components/LiveChart";
-import { useMarketStatus } from "@/hooks/use-trading-data";
+import { useMarketStatus, useLiveSignals } from "@/hooks/use-trading-data";
+import { WinRateRings } from "@/components/WinRateRings";
 import {
   Api,
   CRYPTO_SYMBOLS,
@@ -12,7 +13,7 @@ import {
   type CryptoKey,
   type StreamEvent,
 } from "@/lib/api";
-import { LayoutGrid, Square, Activity } from "lucide-react";
+import { LayoutGrid, Square, Activity, Target } from "lucide-react";
 
 // ── One place for every live chart: gold (OANDA stream) + BTC / ETH / SOL ──
 // (Coinbase display feed). Pick one symbol, or show all of them at once.
@@ -142,12 +143,15 @@ export default function Charts() {
   const [tf, setTf] = useState<Tf>(() => readPref("charts.tf", "M5", TFS));
   const [layout, setLayout] = useState<Layout>(() => readPref("charts.layout", "single", ["single", "grid"]));
   const [showEma, setShowEma] = useState<boolean>(() => readPref("charts.ema", "1", ["0", "1"]) === "1");
+  const [showRings, setShowRings] = useState<boolean>(() => readPref("charts.rings", "1", ["0", "1"]) === "1");
   const { data: market } = useMarketStatus();
+  const { data: signalsData } = useLiveSignals();
 
   useEffect(() => writePref("charts.symbol", symbol), [symbol]);
   useEffect(() => writePref("charts.tf", tf), [tf]);
   useEffect(() => writePref("charts.layout", layout), [layout]);
   useEffect(() => writePref("charts.ema", showEma ? "1" : "0"), [showEma]);
+  useEffect(() => writePref("charts.rings", showRings ? "1" : "0"), [showRings]);
 
   const current = SYMBOLS.find((s) => s.key === symbol) ?? SYMBOLS[0];
   const goldNote = market && market.closed ? (market.reason?.toLowerCase().includes("settlement") ? "settlement break" : "market closed") : null;
@@ -193,6 +197,13 @@ export default function Charts() {
         >
           EMA 9 / 21
         </button>
+        <button
+          onClick={() => setShowRings((v) => !v)}
+          title="Show / hide the strategy win-rate rings"
+          className={`flex items-center gap-1 rounded px-2 py-1 text-xs font-bold transition-colors ${showRings ? "text-accent" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <Target className="h-3.5 w-3.5" /> Win rates
+        </button>
         <div className="ml-auto flex items-center gap-1">
           <button
             onClick={() => setLayout("single")}
@@ -229,6 +240,13 @@ export default function Charts() {
           gold via OANDA stream · crypto via Coinbase, 2s refresh
         </div>
       </div>
+
+      {/* Strategy win-rate rings (live signals, resolver-scored) */}
+      {showRings && (
+        <div className="shrink-0 border-b border-border/30 bg-card/30">
+          <WinRateRings signals={signalsData?.signals ?? []} variant="strip" />
+        </div>
+      )}
 
       {/* Charts */}
       <div className="mx-4 my-3 min-h-0 flex-1">
