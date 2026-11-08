@@ -22,6 +22,8 @@ from dotenv import load_dotenv
 
 from core.data_fetcher import DataFetcher, OandaAuthError
 from core.indicator_engine import IndicatorEngine
+from core.bot_state_file import load_state, risk_dump, risk_load, save_state
+from core.heartbeat import beat as _heartbeat
 from core.signal_guard import check_signal
 from strategies.vwap_supertrend import config as cfg
 from strategies.vwap_supertrend.backtester import add_supertrend, add_session_vwap
@@ -36,6 +38,7 @@ except Exception as _tg_exc:
 try:
     from core.mongo_store import save_live_signal_queued as _save_live_signal
     from core.mongo_store import flush_pending_signals as _flush_pending
+    from core.mongo_store import configure_pending_queue as _configure_pending_queue
     _MONGO_OK = True
 except Exception:
     _MONGO_OK = False
@@ -46,6 +49,9 @@ except Exception:
     def _flush_pending():
         return 0
 
+    def _configure_pending_queue(_tag):
+        return None
+
 
 ROOT = Path(__file__).resolve().parent
 STATE_PATH = ROOT / "state_vwap_st.txt"
@@ -55,8 +61,9 @@ CANDLE_COUNT = 300  # ~25h of M5, ample for Supertrend warmup + daily VWAP
 # ── Risk guards (env-overridable) ───────────────────────────────────────────
 MAX_SIGNALS_PER_DAY = 5   # cap fires per UTC day  (env: VWAP_MAX_SIGNALS_PER_DAY)
 COOLDOWN_BARS = 3         # min M5 bars between fires (env: VWAP_COOLDOWN_BARS)
-# In-memory risk state (resets on restart — acceptable for a signal bot).
+# Risk state — persisted in the JSON state file (restored on restart).
 _RISK: dict = {"day": None, "count": 0, "last_fired_ts": None}
+STALE_BAR_MAX_MIN = int(os.getenv("VWAP_STALE_BAR_MAX_MIN", "10"))   # never evaluate a bar that closed longer ago (reopen/downtime)
 
 LOG = logging.getLogger("vwap-st.live")
 
@@ -65,18 +72,21 @@ def _in_session(ts: pd.Timestamp) -> bool:
     return cfg.SESSION_START_HOUR <= ts.hour < cfg.SESSION_END_HOUR
 
 
+_STATE: dict = {}   # JSON state file: last evaluated bar + the risk counters (survives restarts)
+
+
 def _load_last_signal_ts() -> str | None:
-    if not STATE_PATH.exists():
-        return None
-    try:
-        return STATE_PATH.read_text().strip() or None
-    except Exception:
-        return None
+    global _STATE
+    _STATE = load_state(STATE_PATH)
+    _RISK.update(risk_load(_STATE))   # daily cap / cooldown no longer reset on restart
+    return _STATE.get("last_signal_ts") or None
 
 
 def _save_last_signal_ts(ts: str) -> None:
     try:
-        STATE_PATH.write_text(ts)
+        _STATE["last_signal_ts"] = ts
+        _STATE.update(risk_dump(_RISK))
+        save_state(STATE_PATH, _STATE)
     except Exception as e:
         LOG.warning("state save failed: %s", e)
 
@@ -106,6 +116,7 @@ async def _cycle(
     if df is None or len(df) < 30:
         LOG.warning("insufficient candles (%s)", 0 if df is None else len(df))
         return last_signal_ts
+    _heartbeat("vwap-st")
 
     df = ind_engine.add_indicators(df)
     df = add_supertrend(df, cfg.SUPERTREND_PERIOD, cfg.SUPERTREND_MULTIPLIER)
@@ -120,6 +131,14 @@ async def _cycle(
 
     if ts_str == last_signal_ts:
         return last_signal_ts  # already evaluated this bar
+
+    # Stale-bar guard: at the 22:00 UTC reopen / Sunday the newest closed bar is the
+    # 20:55 (or Friday's) bar. A flip on it would fire an hour (or a weekend) late.
+    ts_utc = ts if ts.tzinfo is not None else ts.tz_localize("UTC")
+    bar_age_min = (pd.Timestamp.now(tz="UTC") - (ts_utc + pd.Timedelta(minutes=5))).total_seconds() / 60.0
+    if bar_age_min > STALE_BAR_MAX_MIN:
+        LOG.info("stale bar %s closed %.0f min ago — skipped (reopen/downtime)", ts_str, bar_age_min)
+        return ts_str
 
     if not _in_session(ts):
         LOG.info("out-of-session %s (hour %s), skip", ts_str, ts.hour)
@@ -252,6 +271,7 @@ async def run() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     load_dotenv(ROOT / ".env")
+    _configure_pending_queue("vwap-st")   # own retry-queue file (no cross-process race)
 
     global MAX_SIGNALS_PER_DAY, COOLDOWN_BARS
     MAX_SIGNALS_PER_DAY = int(os.getenv("VWAP_MAX_SIGNALS_PER_DAY", str(MAX_SIGNALS_PER_DAY)))

@@ -46,6 +46,9 @@ web/static-old-*/
 *.code-workspace
 **/settings.local.json
 state_*.txt
+state_*.json
+state_*.tmp
+pending_signals*.jsonl
 .bridgespace/
 SEAN-ALGO-V1/
 *.bak_*

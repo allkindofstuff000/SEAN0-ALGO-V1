@@ -55,7 +55,7 @@ export default function NyOrb({ symbolKey = "ETH" }: { symbolKey?: CryptoKey }) 
   const [loadingReport, setLoadingReport] = useState<string | null>(null);
 
   const { data: livePrice } = useCryptoLivePrice(sym);
-  const { data: signalsData } = useLiveSignals(100);
+  const { data: signalsData } = useLiveSignals();
   const { data: history } = useBacktestHistory();
   const { data: botStatus } = useBotStatus();
   const runBacktest = useRunNyorbBacktest(sym);
@@ -283,7 +283,12 @@ export default function NyOrb({ symbolKey = "ETH" }: { symbolKey?: CryptoKey }) 
                         <Fragment key={s._id}>
                           <TableRow className="border-border/50 hover:bg-secondary/20 cursor-pointer" onClick={() => setExpandedSig(open ? null : s._id)}>
                             <TableCell className="font-mono text-[11px] text-muted-foreground"><span className="inline-block w-3 text-primary">{open ? "▾" : "▸"}</span>{fmtLocal(s.sent_at ?? s.timestamp)}</TableCell>
-                            <TableCell><Badge variant={isBuy ? "default" : "destructive"} className="text-[9px] font-bold w-12 justify-center">{s.direction}</Badge></TableCell>
+                            <TableCell>
+                              <span className="inline-flex items-center gap-1">
+                                <Badge variant={isBuy ? "default" : "destructive"} className="text-[9px] font-bold w-12 justify-center">{s.direction}</Badge>
+                                {(s as any).paper ? <Badge variant="outline" title="Paper signal: tracked and scored, not sent to Telegram" className="text-[8px] font-bold text-muted-foreground">PAPER</Badge> : null}
+                              </span>
+                            </TableCell>
                             <TableCell className="font-mono text-xs text-right font-bold">{s.entry_price?.toFixed?.(2) ?? "—"}</TableCell>
                             <TableCell className="font-mono text-xs text-right text-destructive/80">{s.stop_loss != null ? s.stop_loss.toFixed(2) : "—"}</TableCell>
                             <TableCell className="font-mono text-xs text-right text-accent/80">{s.take_profit != null ? s.take_profit.toFixed(2) : "—"}</TableCell>

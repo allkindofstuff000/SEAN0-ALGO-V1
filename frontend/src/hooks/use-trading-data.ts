@@ -97,7 +97,7 @@ export function useBacktestHistory() {
   });
 }
 
-export function useLiveSignals(limit = 100) {
+export function useLiveSignals(limit = 500) {
   return useQuery({
     queryKey: ["live-signals", limit],
     queryFn: () => Api.liveSignals(limit),

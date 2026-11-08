@@ -14,11 +14,13 @@ LOGGER = logging.getLogger(__name__)
 
 _client = None
 _db     = None
+_last_connect_fail = 0.0   # monotonic time of the last failed connect (negative cache)
+MONGO_RETRY_AFTER_S = 30.0  # while Mongo is down, retry a connect at most every 30 s
 
 MONGO_URI = os.getenv("MONGODB_URI", "")
 MONGO_DB  = os.getenv("MONGODB_DB", "sean0_algo")
 
-MAX_REPORTS = 50   # keep only the last 50 backtest reports
+MAX_REPORTS = 150  # keep only the last 150 backtest reports (at 50, new crypto/nyorb runs evicted the gold history)
 
 
 def _get_db():
@@ -29,17 +31,34 @@ def _get_db():
     if not MONGO_URI:
         LOGGER.warning("[MONGO] MONGODB_URI not set — persistence disabled")
         return None
+    import time as _time
+    global _last_connect_fail
+    if _last_connect_fail and _time.monotonic() - _last_connect_fail < MONGO_RETRY_AFTER_S:
+        return None   # recently failed: callers degrade immediately instead of blocking 6 s each
     try:
         import pymongo
         _client = pymongo.MongoClient(MONGO_URI, serverSelectionTimeoutMS=6000)
         _client.admin.command("ping")          # fast connection check
         _db = _client[MONGO_DB]
         LOGGER.info("[MONGO] connected  db=%s", MONGO_DB)
+        _ensure_indexes(_db)
         return _db
     except Exception as exc:
-        LOGGER.error("[MONGO] connection failed: %s", exc)
+        LOGGER.error("[MONGO] connection failed: %s (next attempt in %.0fs)", exc, MONGO_RETRY_AFTER_S)
         _db = None
+        _last_connect_fail = _time.monotonic()
         return None
+
+
+def _ensure_indexes(db) -> None:
+    """Idempotent. live_signals had only _id: the resolver's {outcome:null} + sort
+    sent_at was a COLLSCAN+SORT every 2 min and /signals sorted the whole collection."""
+    try:
+        col = db["live_signals"]
+        col.create_index([("outcome", 1), ("sent_at", -1)], name="outcome_sent_at")
+        col.create_index([("sent_at", -1)], name="sent_at_desc")
+    except Exception as exc:  # noqa: BLE001 — never block startup on an index
+        LOGGER.warning("[MONGO] ensure_indexes failed: %s", exc)
 
 
 # ── Backtest reports ──────────────────────────────────────────────────────────
@@ -160,6 +179,7 @@ def save_live_signal(
     signal_kind:     str = "forex",
     telegram_sent:   bool = False,
     candle_time_utc: str | None = None,
+    sent_at:         str | None = None,
     **extra,
 ) -> str | None:
     """
@@ -173,7 +193,9 @@ def save_live_signal(
     try:
         col = db["live_signals"]
         doc = {
-            "sent_at":           datetime.now(timezone.utc).isoformat(),
+            # a replay from the retry queue passes the ORIGINAL sent_at so history
+            # keeps its true order (a queued signal is not "sent" when Mongo recovers)
+            "sent_at":           sent_at or datetime.now(timezone.utc).isoformat(),
             "candle_time_utc":   candle_time_utc,
             "symbol":            symbol,
             "direction":         direction,
@@ -207,17 +229,22 @@ def save_live_signal(
         inserted_id = str(result.inserted_id)
         LOGGER.info("[MONGO] live_signal saved id=%s dir=%s entry=%.2f", inserted_id, direction, entry_price)
 
-        # prune oldest beyond MAX_SIGNALS
-        total = col.count_documents({})
-        if total > MAX_SIGNALS:
-            oldest = (
-                col.find({}, {"_id": 1})
-                   .sort("sent_at", 1)
-                   .limit(total - MAX_SIGNALS)
-            )
-            ids = [d["_id"] for d in oldest]
-            if ids:
-                col.delete_many({"_id": {"$in": ids}})
+        # prune oldest beyond MAX_SIGNALS — best effort: the signal IS saved at this
+        # point, so a prune hiccup must not report a failure (the caller would
+        # re-queue the signal and insert it twice).
+        try:
+            total = col.count_documents({})
+            if total > MAX_SIGNALS:
+                oldest = (
+                    col.find({}, {"_id": 1})
+                       .sort("sent_at", 1)
+                       .limit(total - MAX_SIGNALS)
+                )
+                ids = [d["_id"] for d in oldest]
+                if ids:
+                    col.delete_many({"_id": {"$in": ids}})
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("[MONGO] live_signals prune skipped: %s", exc)
 
         return inserted_id
     except Exception as exc:
@@ -434,11 +461,39 @@ def load_strategy_started_at(strategy_id: str) -> str | None:
 # track record because Mongo hiccupped at that instant. On failure the kwargs
 # are appended to a local JSONL queue and retried every bot cycle.
 import json as _json
+import re as _re
 import threading as _threading
 from pathlib import Path as _Path
 
-PENDING_SIGNALS_PATH = _Path(__file__).resolve().parent.parent / "pending_signals.jsonl"
+_ROOT = _Path(__file__).resolve().parent.parent
+_PENDING_TAG: str | None = None
+# Legacy shared file name. Before 2026-10-09 all six bot processes appended to and
+# rewrote this ONE file under a per-process threading.Lock — a cross-process race
+# that could drop a queued signal or replay it twice when Mongo came back. Each
+# bot now calls configure_pending_queue(<strategy tag>) and owns its own file.
+PENDING_SIGNALS_PATH = _ROOT / "pending_signals.jsonl"
 _PENDING_LOCK = _threading.Lock()
+
+
+def _safe_tag(tag: str) -> str:
+    return _re.sub(r"[^A-Za-z0-9_.-]+", "_", str(tag or "").strip()) or "shared"
+
+
+def configure_pending_queue(tag: str) -> _Path:
+    """Give this process its own retry-queue file (pending_signals_<tag>.jsonl)."""
+    global _PENDING_TAG, PENDING_SIGNALS_PATH
+    _PENDING_TAG = _safe_tag(tag)
+    PENDING_SIGNALS_PATH = _ROOT / f"pending_signals_{_PENDING_TAG}.jsonl"
+    return PENDING_SIGNALS_PATH
+
+
+def _queue_path_for(kwargs: dict[str, Any]) -> _Path:
+    if _PENDING_TAG is not None:
+        return PENDING_SIGNALS_PATH
+    tag = kwargs.get("strategy")
+    if tag:
+        return _ROOT / f"pending_signals_{_safe_tag(str(tag))}.jsonl"
+    return PENDING_SIGNALS_PATH
 
 
 def save_live_signal_queued(**kwargs: Any) -> str | None:
@@ -447,46 +502,70 @@ def save_live_signal_queued(**kwargs: Any) -> str | None:
     if sid is not None:
         return sid
     try:
-        kwargs["_queued_at"] = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        kwargs.setdefault("sent_at", now_iso)   # keep the true send time on replay
+        kwargs["_queued_at"] = now_iso
+        path = _queue_path_for(kwargs)
         with _PENDING_LOCK:
-            with open(PENDING_SIGNALS_PATH, "a", encoding="utf-8") as fh:
+            with open(path, "a", encoding="utf-8") as fh:
                 fh.write(_json.dumps(kwargs, default=str) + "\n")
-        LOGGER.warning("[MONGO] signal save failed — queued for retry (%s)", PENDING_SIGNALS_PATH.name)
+        LOGGER.warning("[MONGO] signal save failed — queued for retry (%s)", path.name)
     except Exception as exc:  # noqa: BLE001
         LOGGER.error("[MONGO] could not queue failed signal: %s", exc)
     return None
 
 
+def _queue_files() -> list[_Path]:
+    """This process's queue file(s). Unconfigured callers (web server, scripts) only
+    touch the legacy shared file so they never race a bot on its own file."""
+    if _PENDING_TAG is not None:
+        return [PENDING_SIGNALS_PATH]
+    return [_ROOT / "pending_signals.jsonl"]
+
+
 def flush_pending_signals(max_items: int = 100) -> int:
-    """Retry queued signal saves. Returns how many were persisted this call."""
-    if not PENDING_SIGNALS_PATH.exists():
-        return 0
-    with _PENDING_LOCK:
-        try:
-            lines = [ln for ln in PENDING_SIGNALS_PATH.read_text(encoding="utf-8").splitlines() if ln.strip()]
-        except Exception as exc:  # noqa: BLE001
-            LOGGER.error("[MONGO] pending queue unreadable: %s", exc)
-            return 0
-        if not lines:
-            PENDING_SIGNALS_PATH.unlink(missing_ok=True)
-            return 0
+    """Retry queued signal saves. Returns how many were persisted this call.
+    Stops at the first failed replay (Mongo is still down — do not burn a
+    6 s server-selection timeout per line every cycle) and rewrites the file
+    atomically (tmp + rename)."""
+    saved = 0
+    for path in _queue_files():
+        if not path.exists():
+            continue
         kept: list[str] = []
-        saved = 0
-        for ln in lines[:max_items]:
+        with _PENDING_LOCK:
             try:
-                kw = _json.loads(ln)
-                kw.pop("_queued_at", None)
-                if save_live_signal(**kw) is not None:
-                    saved += 1
-                    continue
+                lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
             except Exception as exc:  # noqa: BLE001
-                LOGGER.error("[MONGO] pending signal replay failed: %s", exc)
-            kept.append(ln)
-        kept.extend(lines[max_items:])
-        if kept:
-            PENDING_SIGNALS_PATH.write_text("\n".join(kept) + "\n", encoding="utf-8")
-        else:
-            PENDING_SIGNALS_PATH.unlink(missing_ok=True)
-    if saved:
-        LOGGER.info("[MONGO] replayed %d queued signal(s); %d still pending", saved, len(kept))
+                LOGGER.error("[MONGO] pending queue unreadable (%s): %s", path.name, exc)
+                continue
+            if not lines:
+                path.unlink(missing_ok=True)
+                continue
+            stop = False
+            for n, ln in enumerate(lines):
+                if stop or n >= max_items:
+                    kept.append(ln)
+                    continue
+                try:
+                    kw = _json.loads(ln)
+                    kw.pop("_queued_at", None)
+                    if save_live_signal(**kw) is not None:
+                        saved += 1
+                        continue
+                except Exception as exc:  # noqa: BLE001
+                    LOGGER.error("[MONGO] pending signal replay failed: %s", exc)
+                kept.append(ln)
+                stop = True   # Mongo still unavailable — keep the rest for next cycle
+            try:
+                if kept:
+                    tmp = path.with_name(path.name + ".tmp")
+                    tmp.write_text("\n".join(kept) + "\n", encoding="utf-8")
+                    os.replace(tmp, path)
+                else:
+                    path.unlink(missing_ok=True)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.error("[MONGO] pending queue rewrite failed (%s): %s", path.name, exc)
+        if saved:
+            LOGGER.info("[MONGO] replayed %d queued signal(s) from %s; %d still pending", saved, path.name, len(kept))
     return saved

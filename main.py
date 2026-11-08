@@ -22,11 +22,16 @@ from core.telegram_bot import TelegramNotifier
 
 # MongoDB signal persistence (non-fatal if unavailable)
 try:
-    from core.mongo_store import save_live_signal as _save_live_signal
+    from core.mongo_store import save_live_signal_queued as _save_live_signal
+    from core.mongo_store import flush_pending_signals as _flush_pending_signals
+    from core.mongo_store import configure_pending_queue as _configure_pending_queue
     _MONGO_SIGNALS = True
 except Exception:
     _MONGO_SIGNALS = False
     def _save_live_signal(**_): return None
+    def _flush_pending_signals(): return 0
+    def _configure_pending_queue(_tag): return None
+from core.heartbeat import beat as _heartbeat
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -38,6 +43,10 @@ TREND_TIMEFRAME = "15m"
 ENTRY_TIMEFRAME = "5m"
 SIGNAL_MODES = ("forex",)
 CANDLE_LIMIT = 300
+# Never evaluate an entry candle that closed longer ago than this: at the 22:00 UTC
+# reopen (and Sunday) the newest closed M5 bar is the 20:55 / Friday bar — a
+# breakout on it would fire an hour (or a weekend) late with a dead close.
+STALE_ENTRY_BAR_MAX_MIN = int(os.getenv("STALE_ENTRY_BAR_MAX_MIN", "10"))
 POLL_INTERVAL_SECONDS = 60
 DEFAULT_MAX_CYCLES = 0
 
@@ -284,6 +293,7 @@ async def run_loop() -> None:
     LOGGER.info("[FEED] %s", startup_summary["note"])
 
     fetcher, indicators, signal_engine, risk_manager, notifier = _build_components()
+    _configure_pending_queue("rsi-ema")   # own Mongo retry-queue file for this process
     provider_summary = fetcher.provider_summary()
     runtime_state = RuntimeState()
     last_processed_entry_candle: pd.Timestamp | None = None
@@ -329,6 +339,7 @@ async def run_loop() -> None:
                     next_market_open(now_utc).isoformat(),
                 )
                 last_skip_log = now_utc
+            _heartbeat("rsi-ema", "market_closed")
             _write_state(runtime_state)
             cycles_completed += 1
             if max_cycles and cycles_completed >= max_cycles:
@@ -376,6 +387,27 @@ async def run_loop() -> None:
                     snapshot_error=snapshot_error,
                 )
             )
+
+            _ect = entry_candle_time if entry_candle_time.tzinfo is not None else entry_candle_time.tz_localize("UTC")
+            bar_age_min = (pd.Timestamp(now_utc) - (_ect + pd.Timedelta(minutes=5))).total_seconds() / 60.0
+            if bar_age_min > STALE_ENTRY_BAR_MAX_MIN and (
+                last_processed_entry_candle is None or entry_candle_time > last_processed_entry_candle
+            ):
+                LOGGER.info(
+                    "[DATA] stale entry candle %s closed %.0f min ago - skipped (reopen/downtime); waiting for a fresh bar",
+                    entry_candle_time.isoformat(), bar_age_min,
+                )
+                last_processed_entry_candle = entry_candle_time
+                runtime_state.status = "waiting"
+                runtime_state.last_reason = "stale_entry_candle_skipped"
+                _heartbeat("rsi-ema", "stale_bar_skipped")
+                _write_state(runtime_state)
+                cycles_completed += 1
+                if max_cycles and cycles_completed >= max_cycles:
+                    LOGGER.info("[ENGINE] reached max cycles=%s; exiting", max_cycles)
+                    return
+                await asyncio.sleep(POLL_INTERVAL_SECONDS)
+                continue
 
             if last_processed_entry_candle is not None and entry_candle_time <= last_processed_entry_candle:
                 runtime_state.status = "waiting"
@@ -541,6 +573,13 @@ async def run_loop() -> None:
             runtime_state.last_reason = "exception"
             LOGGER.exception("[ENGINE] symbol=%s cycle failed", SYMBOL)
 
+        if runtime_state.status != "error":
+            _heartbeat("rsi-ema", runtime_state.status)
+        if _MONGO_SIGNALS:
+            try:
+                await asyncio.to_thread(_flush_pending_signals)   # replay a save that failed earlier
+            except Exception:
+                LOGGER.debug("[MONGO] pending flush skipped")
         _write_state(runtime_state)
         cycles_completed += 1
         if max_cycles and cycles_completed >= max_cycles:

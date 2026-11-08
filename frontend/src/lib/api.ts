@@ -236,7 +236,9 @@ export const Api = {
   backtestReport: (id: string) => apiGet<RsiBacktestResult & { params?: any; saved_at?: string }>(`/backtest/history/${id}`),
   runRsiBacktest: (p: RsiBacktestParams) => apiPost<RsiBacktestResult>("/backtest", p),
   runVwapStBacktest: (p: VwapStBacktestParams) => apiPost<VwapStBacktestResult>("/api/vwap-st/backtest", p),
-  liveSignals: (limit = 100) => apiGet<{ signals: LiveSignal[]; count: number }>(`/signals?limit=${limit}`),
+  // 500 = the server cap. At 100 the per-page histories were truncated (162 docs
+  // across 7 strategies -> the VWAP page saw 25 of 40, BTC 48 of 78).
+  liveSignals: (limit = 500) => apiGet<{ signals: LiveSignal[]; count: number }>(`/signals?limit=${limit}`),
   startBot: (strategy: BotId) =>
     apiPost<{ status: string; message: string }>(`/api/bot/${strategy}/start`),
   stopBot: (strategy: BotId) =>

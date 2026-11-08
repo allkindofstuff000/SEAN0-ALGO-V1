@@ -83,17 +83,22 @@ class BtcFetcher:
         self.timeout = timeout
 
     # ── HTTP ────────────────────────────────────────────────────────────────
-    def _get(self, path: str, params: dict[str, Any]) -> Any:
+    def _get(self, path: str, params: dict[str, Any], *, retries: int | None = None, timeout: float | None = None) -> Any:
+        """GET with retries. The *display* path (chart fallback) passes retries=1 /
+        a short timeout: it runs inside the web server's small thread pool, where
+        the bot-grade 4 x 20 s retry ladder would stall every crypto stream."""
         url = f"{BTC_BASE}{path}?{urllib.parse.urlencode(params)}"
         headers = {"User-Agent": "SEAN0-ALGO-V1/1.0", "Accept": "application/json"}
-        for attempt in range(1, self.max_retries + 1):
+        max_retries = max(1, int(retries if retries is not None else self.max_retries))
+        tmo = float(timeout if timeout is not None else self.timeout)
+        for attempt in range(1, max_retries + 1):
             try:
                 req = urllib.request.Request(url, headers=headers, method="GET")
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                with urllib.request.urlopen(req, timeout=tmo) as resp:
                     return json.loads(resp.read().decode("utf-8"))
             except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as exc:
-                LOGGER.warning("btc_fetch_failed attempt=%s/%s path=%s err=%s", attempt, self.max_retries, path, exc)
-                if attempt >= self.max_retries:
+                LOGGER.warning("btc_fetch_failed attempt=%s/%s path=%s err=%s", attempt, max_retries, path, exc)
+                if attempt >= max_retries:
                     raise RuntimeError(f"Binance mirror request failed ({path}): {exc}") from exc
                 time.sleep(self.retry_base_seconds)
         raise RuntimeError("unexpected_btc_retry_exit")
@@ -119,10 +124,12 @@ class BtcFetcher:
         return pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume", "close_time"])
 
     # ── Public API ──────────────────────────────────────────────────────────
-    def fetch_klines(self, interval: str = "5m", limit: int = 300, closed_only: bool = True) -> pd.DataFrame:
-        """Most-recent candles. Drops the still-forming last bar when closed_only."""
+    def fetch_klines(self, interval: str = "5m", limit: int = 300, closed_only: bool = True, *, fast: bool = False) -> pd.DataFrame:
+        """Most-recent candles. Drops the still-forming last bar when closed_only.
+        fast=True: single attempt, short timeout (chart fallback path)."""
         iv = self._interval(interval)
-        raw = self._get("/api/v3/klines", {"symbol": self.symbol, "interval": iv, "limit": min(1000, int(limit) + 2)})
+        raw = self._get("/api/v3/klines", {"symbol": self.symbol, "interval": iv, "limit": min(1000, int(limit) + 2)},
+                        retries=1 if fast else None, timeout=6 if fast else None)
         df = self._to_frame(raw)
         if df.empty:
             raise RuntimeError("empty_btc_klines")
@@ -137,8 +144,8 @@ class BtcFetcher:
         )
         return df.tail(int(limit)).reset_index(drop=True)
 
-    def fetch_live_price(self) -> dict[str, Any]:
-        data = self._get("/api/v3/ticker/price", {"symbol": self.symbol})
+    def fetch_live_price(self, *, fast: bool = False) -> dict[str, Any]:
+        data = self._get("/api/v3/ticker/price", {"symbol": self.symbol}, retries=1 if fast else None, timeout=6 if fast else None)
         return {
             "price": float(data["price"]),
             "time": pd.Timestamp.now(tz="UTC").isoformat(),
@@ -167,7 +174,7 @@ class BtcFetcher:
             }
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning("coinbase ticker failed (%s); using binance mirror", exc)
-            return self.fetch_live_price()
+            return self.fetch_live_price(fast=True)
 
     def fetch_display_candles(self, interval: str = "5m", limit: int = 300) -> pd.DataFrame:
         """Recent candles from Coinbase (fast) for the live chart. Coinbase caps
@@ -178,11 +185,13 @@ class BtcFetcher:
         key = _norm_tf(interval)
         gran = _CB_GRAN.get(key)
         if gran is None:
-            return self.fetch_klines(interval, limit, closed_only=False)
+            return self.fetch_klines(interval, limit, closed_only=False, fast=True)
 
         pages = max(1, min(6, (int(limit) + 299) // 300))
         now = int(pd.Timestamp.now(tz="UTC").timestamp())
-        span = 300 * gran  # seconds covered by one 300-bar page
+        # One page covers up to 300 bars. The SSE tick path only needs a few bars,
+        # so ask for exactly that window instead of a full 300-bar page every 2 s.
+        span = (300 if pages > 1 else max(3, min(300, int(limit) + 2))) * gran
         windows: list[tuple[int, int]] = []
         end = now
         for _ in range(pages):
@@ -207,7 +216,7 @@ class BtcFetcher:
 
         if not raw_all:
             LOGGER.warning("coinbase candles empty; using binance mirror")
-            return self.fetch_klines(interval, limit, closed_only=False)
+            return self.fetch_klines(interval, limit, closed_only=False, fast=True)
         # Coinbase rows: [time, low, high, open, close, volume], newest-first.
         rows = [
             {
@@ -247,6 +256,8 @@ class BtcFetcher:
             starts.append(cur)
             cur += page_span
 
+        failed: list[int] = []
+
         def _page(ps: int) -> list[list[Any]]:
             pe = min(ps + page_span, end_ms)
             try:
@@ -254,8 +265,9 @@ class BtcFetcher:
                     "/api/v3/klines",
                     {"symbol": self.symbol, "interval": iv, "startTime": ps, "endTime": pe, "limit": 1000},
                 )
-            except Exception as exc:  # noqa: BLE001 — one bad page shouldn't kill the run
+            except Exception as exc:  # noqa: BLE001
                 LOGGER.warning("btc page fetch failed (start=%s): %s", ps, exc)
+                failed.append(ps)
                 return []
 
         all_raw: list[list[Any]] = []
@@ -264,6 +276,11 @@ class BtcFetcher:
                 if raw:
                     all_raw.extend(raw)
 
+        # A page only fails after the full retry ladder, i.e. a real outage. Silently
+        # returning the other pages used to leave a 3.5-day hole in a live bot's
+        # history (its last "closed bar" could be days old) — fail loudly instead.
+        if failed:
+            raise RuntimeError(f"{len(failed)}/{len(starts)} kline pages failed (first start={failed[0]})")
         if not all_raw:
             raise RuntimeError("no_btc_candles_in_range")
         df = self._to_frame(all_raw).drop(columns=["close_time"])

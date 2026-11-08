@@ -28,6 +28,9 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from core.data_fetcher import DataFetcher, OandaAuthError
+from core.bot_state_file import load_state, risk_dump, risk_load, save_state
+from core.heartbeat import beat as _heartbeat
+from core.market_calendar import gold_add_open_hours
 from core.signal_guard import check_signal
 
 try:
@@ -40,6 +43,7 @@ except Exception:  # pragma: no cover
 try:
     from core.mongo_store import save_live_signal_queued as _save_live_signal
     from core.mongo_store import flush_pending_signals as _flush_pending
+    from core.mongo_store import configure_pending_queue as _configure_pending_queue
     _MONGO_OK = True
 except Exception:  # pragma: no cover
     _MONGO_OK = False
@@ -49,6 +53,9 @@ except Exception:  # pragma: no cover
 
     def _flush_pending():
         return 0
+
+    def _configure_pending_queue(_tag):
+        return None
 
 
 ROOT = Path(__file__).resolve().parent
@@ -65,7 +72,9 @@ SL_ATR, TP_ATR = 1.5, 3.0   # RR 1:2
 # Risk guards (env-overridable)
 MAX_SIGNALS_PER_DAY = int(os.getenv("MACD_MAX_SIGNALS_PER_DAY", "4"))
 COOLDOWN_H1_BARS = int(os.getenv("MACD_COOLDOWN_BARS", "2"))
-_RISK: dict = {"day": None, "count": 0, "last_fired_ts": None}
+_RISK: dict = {"day": None, "count": 0, "last_fired_ts": None}   # persisted in the state file
+MAX_HOLD_H1 = int(os.getenv("MACD_MAX_HOLD_H1", "24"))   # backtester MAX_HOLD: flat after 24 H1 bars (market hours)
+STALE_BAR_MAX_MIN = int(os.getenv("MACD_STALE_BAR_MAX_MIN", "55"))   # H1: only the 60+ min reopen bar is stale
 
 LOG = logging.getLogger("macd-gold.live")
 
@@ -81,18 +90,21 @@ def _atr(df: pd.DataFrame, n: int) -> pd.Series:
     return tr.ewm(alpha=1.0 / n, adjust=False).mean()
 
 
+_STATE: dict = {}   # JSON state file: last evaluated bar + the risk counters (survives restarts)
+
+
 def _load_last_signal_ts() -> str | None:
-    if not STATE_PATH.exists():
-        return None
-    try:
-        return STATE_PATH.read_text().strip() or None
-    except Exception:
-        return None
+    global _STATE
+    _STATE = load_state(STATE_PATH)
+    _RISK.update(risk_load(_STATE))   # daily cap / cooldown no longer reset on restart
+    return _STATE.get("last_signal_ts") or None
 
 
 def _save_last_signal_ts(ts: str) -> None:
     try:
-        STATE_PATH.write_text(ts)
+        _STATE["last_signal_ts"] = ts
+        _STATE.update(risk_dump(_RISK))
+        save_state(STATE_PATH, _STATE)
     except Exception as e:
         LOG.warning("state save failed: %s", e)
 
@@ -133,6 +145,7 @@ async def _cycle(fetcher: DataFetcher, tg, last_signal_ts: str | None) -> str | 
     if df is None or len(df) < 250:
         LOG.warning("insufficient H1 candles (%s)", 0 if df is None else len(df))
         return last_signal_ts
+    _heartbeat("macd-gold")
 
     i = len(df) - 1
     row = df.iloc[i]
@@ -141,6 +154,13 @@ async def _cycle(fetcher: DataFetcher, tg, last_signal_ts: str | None) -> str | 
     ts_str = str(ts)[:19]
     if ts_str == last_signal_ts:
         return last_signal_ts
+
+    # Stale-bar guard (the 22:00 reopen / Sunday hands us a bar that closed long ago).
+    ts_utc = ts if ts.tzinfo is not None else ts.tz_localize("UTC")
+    bar_age_min = (pd.Timestamp.now(tz="UTC") - (ts_utc + pd.Timedelta(hours=1))).total_seconds() / 60.0
+    if bar_age_min > STALE_BAR_MAX_MIN:
+        LOG.info("stale H1 bar %s closed %.0f min ago — skipped (reopen/downtime)", ts_str, bar_age_min)
+        return ts_str
 
     e200, atr, close = row.get("ema200"), row.get("atr"), float(row["close"])
     m, s, pm, ps = row.get("macd"), row.get("signal"), prev.get("macd"), prev.get("signal")
@@ -199,7 +219,13 @@ async def _cycle(fetcher: DataFetcher, tg, last_signal_ts: str | None) -> str | 
         LOG.warning("signal REJECTED by sanity guard: %s (%s @ %s)", why, direction, ts_str)
         return ts_str
 
-    LOG.info("SIGNAL %s @ %s entry=%.2f sl=%.2f tp=%.2f atr=%.2f", direction, ts_str, entry, sl, tp, atr_val)
+    # Time exit = the backtester's MAX_HOLD (24 H1 bars) in MARKET hours after the
+    # H1-close entry; the resolver closes the trade flat there (WIN/LOSS by P&L)
+    # instead of letting it run to the generic 48 h EXPIRED mark.
+    entry_ts = ts_utc + pd.Timedelta(hours=1)
+    flat_at = gold_add_open_hours(entry_ts.to_pydatetime(), MAX_HOLD_H1)
+    flat_at_str = flat_at.strftime("%Y-%m-%d %H:%M:%S")
+    LOG.info("SIGNAL %s @ %s entry=%.2f sl=%.2f tp=%.2f atr=%.2f flat_at=%s", direction, ts_str, entry, sl, tp, atr_val, flat_at_str)
 
     telegram_sent = False
     if tg is not None:
@@ -233,6 +259,8 @@ async def _cycle(fetcher: DataFetcher, tg, last_signal_ts: str | None) -> str | 
                 # Entry is at the H1 CLOSE (ts is the H1 open); the resolver must
                 # score outcomes from here, not from the pre-entry hour.
                 entry_time_utc=str(ts + pd.Timedelta(hours=1))[:19],
+                flat_at_utc=flat_at_str,
+                max_hold_h1=MAX_HOLD_H1,
                 timestamp=int(dt.datetime.now(dt.timezone.utc).timestamp()),
             )
             LOG.info("mongo: saved")
@@ -250,6 +278,7 @@ async def run() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"),
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     load_dotenv(ROOT / ".env")
+    _configure_pending_queue("macd-gold")   # own retry-queue file (no cross-process race)
 
     fetcher = DataFetcher(min_candles=H1_FETCH)
     try:

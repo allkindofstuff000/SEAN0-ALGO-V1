@@ -69,7 +69,7 @@ export default function RsiEma() {
   const tf = TF_MAP[activeTF];
   const { data: candleData } = useCandles(tf, 240);
   const { data: livePrice } = useLivePrice();
-  const { data: signalsData } = useLiveSignals(100);
+  const { data: signalsData } = useLiveSignals();
   const { data: history } = useBacktestHistory();
   const { data: market } = useMarketStatus();
   const runBacktest = useRunRsiBacktest();
@@ -105,9 +105,13 @@ export default function RsiEma() {
   // vwap/supertrend/macd excludes they'd be counted in this page's Signal
   // History and its win/loss summary (they carry those strategy/signal_kind tags).
   const forexSignals = (signalsData?.signals || []).filter((s) => {
-    const blob = `${s.symbol || ""} ${s.strategy || ""} ${s.strategyName || ""} ${s.signal_kind || ""}`.toLowerCase();
-    return !blob.includes("eth") && !blob.includes("btc") && !blob.includes("crypto")
-      && !blob.includes("vwap") && !blob.includes("supertrend") && !blob.includes("macd");
+    // Tagged signals match on the strategy tag only (rsi-sol / nyorb-eth docs used
+    // to leak in here); untagged legacy gold docs fall back to the exclusion rules.
+    const strat = (s.strategy || "").toLowerCase();
+    if (strat) return strat === "rsi-ema";
+    const blob = `${s.symbol || ""} ${s.strategyName || ""} ${s.signal_kind || ""}`.toLowerCase();
+    return !blob.includes("eth") && !blob.includes("btc") && !blob.includes("sol") && !blob.includes("crypto")
+      && !blob.includes("vwap") && !blob.includes("supertrend") && !blob.includes("macd") && !blob.includes("nyorb");
   });
 
   // Win/loss summary over resolved signals

@@ -33,6 +33,8 @@ from dotenv import load_dotenv
 from backtests import backtest_forex_engine as engine
 from core.btc_fetcher import BtcFetcher, resolve_crypto
 from core.indicator_engine import IndicatorEngine
+from core.bot_state_file import load_state, risk_dump, risk_load, save_state
+from core.heartbeat import beat as _heartbeat
 from core.signal_guard import check_signal
 
 try:
@@ -45,6 +47,7 @@ except Exception:  # pragma: no cover
 try:
     from core.mongo_store import save_live_signal_queued as _save_live_signal
     from core.mongo_store import flush_pending_signals as _flush_pending
+    from core.mongo_store import configure_pending_queue as _configure_pending_queue
     _MONGO_OK = True
 except Exception:  # pragma: no cover
     _MONGO_OK = False
@@ -54,6 +57,9 @@ except Exception:  # pragma: no cover
 
     def _flush_pending():
         return 0
+
+    def _configure_pending_queue(_tag):
+        return None
 
 
 ROOT = Path(__file__).resolve().parent
@@ -76,7 +82,8 @@ TP_ATR = 1.5
 # Risk guards (env-overridable)
 MAX_SIGNALS_PER_DAY = int(os.getenv(f"{KEY}_MAX_SIGNALS_PER_DAY", os.getenv("BTC_MAX_SIGNALS_PER_DAY", "8")))
 COOLDOWN_BARS = int(os.getenv(f"{KEY}_COOLDOWN_BARS", os.getenv("BTC_COOLDOWN_BARS", "3")))
-_RISK: dict = {"day": None, "count": 0, "last_fired_ts": None}
+_RISK: dict = {"day": None, "count": 0, "last_fired_ts": None}   # persisted in the state file
+STALE_BAR_MAX_MIN = int(os.getenv(f"{KEY}_STALE_BAR_MAX_MIN", os.getenv("BTC_STALE_BAR_MAX_MIN", "10")))
 
 # ── Session filter: OFF (removed 2026-10-08 at the user's request — fire 24/7) ─
 # History: a 12-18 UTC window (Dhaka evening 18-24) was validated on 3 non-
@@ -89,18 +96,21 @@ SESSION_UTC_START, SESSION_UTC_END = int(_sess[0]), int(_sess[1])
 LOG = logging.getLogger(f"{KEY.lower()}-rsi-ema.live")
 
 
+_STATE: dict = {}   # JSON state file: last evaluated bar + the risk counters (survives restarts)
+
+
 def _load_last_signal_ts() -> str | None:
-    if not STATE_PATH.exists():
-        return None
-    try:
-        return STATE_PATH.read_text().strip() or None
-    except Exception:
-        return None
+    global _STATE
+    _STATE = load_state(STATE_PATH)
+    _RISK.update(risk_load(_STATE))   # daily cap / cooldown no longer reset on restart
+    return _STATE.get("last_signal_ts") or None
 
 
 def _save_last_signal_ts(ts: str) -> None:
     try:
-        STATE_PATH.write_text(ts)
+        _STATE["last_signal_ts"] = ts
+        _STATE.update(risk_dump(_RISK))
+        save_state(STATE_PATH, _STATE)
     except Exception as e:
         LOG.warning("state save failed: %s", e)
 
@@ -151,6 +161,14 @@ async def _cycle(fetcher: BtcFetcher, ind_engine: IndicatorEngine, tg, last_sign
     i = len(entry_df) - 1  # last CLOSED bar
     ts = pd.Timestamp(entry_df.iloc[i]["timestamp"])
     ts_str = str(ts)[:19]
+    # Freshness guard: a partial / lagging mirror fetch must never make a bar that
+    # closed long ago look like "the last closed bar" (it would fire with the live price).
+    ts_utc = ts if ts.tzinfo is not None else ts.tz_localize("UTC")
+    bar_age_min = (pd.Timestamp.now(tz="UTC") - (ts_utc + pd.Timedelta(minutes=5))).total_seconds() / 60.0
+    if bar_age_min > STALE_BAR_MAX_MIN:
+        LOG.warning("stale data: newest closed bar %s is %.0f min old — not evaluating", ts_str, bar_age_min)
+        return last_signal_ts
+    _heartbeat(STRATEGY_TAG)
     if ts_str == last_signal_ts:
         return last_signal_ts
 
@@ -282,6 +300,7 @@ async def run() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     load_dotenv(ROOT / ".env")
+    _configure_pending_queue(STRATEGY_TAG)   # own retry-queue file (no cross-process race)
 
     global MAX_SIGNALS_PER_DAY, COOLDOWN_BARS
     MAX_SIGNALS_PER_DAY = int(os.getenv(f"{KEY}_MAX_SIGNALS_PER_DAY", os.getenv("BTC_MAX_SIGNALS_PER_DAY", str(MAX_SIGNALS_PER_DAY))))

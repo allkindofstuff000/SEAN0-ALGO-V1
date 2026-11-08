@@ -25,6 +25,24 @@ FLAT_AT = dt.time(21, 0)        # time exit (UTC)
 TP_R = 1.5                      # target as a multiple of risk
 COST = 0.0006                   # round-trip cost used by the backtest
 
+# 2026-10-09 re-validation (research/nyorb_dst_check.py, ETH M5, 270 days): the
+# +24R edge of the fixed-13:30-UTC rule sits ENTIRELY in the 8 US-winter weeks
+# (EST: 61 trades, PF 2.42) — in the EDT months every anchor (13:30 / 12:30 UTC,
+# 09:30 / 08:30 New York) is flat or negative over ~200 trades (PF 0.90-1.04).
+# The live bot therefore runs in PAPER mode (Mongo only) until a regime shows an
+# edge again. The anchor is configurable (env NYORB_TZ / NYORB_RANGE_START).
+
+
+def localize_bars(bars: pd.DataFrame, tz: str | None) -> pd.DataFrame:
+    """Return a copy whose timestamps are expressed in `tz` (None/'UTC' = as is)
+    so the session times above can be anchored to a local clock (e.g. New York)."""
+    if not tz or str(tz).upper() == "UTC":
+        return bars
+    out = bars.copy()
+    ts = pd.to_datetime(out["timestamp"], utc=True)
+    out["timestamp"] = ts.dt.tz_convert(tz)
+    return out
+
 
 def day_range(bars: pd.DataFrame, day: pd.Timestamp, start: dt.time = RANGE_START, minutes: int = RANGE_MIN) -> dict[str, Any] | None:
     """High/low of the opening range for one UTC day, or None if it is not complete yet."""
@@ -85,8 +103,23 @@ def simulate(bars: pd.DataFrame, signals: list[dict[str, Any]], tp_r: float = TP
     df = bars.reset_index(drop=True)
     o = df["open"].to_numpy(); h = df["high"].to_numpy(); l = df["low"].to_numpy(); c = df["close"].to_numpy()
     n = len(df)
+    # Report timestamps in UTC even when the bars were localized for a NY anchor.
+    ts_col = df["timestamp"]
+    try:
+        if getattr(ts_col.dt, "tz", None) is not None:
+            ts_col = ts_col.dt.tz_convert("UTC")
+    except Exception:  # noqa: BLE001
+        pass
+
+    def _utc_str(t: Any) -> str:
+        t = pd.Timestamp(t)
+        if t.tzinfo is not None:
+            t = t.tz_convert("UTC")
+        return str(t)[:19]
+
     bal = float(starting_balance)
     trades: list[dict[str, Any]] = []
+    open_trades = 0
     busy_until = -1
     for s in sorted(signals, key=lambda x: x["i"]):
         i = s["i"]
@@ -113,6 +146,16 @@ def simulate(bars: pd.DataFrame, signals: list[dict[str, Any]], tp_r: float = TP
             if hit_tp:
                 exit_p, exit_j, reason = tp, j, "take_profit_hit"; break
         if exit_p is None:
+            # No touch and no bar at/after the time exit yet (today's still-open
+            # trade in a backtest that ends now): it is OPEN, not a time exit.
+            flat_ts = s.get("flat_at")
+            try:
+                if flat_ts is not None and pd.Timestamp(df["timestamp"].iloc[last]) < pd.Timestamp(flat_ts) - pd.Timedelta(minutes=5):
+                    open_trades += 1
+                    busy_until = last
+                    continue
+            except Exception:  # noqa: BLE001
+                pass
             exit_p = float(c[last])
         eh = exit_p * cost / 2
         exit_p = exit_p - eh if d == "BUY" else exit_p + eh
@@ -123,9 +166,9 @@ def simulate(bars: pd.DataFrame, signals: list[dict[str, Any]], tp_r: float = TP
         before = bal
         bal += pnl
         trades.append({
-            "timestamp": str(s["timestamp"])[:19],
-            "entry_timestamp": str(df["timestamp"].iloc[i + 1])[:19],
-            "exit_timestamp": str(df["timestamp"].iloc[exit_j])[:19],
+            "timestamp": _utc_str(s["timestamp"]),
+            "entry_timestamp": _utc_str(ts_col.iloc[i + 1]),
+            "exit_timestamp": _utc_str(ts_col.iloc[exit_j]),
             "direction": d,
             "entry_price": round(entry, 4), "exit_price": round(float(exit_p), 4),
             "sl": round(sl, 4), "tp": round(tp, 4),
@@ -142,6 +185,7 @@ def simulate(bars: pd.DataFrame, signals: list[dict[str, Any]], tp_r: float = TP
 
     tdf = pd.DataFrame(trades)
     metrics = compute_metrics(tdf, starting_balance)
+    metrics["open_trades"] = int(open_trades)
     curve = [{"trade": k + 1, "equity": float(t["equity_after"]), "ts": t["exit_timestamp"][:10]} for k, t in enumerate(trades)]
     return tdf, metrics, curve
 
@@ -167,12 +211,19 @@ def compute_metrics(tdf: pd.DataFrame, starting_balance: float) -> dict[str, Any
 
 
 def backtest(symbol: str, start_utc: pd.Timestamp, end_utc: pd.Timestamp, *, tp_r: float = TP_R, minutes: int = RANGE_MIN,
-             long_only: bool = False, cost: float = COST, starting_balance: float = 10_000.0, risk_per_trade: float = 0.02):
-    """Fetch M5 history from the Binance mirror and run the strategy over [start, end]."""
+             long_only: bool = False, cost: float = COST, starting_balance: float = 10_000.0, risk_per_trade: float = 0.02,
+             tz: str | None = None, start: dt.time = RANGE_START, last_entry: dt.time = LAST_ENTRY, flat_at: dt.time = FLAT_AT):
+    """Fetch M5 history from the Binance mirror and run the strategy over [start, end].
+    `tz` anchors the session times to a local clock (e.g. "America/New_York")."""
     from core.btc_fetcher import BtcFetcher  # noqa: PLC0415
 
     bars = BtcFetcher(symbol).fetch_range(pd.Timestamp(start_utc) - pd.Timedelta(days=1), pd.Timestamp(end_utc), "5m")
     bars["timestamp"] = pd.to_datetime(bars["timestamp"], utc=True)
     bars = bars.sort_values("timestamp").drop_duplicates("timestamp").reset_index(drop=True)
-    sigs = [s for s in breakout_signals(bars, tp_r, minutes, long_only) if pd.Timestamp(start_utc) <= s["timestamp"] < pd.Timestamp(end_utc)]
+    bars = localize_bars(bars, tz)
+    s0, s1 = pd.Timestamp(start_utc), pd.Timestamp(end_utc)
+    s0 = s0.tz_localize("UTC") if s0.tzinfo is None else s0
+    s1 = s1.tz_localize("UTC") if s1.tzinfo is None else s1
+    sigs = [s for s in breakout_signals(bars, tp_r, minutes, long_only, start, last_entry, flat_at)
+            if s0 <= pd.Timestamp(s["timestamp"]) < s1]
     return simulate(bars, sigs, tp_r, cost, starting_balance, risk_per_trade)

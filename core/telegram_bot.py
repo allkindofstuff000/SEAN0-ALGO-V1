@@ -18,6 +18,28 @@ LOGGER = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+# python-telegram-bot's default connect timeout is 5 s. The resolver's daily
+# heartbeat timed out on 3 of 3 natural 00:00 UTC runs (a busy moment on the
+# shared box), so every client built here gets a 20 s budget.
+TELEGRAM_CONNECT_TIMEOUT = 20.0
+TELEGRAM_RW_TIMEOUT = 20.0
+
+
+def make_bot(token: str) -> Bot:
+    """A Bot with the longer timeouts (falls back to defaults on old PTB versions)."""
+    try:
+        from telegram.request import HTTPXRequest  # PTB >= 20
+
+        req = HTTPXRequest(
+            connect_timeout=TELEGRAM_CONNECT_TIMEOUT,
+            read_timeout=TELEGRAM_RW_TIMEOUT,
+            write_timeout=TELEGRAM_RW_TIMEOUT,
+            pool_timeout=TELEGRAM_CONNECT_TIMEOUT,
+        )
+        return Bot(token, request=req)
+    except Exception:  # noqa: BLE001
+        return Bot(token)
+
 
 @dataclass
 class TelegramNotifier:
@@ -30,7 +52,7 @@ class TelegramNotifier:
 
     def __post_init__(self) -> None:
         self.enabled = bool(self.token and self.chat_id)
-        self._bot = Bot(self.token) if self.enabled else None
+        self._bot = make_bot(self.token) if self.enabled else None
         if not self.enabled:
             LOGGER.warning("[TELEGRAM] notifier disabled; missing token/chat_id")
 

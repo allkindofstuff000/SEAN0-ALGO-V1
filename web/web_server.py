@@ -113,6 +113,42 @@ except Exception as _btc_exc:
     _CRYPTO_SYMBOLS = {}
     logging.getLogger("dashboard").warning("[BTC] import failed: %s", _btc_exc)
 
+# Shared, single-flight caches for the Coinbase display feed. Before 2026-10-09 every
+# SSE client polled Coinbase on its own (1 candles page + 1 ticker per client every
+# 2 s): a single /charts grid viewer was ~3.6 req/s and three viewers crossed the
+# public ~10 req/s per-IP limit, whose fallback then stalled the whole thread pool.
+# Now at most one upstream fetch per (symbol, tf) per TTL, however many viewers.
+_CRYPTO_CANDLES_TTL_S = 1.5
+_CRYPTO_SPOT_TTL_S = 1.0
+_crypto_cache: dict[tuple, tuple[float, Any]] = {}
+_crypto_cache_locks: dict[tuple, threading.Lock] = {}
+_crypto_cache_guard = threading.Lock()
+
+
+def _crypto_cache_lock(k: tuple) -> threading.Lock:
+    with _crypto_cache_guard:
+        lock = _crypto_cache_locks.get(k)
+        if lock is None:
+            lock = _crypto_cache_locks[k] = threading.Lock()
+        return lock
+
+
+def _crypto_cached(k: tuple, ttl: float, compute):
+    """Return the cached value for k if younger than ttl, else compute it once
+    (concurrent callers wait on the per-key lock and reuse the fresh result)."""
+    with _crypto_cache_lock(k):
+        hit = _crypto_cache.get(k)
+        now = time.time()
+        if hit is not None and now - hit[0] < ttl:
+            return hit[1]
+        val = compute()
+        _crypto_cache[k] = (time.time(), val)
+        return val
+
+
+def _crypto_spot_cached(key: str) -> dict[str, Any]:
+    return _crypto_cached(("spot", key), _CRYPTO_SPOT_TTL_S, lambda: _crypto_fetchers[key].fetch_spot_price())
+
 
 def _crypto_key_or_404(symbol: str) -> str:
     try:
@@ -312,6 +348,29 @@ app.add_middleware(
 )
 # SSE-safe gzip for the big JSON payloads (candles / history / signals).
 app.add_middleware(SmartGZipMiddleware, minimum_size=500)
+
+
+class ImmutableAssetsMiddleware:
+    """Vite emits content-hashed files under /assets/: cache them for a year.
+    Pure ASGI (header-only) so streaming/SSE responses pass through untouched."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope.get("path", "").startswith("/assets/"):
+            return await self.app(scope, receive, send)
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start" and message.get("status") == 200:
+                headers = MutableHeaders(raw=message["headers"])
+                headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            await send(message)
+
+        return await self.app(scope, receive, send_wrapper)
+
+
+app.add_middleware(ImmutableAssetsMiddleware)
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -1361,9 +1420,11 @@ def _crypto_candles_payload(key: str, timeframe: str, count: int, *, live_last: 
         }
         for _, r in df.iterrows()
     ]
+    if candles:
+        candles[-1]["complete"] = False   # the newest bar is still forming
     if live_last and candles:
         try:
-            spot = float(fetcher.fetch_spot_price().get("price") or 0)
+            spot = float(_crypto_spot_cached(key).get("price") or 0)
             if spot > 0:
                 last = candles[-1]
                 last["close"] = spot
@@ -1374,8 +1435,13 @@ def _crypto_candles_payload(key: str, timeframe: str, count: int, *, live_last: 
     return {"candles": candles[-count:], "granularity": timeframe.upper(), "source": "coinbase", "symbol": fetcher.display_symbol}
 
 
+def _crypto_candles_cached(key: str, timeframe: str, count: int, *, live_last: bool = True) -> dict[str, Any]:
+    return _crypto_cached(("candles", key, timeframe.upper(), int(count), bool(live_last)), _CRYPTO_CANDLES_TTL_S,
+                          lambda: _crypto_candles_payload(key, timeframe, count, live_last=live_last))
+
+
 def _btc_candles_payload(timeframe: str, count: int, *, live_last: bool = True) -> dict[str, Any]:
-    return _crypto_candles_payload("BTC", timeframe, count, live_last=live_last)
+    return _crypto_candles_cached("BTC", timeframe, count, live_last=live_last)
 
 
 @app.get("/api/crypto/symbols", tags=["crypto"])
@@ -1395,7 +1461,7 @@ def api_crypto_price(symbol: str) -> dict[str, Any]:
     if not _BTC_AVAILABLE:
         raise HTTPException(status_code=503, detail="Crypto data source unavailable.")
     try:
-        snap = _crypto_fetchers[key].fetch_spot_price()  # Coinbase (fast, matches TradingView)
+        snap = _crypto_spot_cached(key)  # Coinbase (fast, matches TradingView); shared 1 s cache
         return {
             "price": float(snap["price"]),
             "time": int(pd.Timestamp(snap["time"]).timestamp()),
@@ -1412,7 +1478,7 @@ def api_crypto_candles(symbol: str, timeframe: str, count: int = 300) -> dict[st
     if not _BTC_AVAILABLE:
         raise HTTPException(status_code=503, detail="Crypto data source unavailable.")
     try:
-        return _crypto_candles_payload(key, timeframe, count)
+        return _crypto_candles_cached(key, timeframe, count)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"{key} candles fetch failed: {exc}") from exc
 
@@ -1420,11 +1486,17 @@ def api_crypto_candles(symbol: str, timeframe: str, count: int = 300) -> dict[st
 @app.get("/api/crypto/{symbol}/stream/{timeframe}", tags=["crypto"])
 async def api_crypto_stream(symbol: str, timeframe: str) -> StreamingResponse:
     key = _crypto_key_or_404(symbol)
+    if not _BTC_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Crypto data source unavailable.")
+    try:
+        _crypto_fetchers[key]._interval(timeframe)   # unknown tf -> 404 now, not an error event every 2 s forever
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail=f"unsupported timeframe {timeframe!r}") from exc
 
     async def event_gen():
         while True:
             try:
-                payload = await asyncio.to_thread(_crypto_candles_payload, key, timeframe, 3)
+                payload = await asyncio.to_thread(_crypto_candles_cached, key, timeframe, 3)
                 for c in payload["candles"][-2:]:
                     yield f"data: {_json.dumps({'type': 'candle', 'candle': c})}\n\n"
             except Exception as exc:  # noqa: BLE001
@@ -1869,7 +1941,7 @@ def _compute_bot_status() -> dict[str, Any]:
 
     # Load uptime started_at from MongoDB (only for running bots)
     rsi_started = load_strategy_started_at("rsi-ema") if rsi_running else None
-    eth_started = load_strategy_started_at("rsi-eth") if rsi_eth_running else None
+    rsi_eth_started = load_strategy_started_at("rsi-eth") if rsi_eth_running else None
     vwap_started = load_strategy_started_at("vwap-st") if vwap_running else None
     btc_started = load_strategy_started_at("btc-rsi-ema") if btc_running else None
     eth_started = load_strategy_started_at("eth-rsi-ema") if eth_running else None
@@ -1888,7 +1960,7 @@ def _compute_bot_status() -> dict[str, Any]:
         "rsiEth": {
             "running": rsi_eth_running,
             "paused": getattr(_rsi_eth, "_paused", False) if _rsi_eth else False,
-            "startedAt": eth_started,
+            "startedAt": rsi_eth_started,
             "session": rsi_eth_status.get("session"),
             "market_regime": rsi_eth_status.get("market_regime"),
             "regime_details": rsi_eth_status.get("regime_details", {}),
@@ -1919,6 +1991,66 @@ def api_bot_status() -> dict[str, Any]:
 def api_market_status() -> dict[str, Any]:
     """Check if forex market is currently open."""
     return is_market_open()
+
+
+# Heartbeat name -> (systemd unit, bot-status key, max age in s, gold-only). A bot
+# touches logs/heartbeat/<name> after every good cycle (core/heartbeat.py); older
+# than max age while its unit runs = "active but blind" -> reported in bot_stalled
+# and alerted by ops/healthcheck.sh. Gold bots are only judged while gold trades.
+_BOT_HEARTBEATS: dict[str, tuple[str, str | None, int, bool]] = {
+    "rsi-ema":   ("sean-algo",          "rsiEma",    600, False),
+    "vwap-st":   ("vwap-st",            "vwapSt",    600, True),
+    "macd-gold": ("macd-gold",          "macdGold",  900, True),
+    "rsi-btc":   ("btc-rsi-ema",        "btcRsiEma", 600, False),
+    "rsi-eth":   ("crypto-rsi-ema@eth", "ethRsiEma", 600, False),
+    "rsi-sol":   ("crypto-rsi-ema@sol", "solRsiEma", 600, False),
+    "nyorb-eth": ("nyorb@eth",          "nyorbEth",  600, False),
+    "resolver":  ("signal-resolver",    None,        900, False),
+}
+# Dashboard stop button -> bot_state "stopped" -> the healthcheck must not page for it.
+_STOPPABLE_UNITS: dict[str, str] = {
+    "rsi-ema": "sean-algo", "vwap-st": "vwap-st", "macd-gold": "macd-gold", "btc-rsi-ema": "btc-rsi-ema",
+    "eth-rsi-ema": "crypto-rsi-ema@eth", "sol-rsi-ema": "crypto-rsi-ema@sol", "nyorb-eth": "nyorb@eth",
+}
+
+
+def _bot_liveness(status: dict[str, Any], market_open: bool) -> tuple[dict[str, Any], list[str], list[str]]:
+    """(heartbeats, stalled names, deliberately stopped units) for /api/health."""
+    try:
+        from core.heartbeat import read_all as _read_heartbeats
+        hb = _read_heartbeats()
+    except Exception:  # noqa: BLE001
+        hb = {}
+    stopped: list[str] = []
+    for state_id, unit in _STOPPABLE_UNITS.items():
+        try:
+            if load_strategy_state(state_id) == "stopped":
+                stopped.append(unit)
+        except Exception:  # noqa: BLE001
+            pass
+    stalled: list[str] = []
+    now = time.time()
+    for name, (unit, skey, max_age, gold_only) in _BOT_HEARTBEATS.items():
+        if unit in stopped:
+            continue
+        if gold_only and not market_open:
+            continue
+        st = (status.get(skey) or {}) if skey else {"running": True}
+        if not st.get("running"):
+            continue
+        age = (hb.get(name) or {}).get("age_s")
+        if age is None:
+            # no heartbeat yet: fine during the first max_age after the bot started
+            started = st.get("startedAt")
+            try:
+                started_age = now - pd.Timestamp(started).timestamp() if started else None
+            except Exception:  # noqa: BLE001
+                started_age = None
+            if started_age is None or started_age > max_age:
+                stalled.append(name)
+        elif age > max_age:
+            stalled.append(name)
+    return hb, stalled, stopped
 
 
 @app.get("/api/health", tags=["health"])
@@ -1973,8 +2105,15 @@ def api_health() -> dict[str, Any]:
         else:
             feed_stale = min(last_tick_age, since_open) > 300
     healthy = engine_ready and m1 > 0 and thread_alive is not False and not feed_stale
+    try:
+        heartbeats, stalled, stopped_units = _bot_liveness(status, market_open)
+    except Exception:  # noqa: BLE001
+        heartbeats, stalled, stopped_units = {}, [], []
     return {
         "status": "ok" if healthy else "degraded",
+        "bot_heartbeats": {k: v.get("age_s") for k, v in heartbeats.items()},
+        "bot_stalled": stalled,
+        "stopped_units": stopped_units,
         "uptime_seconds": round(time.time() - _APP_START_TIME, 1),
         "engine_initialized": engine_ready,
         "m1_candles": m1,
@@ -2641,7 +2780,13 @@ def serve_favicon():
 # SPA catch-all - serve React index.html for every unmatched route
 @app.get("/{full_path:path}", include_in_schema=False)
 async def serve_spa(full_path: str):
-    return FileResponse(str(STATIC_DIR / "index.html"))
+    # Same headers as "/": a cached deep-link index.html would point at a hashed
+    # bundle that no longer exists after a deploy.
+    return FileResponse(
+        str(STATIC_DIR / "index.html"),
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
+    )
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

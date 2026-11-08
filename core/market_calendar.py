@@ -117,3 +117,19 @@ def gold_open_hours_between(start: Any, end: Any) -> float:
             hours += (slot_end - t).total_seconds() / 3600.0
         t = slot_end
     return hours
+
+
+def gold_add_open_hours(start: Any, hours: float, step_minutes: int = 5) -> dt.datetime:
+    """The UTC instant at which `hours` of gold MARKET time have elapsed after
+    `start` (skips the settlement break and the weekend, DST-aware). Used for
+    time exits expressed in market hours, e.g. the MACD H1 bot's 24-bar max hold."""
+    t = _to_utc(start)
+    need = float(hours) * 3600.0
+    step = dt.timedelta(minutes=step_minutes)
+    guard = 0
+    while need > 1e-6 and guard < 100_000:
+        if is_gold_open(t):
+            need -= step.total_seconds()
+        t += step
+        guard += 1
+    return t

@@ -71,7 +71,7 @@ export default function BtcRsiEma({ symbolKey = "BTC" }: { symbolKey?: CryptoKey
   const tf = TF_MAP[activeTF];
   const { data: candleData } = useCryptoCandles(sym, tf, 240);
   const { data: livePrice } = useCryptoLivePrice(sym);
-  const { data: signalsData } = useLiveSignals(100);
+  const { data: signalsData } = useLiveSignals();
   const { data: history } = useBacktestHistory();
   const runBacktest = useRunCryptoBacktest(sym);
 
@@ -98,8 +98,12 @@ export default function BtcRsiEma({ symbolKey = "BTC" }: { symbolKey?: CryptoKey
 
   // BTC live signals only (there is no live BTC bot yet, so this is normally empty)
   const btcSignals = (signalsData?.signals || []).filter((s) => {
-    const blob = `${s.symbol || ""} ${s.strategy || ""} ${s.strategyName || ""} ${s.signal_kind || ""}`.toLowerCase();
-    return blob.includes(spec.strategyTag) || blob.includes(spec.display.toLowerCase());
+    // Tagged signals: exact strategy tag (the ETH page used to show nyorb-eth
+    // signals because they share the ETHUSD symbol). Untagged: symbol match.
+    const strat = (s.strategy || "").toLowerCase();
+    if (strat) return strat === spec.strategyTag;
+    const blob = `${s.symbol || ""} ${s.strategyName || ""} ${s.signal_kind || ""}`.toLowerCase();
+    return blob.includes(spec.display.toLowerCase()) && !blob.includes("nyorb");
   });
   const sigResolved = btcSignals.filter((s) => s.outcome === "WIN" || s.outcome === "LOSS");
   const sigWins = sigResolved.filter((s) => s.outcome === "WIN").length;

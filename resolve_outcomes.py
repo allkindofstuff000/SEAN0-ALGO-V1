@@ -28,6 +28,8 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from core.data_fetcher import DataFetcher
+from core.heartbeat import beat as _heartbeat
+from core.heartbeat import read_all as _read_heartbeats
 from core.market_calendar import gold_market_state, gold_open_hours_between, is_gold_open
 
 try:
@@ -55,6 +57,12 @@ try:  # dedicated open-signal query (added 2026-10-05); fall back to the latest-
 except Exception:  # pragma: no cover
     load_open_signals = None  # type: ignore
 
+try:  # the resolver is the single owner of the LEGACY shared retry queue (pending_signals.jsonl)
+    from core.mongo_store import flush_pending_signals as _flush_legacy_queue
+except Exception:  # pragma: no cover
+    def _flush_legacy_queue(*_a, **_k):
+        return 0
+
 try:
     from core.telegram_bot import TelegramNotifier
     _TG_OK = True
@@ -69,15 +77,21 @@ MAX_SIGNAL_AGE_H = 48    # MARKET hours (gold skips the 21-22 UTC break + weeken
                          # gold signal "aged out" over the weekend and was abandoned
                          # with outcome=null (both 2026-10-02 gold signals). Past this
                          # a signal is closed as EXPIRED, never left open.
-CANDLE_COUNT = 600       # ~50h+ of M5 — MUST exceed MAX_SIGNAL_AGE_H so the fetch
-                         # window always reaches back past the signal candle
-                         # (otherwise an early SL/TP touch falls off the front and
-                         # the outcome is mis-marked). Weekends only widen coverage.
+CANDLE_COUNT = 1500      # gold M5 bars per cycle (~5 market days). MUST exceed
+                         # MAX_SIGNAL_AGE_H so the window always reaches back past the
+                         # signal candle (otherwise an early SL/TP touch falls off the
+                         # front and the outcome is mis-marked). 600 left a 2 h margin:
+                         # a resolver outage > 2 h around expiry would have marked
+                         # signals "flat at entry". Crypto uses CRYPTO_CANDLE_COUNT.
+CRYPTO_CANDLE_COUNT = 1000   # Binance mirror max per request (~83 h of M5)
+HEARTBEAT_AT_MIN = 10        # send the daily check at 00:10 UTC (00:00 was a busy
+                             # moment: 3/3 natural sends timed out on connect)
+HEARTBEAT_RETRY_MIN = 30     # retry a failed daily send every 30 min until it lands
 
 # ── Health watchdog ─────────────────────────────────────────────────────────
 STALE_FEED_MIN = 20         # alert if no fresh OANDA bar in this many minutes
 HEALTH_COOLDOWN_MIN = 30    # min minutes between repeat stale-feed alerts
-_HEALTH: dict = {"last_alert": None, "heartbeat_day": None}
+_HEALTH: dict = {"last_alert": None, "heartbeat_day": None, "heartbeat_last_try": None}
 
 LOG = logging.getLogger("signal-resolver")
 
@@ -122,7 +136,9 @@ def _market_hours_between(start: "pd.Timestamp", end: "pd.Timestamp", crypto: bo
 
 
 def _signal_time(s: dict) -> "pd.Timestamp | None":
-    raw = s.get("candle_time_utc") or s.get("sent_at")
+    # Age counts from the ENTRY when the strategy states it (MACD enters at the H1
+    # close, an hour after its signal-bar open), else from the signal candle.
+    raw = s.get("entry_time_utc") or s.get("candle_time_utc") or s.get("sent_at")
     if not raw:
         return None
     ts = pd.Timestamp(raw)
@@ -138,10 +154,10 @@ def _send_tg_sync(tg, text: str) -> None:
     ~43% of alerts, including every daily heartbeat since 2026-09-26."""
     if tg is None:
         return
-    from telegram import Bot  # local import keeps the optional dependency optional
+    from core.telegram_bot import make_bot  # 20 s connect/read timeouts (default 5 s timed out)
 
     async def _go() -> None:
-        async with Bot(tg.token) as bot:
+        async with make_bot(tg.token) as bot:
             await bot.send_message(chat_id=tg.chat_id, text=text)
 
     for attempt in (1, 2):
@@ -151,6 +167,7 @@ def _send_tg_sync(tg, text: str) -> None:
             return
         except Exception:  # noqa: BLE001
             LOG.exception("telegram send failed (attempt %d/2)", attempt)
+    raise RuntimeError("telegram send failed twice")
 
 
 def _daily_heartbeat_msg(fetcher: DataFetcher, now: "pd.Timestamp") -> str:
@@ -159,8 +176,19 @@ def _daily_heartbeat_msg(fetcher: DataFetcher, now: "pd.Timestamp") -> str:
     today's signal count + time since the last signal."""
     lines = [
         f"✅ *SEAN ALGO — daily check*  ({now:%Y-%m-%d %H:%M} UTC)",
-        "Resolver alive · all 3 bots evaluating.",
+        "Resolver alive.",
     ]
+    # Per-bot proof of life (each bot touches logs/heartbeat/<name> after a good cycle).
+    try:
+        hb = _read_heartbeats()
+        if hb:
+            parts = []
+            for name in sorted(hb):
+                age = float(hb[name].get("age_s") or 0)
+                parts.append(f"{name} {int(age // 60)}m" if age >= 60 else f"{name} ok")
+            lines.append("Bots (last good cycle): " + ", ".join(parts))
+    except Exception:  # noqa: BLE001
+        pass
     # Gold volatility regime — the usual reason signals go quiet.
     try:
         gdf = fetcher.fetch_oanda("5m", 60)
@@ -198,10 +226,19 @@ def health_check(fetcher: DataFetcher, tg) -> None:
     """Daily heartbeat + stale-feed watchdog, both via Telegram."""
     now = pd.Timestamp.now(tz="UTC")
 
-    # Once-a-day heartbeat so silence never means "is it even running?"
-    if _HEALTH["heartbeat_day"] != now.date():
-        _HEALTH["heartbeat_day"] = now.date()
-        _send_tg_sync(tg, _daily_heartbeat_msg(fetcher, now))
+    # Once-a-day heartbeat so silence never means "is it even running?". The day is
+    # latched only AFTER a successful send (it used to latch first, so one connect
+    # timeout at 00:01 lost the whole day's check); failed sends retry every
+    # HEARTBEAT_RETRY_MIN. Scheduled at 00:10, away from the busy midnight minute.
+    if _HEALTH["heartbeat_day"] != now.date() and (now.hour * 60 + now.minute) >= HEARTBEAT_AT_MIN:
+        last_try = _HEALTH.get("heartbeat_last_try")
+        if last_try is None or (now - last_try) / pd.Timedelta(minutes=1) >= HEARTBEAT_RETRY_MIN:
+            _HEALTH["heartbeat_last_try"] = now
+            try:
+                _send_tg_sync(tg, _daily_heartbeat_msg(fetcher, now))
+                _HEALTH["heartbeat_day"] = now.date()
+            except Exception as exc:  # noqa: BLE001
+                LOG.warning("daily heartbeat not delivered (%s); retry in %d min", exc, HEARTBEAT_RETRY_MIN)
 
     if not _forex_open(now):
         return
@@ -289,6 +326,12 @@ def _resolve_one(sig: dict, df: pd.DataFrame) -> tuple[str, float, str] | None:
             flat_at = flat_at.tz_localize("UTC")
     entry_px = sig.get("entry_price")
     last_close: float | None = None
+    # Round-trip cost the strategy's backtest charges (NY range: 0.06 %); a time
+    # exit that only beats zero by less than the cost is a LOSS there too.
+    try:
+        cost_pct = float(sig.get("cost_pct") or 0.0)
+    except Exception:  # noqa: BLE001
+        cost_pct = 0.0
 
     # Bars from the entry onward (>= when entry is AT the reference, else strictly after).
     fut = df[df["timestamp"] >= ref] if inclusive else df[df["timestamp"] > ref]
@@ -297,7 +340,9 @@ def _resolve_one(sig: dict, df: pd.DataFrame) -> tuple[str, float, str] | None:
         if flat_at is not None and bar_ts >= flat_at and entry_px is not None:
             exit_px = float(last_close) if last_close is not None else float(bar["open"])
             gain = (exit_px - float(entry_px)) if direction == "BUY" else (float(entry_px) - exit_px)
-            return ("WIN" if gain > 0 else "LOSS"), exit_px, f"flat at {flat_at:%H:%M} UTC (time exit) {gain:+.2f}"
+            net = gain - float(entry_px) * cost_pct
+            cost_note = f", net {net:+.2f} after {cost_pct * 100:.2f}% cost" if cost_pct else ""
+            return ("WIN" if net > 0 else "LOSS"), exit_px, f"flat at {flat_at:%H:%M} UTC (time exit) {gain:+.2f}{cost_note}"
         hi = float(bar["high"])
         lo = float(bar["low"])
         when = str(bar["timestamp"])[:16]
@@ -395,7 +440,7 @@ def _fetch_crypto(key: str):
     def _fetch(_fetcher: DataFetcher) -> "pd.DataFrame | None":
         if not _BTC_OK:
             return None
-        return BtcFetcher(key).fetch_klines("5m", 600, closed_only=True).sort_values("timestamp").reset_index(drop=True)
+        return BtcFetcher(key).fetch_klines("5m", CRYPTO_CANDLE_COUNT, closed_only=True).sort_values("timestamp").reset_index(drop=True)
     return _fetch
 
 
@@ -495,6 +540,10 @@ async def run() -> None:
     while not stop.is_set():
         try:
             await asyncio.to_thread(resolve_once, fetcher)
+            # Bots own per-strategy queue files now; anything still sitting in the old shared
+            # file (pre-2026-10-09 code) is replayed from here, by one process only.
+            await asyncio.to_thread(_flush_legacy_queue)
+            _heartbeat("resolver")
         except Exception as exc:  # noqa: BLE001
             LOG.exception("resolve cycle error: %s", exc)
         try:

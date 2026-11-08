@@ -59,7 +59,7 @@ export default function MacdGold() {
 
   const { data: candleData } = useCandles("H1", 240);
   const { data: livePrice } = useLivePrice();
-  const { data: signalsData } = useLiveSignals(100);
+  const { data: signalsData } = useLiveSignals();
   const { data: history } = useBacktestHistory();
   const { data: market } = useMarketStatus();
   const runBacktest = useRunMacdGoldBacktest();
