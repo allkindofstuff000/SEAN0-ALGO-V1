@@ -1,6 +1,8 @@
+# SEAN-ALGO dashboard on :8080 -> 127.0.0.1:8000. Port 80 on the VPS belongs to the co-tenant
+# SEANBOOST site (default_server), so this site must NOT claim :80 / default_server.
 server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
+    listen 8080;
+    listen [::]:8080;
     server_name _;
 
     client_max_body_size 10m;

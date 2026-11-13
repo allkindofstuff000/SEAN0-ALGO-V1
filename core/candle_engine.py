@@ -798,6 +798,17 @@ class OandaStreamEngine:
                 self._broadcast(_init_event(self.store))
 
     def _connect_and_read(self) -> None:
+        if self.api_key and not self.account_id:
+            # The startup lookup can hit a transient OANDA error (401/5xx around the weekend
+            # close). Without a retry here the stream stayed dead until the next restart.
+            try:
+                self.account_id = _discover_account_id(self.api_key, self.api_base)
+                LOGGER.info("[STREAM] account_id discovered on retry")
+            except Exception as exc:
+                LOGGER.warning("[STREAM] account_id lookup failed (%s) — retry in 30 s", exc)
+                self._set_status("reconnecting")
+                time.sleep(30)
+                return
         if not self.api_key or not self.account_id:
             LOGGER.error("[STREAM] api_key or account_id missing — sleeping 10 s")
             time.sleep(10)

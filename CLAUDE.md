@@ -99,10 +99,17 @@ internally; the dashboard **displays** times in **UTC+6 (Asia/Dhaka)**.
   (raise to ≥10k).
 
 ## Production VPS
-- Host `45.132.242.134` (Hostinger, Ubuntu 24.04, hostname `srv1935826`, root).
-- App dir `/opt/sean0algo`; dashboard `http://45.132.242.134/` (nginx `:80 → :8000`).
+- Host `179.66.144.239` (Ubuntu 26.04, hostname `srv2158723`, root). **Moved here 2026-11-14**: the old
+  VPS `45.132.242.134` was suspended and is gone (no off-box backup existed, so the Mongo history
+  before that date and the old `.env` were lost; the live track record restarts from zero).
+- App dir `/opt/sean0algo`; dashboard **`http://179.66.144.239:8080/`** (nginx `:8080 → :8000`). Port 80 on
+  this box belongs to the co-tenant SEANBOOST site (nginx `default_server`, pm2 on `:5000`, Mongo db
+  `seanbost` on the same mongod) — never claim `:80`/`default_server` for SEAN-ALGO.
 - Config `/opt/sean0algo/.env` (OANDA practice, local Mongo `:27017`, Telegram).
-- VPS Python: `/opt/sean0algo/.venv/bin/python` (3.12).
+- VPS Python: `/opt/sean0algo/.venv/bin/python` (3.12, installed with `uv` under `/opt/python` because
+  Ubuntu 26.04 ships 3.14 and the pinned numpy/pandas/numba wheels need 3.12).
+- `.env` also carries `OANDA_ACCOUNT_ID` (the startup account lookup can hit transient OANDA 401/504s).
+- Rebuild from scratch: `deploy/bootstrap_new_vps.sh <release.tar.gz> <env file>` (see its header).
 - systemd units (all normally `active`):
   - `sean0algo` → `web/web_server.py` (dashboard + API, `:8000`)
   - `sean-algo` → `main.py` (RSI EMA bot)
@@ -130,7 +137,7 @@ Passwordless SSH key at `~/.ssh/sean_vps_key` **on the original dev machine only
 (a different machine can edit code + push to GitHub but cannot deploy until a key
 is installed there). Command shape:
 ```
-ssh -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/sean_vps_key root@45.132.242.134
+ssh -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/sean_vps_key root@179.66.144.239
 ```
 - **Frontend**: `npm run build` in `frontend/`, tar `dist/` contents, scp to
   `/opt/sean0algo/`, extract with an **atomic `web/static` swap** (no restart —
@@ -155,5 +162,5 @@ ssh -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/sean_vps_key root@45.132.24
 
 ## First steps for a new session
 Read `git log --oneline -10`, confirm the 4 VPS services are `active` (if you have
-VPS access) and `http://45.132.242.134/` loads, then summarize the state before
+VPS access) and `http://179.66.144.239:8080/` loads, then summarize the state before
 editing.
